@@ -641,7 +641,7 @@ function renderContratos(){
     </tr>`;
   }).join("");
   return `<div class="filt">
-    <div class="sc"><select data-action="setFiltroT"><option value="inquilino"${f.buscarPor==="inquilino"?" selected":""}>Inquilino</option><option value="propietario"${f.buscarPor==="propietario"?" selected":""}>Propietario</option><option value="domicilio"${f.buscarPor==="domicilio"?" selected":""}>Domicilio</option></select><input placeholder="Buscar..." data-action="setBuscar" value="${f.buscar}"></div>
+    <div class="sc"><select onchange="S.filtros.buscarPor=this.value;render()"><option value="inquilino"${f.buscarPor==="inquilino"?" selected":""}>Inquilino</option><option value="propietario"${f.buscarPor==="propietario"?" selected":""}>Propietario</option><option value="domicilio"${f.buscarPor==="domicilio"?" selected":""}>Domicilio</option></select><input placeholder="Buscar..." oninput="S.filtros.buscar=this.value;render()" value="${f.buscar}"></div>
     <select class="inp" data-action="setFiltroE"><option value="todos">Todos</option><option value="activo">Activos</option><option value="vencido">Vencidos</option></select>
     <button class="btn pr" data-action="openContrato">+ Nuevo contrato</button>
   </div>
