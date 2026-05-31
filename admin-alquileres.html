@@ -197,7 +197,7 @@ const auth=getAuth(fireApp);
 let rtdb=null;
 try{rtdb=getDatabase(fireApp);}catch(e){}
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",loading:true,synced:false,presencia:[]};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[]};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -775,87 +775,69 @@ function renderInquilinos(){
 function renderPropietarios(){
   const fq=S.filtros.buscar.toLowerCase();
   const lista=fq?S.propietarios.filter(o=>(o.nombre||"").toLowerCase().includes(fq)):S.propietarios;
-  const rows=lista.map(o=>{const activos=S.contratos.filter(c=>c.propietarioNombre===o.nombre&&c.estado==="activo").length;const total=S.contratos.filter(c=>c.propietarioNombre===o.nombre&&c.estado==="activo").reduce((s,c)=>s+c.alquilerBase,0);const props=S.propiedades.filter(p=>p.propietarioNombre===o.nombre);return `<tr><td class="tm">${o.nombre||""}</td><td>${o.telefono||"—"}</td><td style="color:var(--ce)">${o.email||"—"}</td><td>${props.map(p=>`<span style="display:block;font-size:11px">${p.direccion||""}</span>`).join("")||"—"}</td><td style="color:var(--na);font-weight:600">${activos}</td><td>${total>0?moneda(total):"—"}</td></tr>`;}).join("");
-  return `<div class="filt"><input class="inp" placeholder="Buscar propietario..." data-action="setBuscar" value="${S.filtros.buscar}" style="min-width:200px"><button class="btn pr" data-action="openPropietario">+ Propietario</button></div>
-  <div class="tw"><table><thead><tr><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Propiedades</th><th>Contratos activos</th><th>Alq. total/mes</th></tr></thead><tbody>${rows||`<tr><td colspan=6><div class="empty">Sin propietarios</div></td></tr>`}</tbody></table></div>`;
+  // Mes para verificar estado de cobro
+  const mesSel=S.mesPropietarios||mesActual();
+  const mesesDisp=[...new Set(S.pagos.map(p=>p.mes))].sort().reverse();
+  if(!mesesDisp.includes(mesSel)&&!mesesDisp.includes(mesActual()))mesesDisp.unshift(mesActual());
+  else if(!mesesDisp.includes(mesSel))mesesDisp.unshift(mesSel);
+
+  const rows=lista.map(o=>{
+    const contratosActivos=S.contratos.filter(c=>c.propietarioNombre===o.nombre&&c.estado==="activo");
+    const totalAlq=contratosActivos.reduce((s,c)=>s+c.alquilerBase,0);
+    const props=S.propiedades.filter(p=>p.propietarioNombre===o.nombre);
+
+    // Estado de cobro del mes seleccionado
+    let estadoCobro="sin-contratos";
+    let estadoHtml="";
+    if(contratosActivos.length>0){
+      let cobrados=0;
+      contratosActivos.forEach(c=>{
+        const pago=S.pagos.find(p=>p.contratoId===c._id&&p.mes===mesSel&&p.estado==="cobrado");
+        if(pago)cobrados++;
+      });
+      if(cobrados===0)estadoCobro="pendiente";
+      else if(cobrados===contratosActivos.length)estadoCobro="listo";
+      else estadoCobro="parcial";
+      const estadoMap={
+        pendiente:`<span class="badge br">⏳ Pendiente (0/${contratosActivos.length})</span>`,
+        parcial:`<span class="badge by">⚡ Parcial (${cobrados}/${contratosActivos.length})</span>`,
+        listo:`<span class="badge bg">✅ Listo para cobrar (${cobrados}/${contratosActivos.length})</span>`,
+      };
+      estadoHtml=estadoMap[estadoCobro];
+    } else {
+      estadoHtml=`<span class="badge bgr">Sin contratos</span>`;
+    }
+
+    return `<tr>
+      <td class="tm">${o.nombre||""}</td>
+      <td>${o.telefono||"—"}</td>
+      <td style="color:var(--ce)">${o.email||"—"}</td>
+      <td>${props.map(p=>`<span style="display:block;font-size:11px">${p.direccion||""}</span>`).join("")||"—"}</td>
+      <td style="color:var(--na);font-weight:600">${contratosActivos.length}</td>
+      <td>${totalAlq>0?moneda(totalAlq):"—"}</td>
+      <td>${estadoHtml}</td>
+    </tr>`;
+  }).join("");
+
+  const mesOptsHtml=mesesDisp.map(m=>`<option value="${m}"${m===mesSel?" selected":""}>${mesNombre(m)}</option>`).join("");
+
+  return `<div class="filt" style="margin-bottom:14px">
+    <input class="inp" placeholder="Buscar propietario..." data-action="setBuscar" value="${S.filtros.buscar}" style="min-width:200px">
+    <button class="btn pr" data-action="openPropietario">+ Propietario</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:var(--g3)">Ver estado de cobro para:</span>
+      <select class="inp" onchange="S.mesPropietarios=this.value;render()">${mesOptsHtml}</select>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:5px"><span class="badge bg">✅ Listo</span> Todos los inquilinos pagaron</span>
+    <span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:5px"><span class="badge by">⚡ Parcial</span> Algunos pagaron</span>
+    <span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:5px"><span class="badge br">⏳ Pendiente</span> Ninguno pagó aún</span>
+  </div>
+  <div class="tw"><table><thead><tr><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Propiedades</th><th>Contratos activos</th><th>Alq. total/mes</th><th>Estado ${mesNombre(mesSel)}</th></tr></thead>
+  <tbody>${rows||`<tr><td colspan=7><div class="empty">Sin propietarios</div></td></tr>`}</tbody></table></div>`;
 }
 
-function renderModalDetalle(){
-  const c=S.contratoActivo;if(!c)return"";
-  const f=S.form;
-  const alq=+(f.alquiler||c.alquilerBase||0);
-  const prox=getProxActualizacion(c);
-  const proxStr=prox?prox.toLocaleDateString("es-AR"):"—";
-  const pagosAnt=S.pagos.filter(p=>p.contratoId===c._id).slice(0,6);
-  const pagosHtml=pagosAnt.map(p=>{
-    const btns=p.estado==="cobrado"?`<button class="btn sm" data-action="emitirINQ" data-id="${p._id}">📄 Inq</button><button class="btn sm" data-action="emitirPROP" data-id="${p._id}">📄 Prop</button>`:"";
-    return `<tr><td>${mesNombre(p.mes)}</td><td>${moneda(p.alquiler||0)}</td><td>${p.totalItems?moneda(p.totalItems):"—"}</td><td>${badge(p.estado)}</td><td>${p.fechaCobro||"—"}</td><td style="display:flex;gap:3px">${btns}</td></tr>`;
-  }).join("");
-  // Items de cobro con colores por tipo
-  const tipoInfo={fijo:{label:"Fijo",cls:"fijo",hint:"Gasto fijo del contrato"},variable:{label:"Variable",cls:"variable",hint:"Cargo adicional este mes"},saldo:{label:"Saldo ant.",cls:"saldo-pos",hint:"Saldo del mes anterior (negativo = a favor del inquilino)"}};
-  const itemsHtml=S.itemsCobro.map((it,i)=>{const ti=tipoInfo[it.tipo]||tipoInfo.variable;const neg=it.monto<0;return `<div class="ii ${neg&&it.tipo==="saldo"?"saldo-neg":ti.cls}">
-    <span class="ii-tipo">${ti.label}</span>
-    <input class="desc" value="${it.desc||""}" placeholder="${ti.hint}" data-action="setItemDesc" data-idx="${i}">
-    <input class="monto" value="${it.monto||""}" type="number" placeholder="Monto ($)" data-action="setItemMonto" data-idx="${i}">
-    <button class="ii-rm" data-action="removeItem" data-id="${i}">✕</button>
-  </div>`;}).join("");
-  return `<div class="ov"><div class="mo">
-    <button class="mcl" data-action="closeModal">✕</button>
-    <div class="mth"><div class="mic">📋</div>${c.inquilino||""} — ${c.direccion||""}</div>
-    <div class="fs">
-      <div class="fst">Datos del contrato</div>
-      <div class="fcc">
-        <div class="fc"><div class="fcl">Propietario</div><div class="fcv">${c.propietarioNombre||"—"}</div></div>
-        <div class="fc"><div class="fcl">Alquiler actual</div><div class="fcv big">${moneda(c.alquilerBase)}</div></div>
-        <div class="fc"><div class="fcl">Comisión agencia</div><div class="fcv">${c.comisionAgencia||5}%</div></div>
-        <div class="fc"><div class="fcl">Vigencia</div><div class="fcv">${c.inicio||""} → ${c.fin||"S/F"}</div></div>
-        <div class="fc"><div class="fcl">Próx. actualización ${c.indiceActualizacion||"IPC"}</div><div class="fcv">${proxStr}</div></div>
-        <div class="fc"><div class="fcl">Garante</div><div class="fcv">${c.garante||"—"}</div></div>
-      </div>
-      <button class="btn sm" data-action="actualizarAlq" data-id="${c._id}">⟳ Aplicar aumento ${c.indiceActualizacion||"IPC"}</button>
-    </div>
-    <div class="fs">
-      <div class="fst">Registrar pago del mes</div>
-      <div class="fg">
-        <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
-        <div><label class="fl">Alquiler ($)</label><input class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" data-action="setAlquiler"></div>
-        <div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="${f.fechaCobro||hoy()}" data-action="setForm" data-key="fechaCobro"></div>
-        <div><label class="fl">N° Comprobante</label><input class="inp" style="width:100%" placeholder="Auto" data-action="setForm" data-key="comprobante"></div>
-      </div>
-      <div style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <label class="fl" style="margin:0">Items del cobro este mes</label>
-          <div style="display:flex;gap:6px">
-            <button class="btn sm" data-action="addFijo" title="Gasto fijo del contrato (TGI, agua...)">+ Gasto fijo</button>
-            <button class="btn sm" data-action="addVariable" title="Arreglo u otro cargo variable">+ Variable</button>
-            <button class="btn sm" data-action="addSaldo" title="Saldo del mes anterior">+ Saldo ant.</button>
-          </div>
-        </div>
-        <div class="ilist">${itemsHtml}</div>
-        <p style="font-size:10px;color:var(--g4);margin-top:4px">Gasto fijo = TGI, agua, etc. · Variable = arreglos, otros · Saldo ant. = usar negativo si es a favor del inquilino</p>
-      </div>
-      <div class="rsum">
-        <div style="font-size:11px;font-weight:600;color:var(--ce);margin-bottom:7px;letter-spacing:.5px">RESUMEN DEL COBRO</div>
-        <div id="resumen-live">
-          <div class="rr"><span>Alquiler</span><span>${moneda(alq)}</span></div>
-          <div class="rr" style="font-weight:600;font-size:13px"><span>TOTAL AL INQUILINO</span><span>${moneda(alq)}</span></div>
-          <div style="height:5px"></div>
-          <div class="rr red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(Math.round(alq*(c.comisionAgencia||5)/100))}</span></div>
-          <div class="rr gr" style="font-weight:600;font-size:13px"><span>NETO AL PROPIETARIO</span><span>${moneda(alq-Math.round(alq*(c.comisionAgencia||5)/100))}</span></div>
-        </div>
-      </div>
-    </div>
-    ${pagosAnt.length?`<div class="fs" style="border:none;margin:0;padding-bottom:0">
-      <div class="fst">Historial de pagos</div>
-      <div class="tw"><table><thead><tr><th>Período</th><th>Alquiler</th><th>Items</th><th>Estado</th><th>Fecha</th><th>Comprobantes</th></tr></thead>
-      <tbody>${pagosHtml}</tbody></table></div>
-    </div>`:""}
-    <div class="fa">
-      <button class="btn" data-action="closeModal">Cancelar</button>
-      <button class="btn na" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
-    </div>
-  </div></div>`;
-}
 
 function renderModal(){
   if(!S.modal)return"";
