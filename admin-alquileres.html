@@ -512,7 +512,7 @@ function filtrarTabla(){
     let updB="";const prox=getProxActualizacion(c);
     if(prox){const du=Math.round((prox-new Date())/86400000);if(du<0)updB=`<span class="badge br">⟳ Vencida</span>`;else if(du<=30)updB=`<span class="badge by">⟳ ${du}d</span>`;}
     const cid="${c._id}";
-    return `<tr class="cl" onclick="abrirContrato('` + c._id + `')">
+    return `<tr class="cl" onclick="abrirContrato('${c._id}')">
       <td class="tm">${c.inquilino||""}<br><span class="ts">${c.dni||""}</span></td>
       <td>${c.direccion||""}<br><span class="ts">${c.propietarioNombre||""}</span></td>
       <td>${moneda(c.alquilerBase)}<br><span class="ts">${c.comisionAgencia||5}% com.</span></td>
@@ -685,7 +685,7 @@ function renderContratos(){
     let updB="";const prox=getProxActualizacion(c);
     if(prox){const du=Math.round((prox-new Date())/86400000);if(du<0)updB=`<span class="badge br">⟳ Vencida</span>`;else if(du<=30)updB=`<span class="badge by">⟳ ${du}d</span>`;}
     const cid="${c._id}";
-    return `<tr class="cl" onclick="abrirContrato('` + c._id + `')">
+    return `<tr class="cl" onclick="abrirContrato('${c._id}')">
       <td class="tm">${c.inquilino||""}<br><span class="ts">${c.dni||""}</span></td>
       <td>${c.direccion||""}<br><span class="ts">${c.propietarioNombre||""}</span></td>
       <td>${moneda(c.alquilerBase)}<br><span class="ts">${c.comisionAgencia||5}% com.</span></td>
