@@ -475,6 +475,19 @@ function actualizarResumen(){
 window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
 function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
+window.ejecutarBusqueda=function(){
+  const tipo=document.getElementById("filtro-tipo");
+  const texto=document.getElementById("filtro-texto");
+  const estado=document.getElementById("filtro-estado");
+  if(tipo)S.filtros.buscarPor=tipo.value;
+  if(texto)S.filtros.buscar=texto.value.trim();
+  if(estado)S.filtros.estado=estado.value;
+  render();
+};
+window.limpiarBusqueda=function(){
+  S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};
+  render();
+};
 function filtrarTabla(){
   // Solo actualiza la tabla sin recrear el input
   const f=S.filtros;
@@ -673,9 +686,20 @@ function renderContratos(){
       <td>${badge(c.estado)}</td>
     </tr>`;
   }).join("");
-  return `<div class="filt">
-    <div class="sc"><select onchange="S.filtros.buscarPor=this.value;render()"><option value="inquilino"${f.buscarPor==="inquilino"?" selected":""}>Inquilino</option><option value="propietario"${f.buscarPor==="propietario"?" selected":""}>Propietario</option><option value="domicilio"${f.buscarPor==="domicilio"?" selected":""}>Domicilio</option></select><input id="buscar-inp" placeholder="Buscar..." oninput="S.filtros.buscar=this.value;filtrarTabla()" value="${f.buscar}" style="outline:none"></div>
-    <select class="inp" data-action="setFiltroE"><option value="todos">Todos</option><option value="activo">Activos</option><option value="vencido">Vencidos</option></select>
+  return `<div class="filt" style="flex-wrap:wrap;gap:8px">
+    <select id="filtro-tipo" class="inp">
+      <option value="inquilino">Inquilino</option>
+      <option value="propietario">Propietario</option>
+      <option value="domicilio">Domicilio</option>
+    </select>
+    <input id="filtro-texto" class="inp" placeholder="Escribir y presionar Buscar..." style="min-width:200px" value="${f.buscar}" onkeydown="if(event.key==='Enter')ejecutarBusqueda()">
+    <button class="btn pr" onclick="ejecutarBusqueda()">🔍 Buscar</button>
+    <select id="filtro-estado" class="inp">
+      <option value="todos"${f.estado==="todos"?" selected":""}>Todos</option>
+      <option value="activo"${f.estado==="activo"?" selected":""}>Activos</option>
+      <option value="vencido"${f.estado==="vencido"?" selected":""}>Vencidos</option>
+    </select>
+    <button class="btn" onclick="limpiarBusqueda()">✕ Limpiar</button>
     <button class="btn pr" data-action="openContrato">+ Nuevo contrato</button>
   </div>
   <p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un contrato para ver detalles y registrar el pago del mes</p>
