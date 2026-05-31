@@ -511,7 +511,7 @@ function filtrarTabla(){
     const extH=(c.extras||[]).map(e=>`<span class="tag">${e.desc}</span>`).join("");
     let updB="";const prox=getProxActualizacion(c);
     if(prox){const du=Math.round((prox-new Date())/86400000);if(du<0)updB=`<span class="badge br">⟳ Vencida</span>`;else if(du<=30)updB=`<span class="badge by">⟳ ${du}d</span>`;}
-    return `<tr class="cl" data-action="abrirContrato" data-id="${c._id}">
+    return `<tr class="cl" onclick="window.abrirContrato('${c._id}')">
       <td class="tm">${c.inquilino||""}<br><span class="ts">${c.dni||""}</span></td>
       <td>${c.direccion||""}<br><span class="ts">${c.propietarioNombre||""}</span></td>
       <td>${moneda(c.alquilerBase)}<br><span class="ts">${c.comisionAgencia||5}% com.</span></td>
@@ -538,7 +538,7 @@ function getProxActualizacion(c){
   const prox=new Date(base);prox.setMonth(prox.getMonth()+(+(c.frecActualizacion||6)));return prox;
 }
 
-function abrirContrato(cid){
+window.abrirContrato=function(cid){
   const c=S.contratos.find(x=>x._id===cid);if(!c)return;
   S.contratoActivo=c;
   S.modal="detalle";
@@ -683,7 +683,7 @@ function renderContratos(){
     const extH=(c.extras||[]).map(e=>`<span class="tag">${e.desc}</span>`).join("");
     let updB="";const prox=getProxActualizacion(c);
     if(prox){const du=Math.round((prox-new Date())/86400000);if(du<0)updB=`<span class="badge br">⟳ Vencida</span>`;else if(du<=30)updB=`<span class="badge by">⟳ ${du}d</span>`;}
-    return `<tr class="cl" data-action="abrirContrato" data-id="${c._id}">
+    return `<tr class="cl" onclick="window.abrirContrato('${c._id}')">
       <td class="tm">${c.inquilino||""}<br><span class="ts">${c.dni||""}</span></td>
       <td>${c.direccion||""}<br><span class="ts">${c.propietarioNombre||""}</span></td>
       <td>${moneda(c.alquilerBase)}<br><span class="ts">${c.comisionAgencia||5}% com.</span></td>
