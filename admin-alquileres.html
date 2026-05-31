@@ -475,6 +475,39 @@ function actualizarResumen(){
 window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
 function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
+function filtrarTabla(){
+  // Solo actualiza la tabla sin recrear el input
+  const f=S.filtros;
+  const lista=S.contratos.filter(c=>{
+    let ok=true;
+    if(f.buscar){const q=f.buscar.toLowerCase();
+      if(f.buscarPor==="inquilino")ok=(c.inquilino||"").toLowerCase().includes(q);
+      else if(f.buscarPor==="propietario")ok=(c.propietarioNombre||"").toLowerCase().includes(q);
+      else if(f.buscarPor==="domicilio")ok=(c.direccion||"").toLowerCase().includes(q);
+    }
+    return ok&&(f.estado==="todos"||c.estado===f.estado);
+  });
+  const tbody=document.querySelector("#tabla-contratos tbody");
+  if(!tbody)return;
+  if(!lista.length){tbody.innerHTML=`<tr><td colspan=7><div class="empty">Sin resultados</div></td></tr>`;return;}
+  tbody.innerHTML=lista.map(c=>{
+    const d=c.fin?diasPara(c.fin):999;
+    const dc=d<0?"var(--ro)":d<=60?"var(--na)":"var(--g3)";
+    const dt=d<0?Math.abs(d)+"d vencido":d<=60?d+"d":"";
+    const extH=(c.extras||[]).map(e=>`<span class="tag">${e.desc}</span>`).join("");
+    let updB="";const prox=getProxActualizacion(c);
+    if(prox){const du=Math.round((prox-new Date())/86400000);if(du<0)updB=`<span class="badge br">⟳ Vencida</span>`;else if(du<=30)updB=`<span class="badge by">⟳ ${du}d</span>`;}
+    return `<tr class="cl" data-action="abrirContrato" data-id="${c._id}">
+      <td class="tm">${c.inquilino||""}<br><span class="ts">${c.dni||""}</span></td>
+      <td>${c.direccion||""}<br><span class="ts">${c.propietarioNombre||""}</span></td>
+      <td>${moneda(c.alquilerBase)}<br><span class="ts">${c.comisionAgencia||5}% com.</span></td>
+      <td>${extH||`<span class="ts">—</span>`}</td>
+      <td>${c.inicio||""}${dt?`<br><span style="color:${dc};font-size:10px">${dt}</span>`:""}</td>
+      <td>${updB||`<span class="ts">c/${c.frecActualizacion||6}m</span>`}</td>
+      <td>${badge(c.estado)}</td>
+    </tr>`;
+  }).join("");
+}
 function setLiqMes(v){S.liqMes=v;render();}
 function closeModal(){S.modal=null;S.contratoActivo=null;render();}
 function openModal(t){S.modal=t;S.form={comisionAgencia:5,tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC"};S.itemsCobro=[];render();}
@@ -641,12 +674,12 @@ function renderContratos(){
     </tr>`;
   }).join("");
   return `<div class="filt">
-    <div class="sc"><select onchange="S.filtros.buscarPor=this.value;render()"><option value="inquilino"${f.buscarPor==="inquilino"?" selected":""}>Inquilino</option><option value="propietario"${f.buscarPor==="propietario"?" selected":""}>Propietario</option><option value="domicilio"${f.buscarPor==="domicilio"?" selected":""}>Domicilio</option></select><input placeholder="Buscar..." oninput="S.filtros.buscar=this.value;render()" value="${f.buscar}"></div>
+    <div class="sc"><select onchange="S.filtros.buscarPor=this.value;render()"><option value="inquilino"${f.buscarPor==="inquilino"?" selected":""}>Inquilino</option><option value="propietario"${f.buscarPor==="propietario"?" selected":""}>Propietario</option><option value="domicilio"${f.buscarPor==="domicilio"?" selected":""}>Domicilio</option></select><input id="buscar-inp" placeholder="Buscar..." oninput="S.filtros.buscar=this.value;filtrarTabla()" value="${f.buscar}" style="outline:none"></div>
     <select class="inp" data-action="setFiltroE"><option value="todos">Todos</option><option value="activo">Activos</option><option value="vencido">Vencidos</option></select>
     <button class="btn pr" data-action="openContrato">+ Nuevo contrato</button>
   </div>
   <p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un contrato para ver detalles y registrar el pago del mes</p>
-  <div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad/Prop.</th><th>Alquiler</th><th>Gastos fijos</th><th>Vigencia</th><th>Actualiz.</th><th>Estado</th></tr></thead>
+  <div class="tw"><table id="tabla-contratos"><thead><tr><th>Inquilino</th><th>Propiedad/Prop.</th><th>Alquiler</th><th>Gastos fijos</th><th>Vigencia</th><th>Actualiz.</th><th>Estado</th></tr></thead>
   <tbody>${rows||`<tr><td colspan=7><div class="empty">Sin resultados</div></td></tr>`}</tbody></table></div>`;
 }
 
