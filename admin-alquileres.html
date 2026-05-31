@@ -475,15 +475,16 @@ function actualizarResumen(){
 window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
 function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
-window.ejecutarBusqueda=function(){
-  const tipo=document.getElementById("filtro-tipo");
-  const texto=document.getElementById("filtro-texto");
-  const estado=document.getElementById("filtro-estado");
-  if(tipo)S.filtros.buscarPor=tipo.value;
-  if(texto)S.filtros.buscar=texto.value.trim();
-  if(estado)S.filtros.estado=estado.value;
+window.buscarContratos=function(){
+  const tipo=document.getElementById("cb-tipo");
+  const texto=document.getElementById("cb-texto");
+  const estado=document.getElementById("cb-estado");
+  S.filtros.buscarPor=tipo?tipo.value:"inquilino";
+  S.filtros.buscar=texto?texto.value.trim():"";
+  S.filtros.estado=estado?estado.value:"todos";
   render();
 };
+window.ejecutarBusqueda=window.buscarContratos;
 window.limpiarBusqueda=function(){
   S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};
   render();
@@ -666,7 +667,13 @@ function renderDashboard(){
 function renderContratos(){
   const f=S.filtros;
   const lista=S.contratos.filter(c=>{
-    let ok=true;if(f.buscar){const q=f.buscar.toLowerCase();if(f.buscarPor==="inquilino")ok=(c.inquilino||"").toLowerCase().includes(q);else if(f.buscarPor==="propietario")ok=(c.propietarioNombre||"").toLowerCase().includes(q);else if(f.buscarPor==="domicilio")ok=(c.direccion||"").toLowerCase().includes(q);}
+    let ok=true;
+    if(f.buscar){
+      const q=f.buscar.toLowerCase();
+      if(f.buscarPor==="inquilino")ok=(c.inquilino||"").toLowerCase().includes(q);
+      else if(f.buscarPor==="propietario")ok=(c.propietarioNombre||"").toLowerCase().includes(q);
+      else if(f.buscarPor==="domicilio")ok=(c.direccion||"").toLowerCase().includes(q);
+    }
     return ok&&(f.estado==="todos"||c.estado===f.estado);
   });
   const rows=lista.map(c=>{
@@ -686,23 +693,20 @@ function renderContratos(){
       <td>${badge(c.estado)}</td>
     </tr>`;
   }).join("");
-  return `<div class="filt" style="flex-wrap:wrap;gap:8px">
-    <select id="filtro-tipo" class="inp">
-      <option value="inquilino">Inquilino</option>
-      <option value="propietario">Propietario</option>
-      <option value="domicilio">Domicilio</option>
-    </select>
-    <input id="filtro-texto" class="inp" placeholder="Escribir y presionar Buscar..." style="min-width:200px" value="${f.buscar}" onkeydown="if(event.key==='Enter')ejecutarBusqueda()">
-    <button class="btn pr" onclick="ejecutarBusqueda()">🔍 Buscar</button>
-    <select id="filtro-estado" class="inp">
-      <option value="todos"${f.estado==="todos"?" selected":""}>Todos</option>
-      <option value="activo"${f.estado==="activo"?" selected":""}>Activos</option>
-      <option value="vencido"${f.estado==="vencido"?" selected":""}>Vencidos</option>
-    </select>
-    <button class="btn" onclick="limpiarBusqueda()">✕ Limpiar</button>
+  // Opciones de select con estado actual
+  const tipoOpts=["inquilino","propietario","domicilio"].map(v=>
+    `<option value="${v}"${f.buscarPor===v?" selected":""}>${v.charAt(0).toUpperCase()+v.slice(1)}</option>`).join("");
+  const estadoOpts=[["todos","Todos"],["activo","Activos"],["vencido","Vencidos"]].map(([v,l])=>
+    `<option value="${v}"${f.estado===v?" selected":""}>${l}</option>`).join("");
+  return `<div class="filt" style="gap:8px;margin-bottom:16px">
+    <select class="inp" id="cb-tipo">${tipoOpts}</select>
+    <input class="inp" id="cb-texto" placeholder="Buscar..." value="${f.buscar}" style="min-width:180px" onkeydown="if(event.key==='Enter')window.buscarContratos()">
+    <button class="btn pr" onclick="window.buscarContratos()">🔍 Buscar</button>
+    <select class="inp" id="cb-estado">${estadoOpts}</select>
+    <button class="btn" onclick="window.limpiarBusqueda()">✕ Limpiar</button>
     <button class="btn pr" data-action="openContrato">+ Nuevo contrato</button>
   </div>
-  <p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un contrato para ver detalles y registrar el pago del mes</p>
+  <p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un contrato para ver detalles y registrar el pago del mes${f.buscar||f.estado!=="todos"?` · <strong style="color:var(--ce)">${lista.length} resultado(s)</strong>`:""}</p>
   <div class="tw"><table id="tabla-contratos"><thead><tr><th>Inquilino</th><th>Propiedad/Prop.</th><th>Alquiler</th><th>Gastos fijos</th><th>Vigencia</th><th>Actualiz.</th><th>Estado</th></tr></thead>
   <tbody>${rows||`<tr><td colspan=7><div class="empty">Sin resultados</div></td></tr>`}</tbody></table></div>`;
 }
