@@ -422,9 +422,16 @@ function renderModalDetalle(){
   var f=S.form;var alq=+(f.alquiler||c.alquilerBase||0);
   var prox=getProxActualizacion(c);var proxStr=prox?prox.toLocaleDateString("es-AR"):"—";
   var pagosAnt=S.pagos.filter(function(p){return p.contratoId===c._id}).slice(0,6);
-  var pagosHtml=pagosAnt.map(function(p){
+  var pagosHtml=pagosAnt.map(function(p,pi){
     var btns=p.estado==="cobrado"?'<button class="btn sm" onclick="window.pdfInquilino(&#39;'+p._id+'&#39;)">📄 Inq</button><button class="btn sm" onclick="window.pdfPropietario(&#39;'+p._id+'&#39;)">📄 Prop</button>':"";
-    return '<tr><td>'+mesNombre(p.mes)+'</td><td>'+moneda(p.alquiler||0)+'</td><td>'+(p.totalItems?moneda(p.totalItems):"—")+'</td><td>'+badge(p.estado)+'</td><td>'+(p.fechaCobro||"—")+'</td><td style="display:flex;gap:3px">'+btns+'</td></tr>';
+    var items=p.itemsCobro||p.extras||[];
+    var detalleId="det-"+pi;
+    var itemsDetalle=items.map(function(it){
+      var neg=(it.monto||0)<0;
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;border-bottom:1px solid var(--n4)"><span style="color:'+(neg?"#ff7b6b":it.tipo==="fijo"?"var(--ce)":"var(--na)")+'">'+(it.desc||it.tipo)+'</span><span>'+(neg?"- ":"")+moneda(Math.abs(it.monto||0))+'</span></div>';
+    }).join("");
+    var detalleHtml=items.length?'<tr id="'+detalleId+'" style="display:none"><td colspan="6"><div style="background:var(--n3);border-radius:6px;padding:10px 12px;margin:4px 0"><div style="font-size:10px;color:var(--g3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Detalle del cobro — '+mesNombre(p.mes)+'</div><div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;font-weight:500;border-bottom:1px solid var(--n4)"><span>Alquiler</span><span>'+moneda(p.alquiler||0)+'</span></div>'+itemsDetalle+'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;font-weight:700;margin-top:4px"><span>TOTAL INQUILINO</span><span>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</span></div></div></td></tr>':"";
+    return '<tr style="cursor:pointer" onclick="var d=document.getElementById(&#39;'+detalleId+'&#39;);if(d)d.style.display=d.style.display===&#39;none&#39;?&#39;table-row&#39;:&#39;none&#39;"><td>'+mesNombre(p.mes)+(items.length?" ▸":"")+'</td><td>'+moneda(p.alquiler||0)+'</td><td>'+(p.totalItems?moneda(p.totalItems):"—")+'</td><td>'+badge(p.estado)+'</td><td>'+(p.fechaCobro||"—")+'</td><td style="display:flex;gap:3px" onclick="event.stopPropagation()">'+btns+'</td></tr>'+detalleHtml;
   }).join("");
   var tipoInfo={fijo:["Fijo","fijo"],variable:["Variable","variable"],saldo:["Saldo ant.","saldo-pos"]};
   var itemsHtml=S.itemsCobro.map(function(it,i){var ti=tipoInfo[it.tipo]||tipoInfo.variable;var neg=it.monto<0;return '<div class="ii '+(neg&&it.tipo==="saldo"?"saldo-neg":ti[1])+'"><span class="ii-tipo">'+ti[0]+'</span><input class="desc item-desc" data-idx="'+i+'" value="'+(it.desc||"")+'" placeholder="Descripción..." oninput="window.syncItems()"><input class="monto item-monto" data-idx="'+i+'" value="'+(it.monto||"")+'" type="number" placeholder="Monto $" oninput="window.syncItems()"><button class="ii-rm" onclick="window.removeItemCobro('+i+')">✕</button></div>'}).join("");
