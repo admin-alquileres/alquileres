@@ -112,6 +112,27 @@ td{padding:9px 12px;color:var(--g2);border-bottom:1px solid var(--n4)}tr:last-ch
 .ipc-cur{font-size:18px;font-weight:700;color:var(--ce);min-width:120px;text-align:right}
 .ipc-act{display:flex;align-items:center;gap:6px}
 .ipc-inp{width:80px;padding:7px 10px;font-family:Inter,sans-serif;font-size:13px;border:1px solid var(--n4);border-radius:6px;background:var(--n3);color:var(--bl);outline:none;text-align:center}
+.caja-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px}
+.caja-card{background:var(--n2);border:1px solid var(--n4);border-radius:12px;padding:20px}
+.caja-card.saldo{border-color:var(--ce);background:rgba(75,200,232,.06)}
+.caja-lbl{font-size:10px;color:var(--g3);letter-spacing:.7px;text-transform:uppercase;margin-bottom:6px}
+.caja-val{font-size:26px;font-weight:700;line-height:1}
+.caja-sub{font-size:11px;color:var(--g3);margin-top:5px}
+.mov-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.mov-item{display:flex;align-items:center;gap:10px;background:var(--n3);border-radius:8px;padding:10px 12px;border-left:3px solid}
+.mov-item.ingreso{border-left-color:var(--ve)}
+.mov-item.egreso{border-left-color:var(--ro)}
+.mov-item.retiro{border-left-color:var(--na)}
+.mov-item.adelanto{border-left-color:var(--am,#f39c12)}
+.mov-info{flex:1}.mov-concepto{font-weight:500;font-size:12px;color:var(--bl)}
+.mov-det{font-size:10px;color:var(--g3);margin-top:2px}
+.mov-monto{font-weight:700;font-size:14px}
+.mov-monto.pos{color:#5ddb8a}.mov-monto.neg{color:#ff7b6b}
+.mov-fecha{font-size:10px;color:var(--g4);white-space:nowrap}
+.tab-caja{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab-btn{padding:6px 14px;font-family:Inter,sans-serif;font-size:12px;cursor:pointer;border:1px solid var(--n4);border-radius:20px;background:var(--n3);color:var(--g3)}
+.tab-btn.on{background:var(--ce);border-color:var(--ce);color:var(--n);font-weight:600}
+.adelanto-badge{display:inline-block;padding:2px 7px;font-size:10px;border-radius:4px;background:rgba(243,156,18,.15);color:var(--am,#f39c12);border:1px solid rgba(243,156,18,.25)}
 .pbar{padding:8px 16px;border-top:1px solid var(--n4);font-size:10px;color:var(--g4)}
 .plist{display:flex;flex-direction:column;gap:3px;margin-top:4px}
 .pi{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--g2)}
@@ -661,6 +682,7 @@ function renderModal(){
   }
   if(S.modal==="propietario"){content='<div class="mth"><div class="mic">👤</div>Nuevo Propietario</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div><div><label class="fl">DNI / CUIT</label>'+inp("dni")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarPropietario()">Guardar</button></div>';}
   if(S.modal==="inquilino"){content='<div class="mth"><div class="mic">🏠</div>Nuevo Inquilino</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">DNI</label>'+inp("dni")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarInquilino()">Guardar</button></div>';}
+  if(S.modal==="caja_nuevo")return renderModalCaja();
   if(S.modal==="editarPago"&&S.pagoEditando){
     var p=S.pagoEditando;var f=S.form;
     var tipoInfo={fijo:["Fijo","fijo"],variable:["Variable","variable"],saldo:["Saldo ant.","saldo-pos"]};
@@ -695,8 +717,163 @@ function renderModal(){
   return '<div class="ov"><div class="mo"><button class="mcl" onclick="window.closeModal()">✕</button>'+content+'</div></div>';
 }
 
-var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"}];
-var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"]};
+// ── CAJA ──────────────────────────────────────────────────────────────────────
+var S_CAJA={tab:"todos",movimientos:[],cargado:false};
+
+window.abrirModalCaja=function(tipo){
+  S.modal="caja_nuevo";
+  S.form={tipo:tipo||"gasto",fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};
+  render();
+};
+
+window.guardarMovCaja=async function(){
+  var f=S.form;
+  if(!f.concepto||!f.monto)return toast("Completá concepto y monto",false);
+  var data={tipo:f.tipo,fecha:f.fecha||hoy(),monto:+(f.monto||0),concepto:f.concepto,detalle:f.detalle||"",recuperado:false};
+  if(f.tipo==="adelanto"){data.inquilino=f.inquilino||"";data.recuperado=false;}
+  if(f.tipo==="honorario"){data.inquilino=f.inquilino||"";data.cuotas=+(f.cuotas||1);data.cuotaNum=+(f.cuotaNum||1);}
+  var id=await fbAdd("caja",data);
+  if(id){
+    S_CAJA.movimientos.unshift(Object.assign({},data,{_id:id}));
+    S.modal=null;render();
+    toast("Registrado ✓");
+  }
+};
+
+window.marcarRecuperado=async function(id){
+  await fbUpd("caja",id,{recuperado:true,fechaRecuperado:hoy()});
+  S_CAJA.movimientos=S_CAJA.movimientos.map(function(m){return m._id===id?Object.assign({},m,{recuperado:true,fechaRecuperado:hoy()}):m});
+  toast("Marcado como recuperado ✓");render();
+};
+
+window.eliminarMovCaja=async function(id){
+  if(!confirm("¿Eliminar este movimiento?"))return;
+  try{
+    var{doc:docRef,deleteDoc}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    S_CAJA.movimientos=S_CAJA.movimientos.filter(function(m){return m._id!==id});
+    toast("Eliminado ✓");render();
+  }catch(e){
+    S_CAJA.movimientos=S_CAJA.movimientos.filter(function(m){return m._id!==id});
+    toast("Eliminado ✓");render();
+  }
+};
+
+async function cargarCaja(){
+  if(S_CAJA.cargado)return;
+  try{
+    var snap=await getDocs(collection(db,"caja"));
+    S_CAJA.movimientos=snap.docs.map(function(d){return Object.assign({},d.data(),{_id:d.id})})
+      .sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")});
+    S_CAJA.cargado=true;
+  }catch(e){toast("Error cargando caja: "+e.message,false);}
+}
+
+function renderCaja(){
+  if(!S_CAJA.cargado){
+    cargarCaja().then(function(){render();});
+    return '<div class="load"><div class="sp"></div>Cargando caja...</div>';
+  }
+  var movs=S_CAJA.movimientos;
+  var mesHoy=mesActual();
+
+  // Comisiones automáticas del mes
+  var comAuto=S.pagos.filter(function(p){return p.estado==="cobrado"&&p.mes===mesHoy})
+    .reduce(function(s,p){return s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100))},0);
+  var comTotal=S.pagos.filter(function(p){return p.estado==="cobrado"})
+    .reduce(function(s,p){return s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100))},0);
+
+  // Totales de movimientos manuales
+  var ingresosMan=movs.filter(function(m){return m.tipo==="honorario"||m.tipo==="ingreso"}).reduce(function(s,m){return s+(m.monto||0)},0);
+  var egresos=movs.filter(function(m){return m.tipo==="gasto"||m.tipo==="retiro"}).reduce(function(s,m){return s+(m.monto||0)},0);
+  var adelantosPend=movs.filter(function(m){return m.tipo==="adelanto"&&!m.recuperado}).reduce(function(s,m){return s+(m.monto||0)},0);
+  var saldo=comTotal+ingresosMan-egresos-adelantosPend;
+
+  var comMesObjetivo=S.contratos.filter(function(c){return c.estado==="activo"}).reduce(function(s,c){return s+Math.round(c.alquilerBase*(c.comisionAgencia||5)/100)},0);
+  var pctCom=comMesObjetivo>0?Math.round(comAuto/comMesObjetivo*100):0;
+
+  // Filtro de tab
+  var tab=S_CAJA.tab||"todos";
+  var fil=tab==="todos"?movs:movs.filter(function(m){return m.tipo===tab});
+
+  var movsHtml=fil.map(function(m){
+    var esPos=m.tipo==="honorario"||m.tipo==="ingreso";
+    var tipoLabel={gasto:"Gasto",retiro:"Retiro Matías",adelanto:"Adelanto inquilino",honorario:"Honorario contrato",ingreso:"Ingreso"}[m.tipo]||m.tipo;
+    var tipoClass={gasto:"egreso",retiro:"retiro",adelanto:"adelanto",honorario:"ingreso",ingreso:"ingreso"}[m.tipo]||"egreso";
+    var extra="";
+    if(m.tipo==="adelanto"&&m.inquilino)extra+=' — '+m.inquilino;
+    if(m.tipo==="adelanto")extra+=' '+(m.recuperado?'<span style="color:var(--ve);font-size:10px">✓ Recuperado</span>':'<span class="adelanto-badge">Pendiente</span>');
+    if(m.tipo==="honorario"&&m.cuotas>1)extra+=' — Cuota '+m.cuotaNum+'/'+m.cuotas;
+    if(m.inquilino&&m.tipo==="honorario")extra+=' — '+m.inquilino;
+    var acciones='<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 7px;font-size:10px" onclick="window.eliminarMovCaja(&#39;'+m._id+'&#39;)">✕</button>';
+    if(m.tipo==="adelanto"&&!m.recuperado)acciones='<button class="btn sm" style="background:rgba(39,174,96,.15);color:#5ddb8a;padding:3px 7px;font-size:10px;margin-right:4px" onclick="window.marcarRecuperado(&#39;'+m._id+'&#39;)">✓ Recuperado</button>'+acciones;
+    return '<div class="mov-item '+tipoClass+'">'+
+      '<div class="mov-info">'+
+        '<div class="mov-concepto">'+tipoLabel+' — '+m.concepto+extra+'</div>'+
+        (m.detalle?'<div class="mov-det">'+m.detalle+'</div>':"")+
+      '</div>'+
+      '<div class="mov-monto '+(esPos?"pos":"neg")+'">'+(esPos?"+":"-")+moneda(m.monto||0)+'</div>'+
+      '<div class="mov-fecha">'+(m.fecha||"")+'</div>'+
+      acciones+
+    '</div>';
+  }).join("");
+
+  var tabOpts=[
+    {k:"todos",l:"Todos"},
+    {k:"honorario",l:"Honorarios"},
+    {k:"gasto",l:"Gastos"},
+    {k:"retiro",l:"Retiros Matías"},
+    {k:"adelanto",l:"Adelantos"},
+  ];
+  var tabsHtml=tabOpts.map(function(t){
+    return '<button class="tab-btn'+(tab===t.k?" on":"")+'" onclick="S_CAJA.tab=\''+t.k+'\';render()">'+t.l+'</button>';
+  }).join("");
+
+  return '<div class="caja-grid">'+
+    '<div class="caja-card saldo"><div class="caja-lbl">Saldo disponible</div><div class="caja-val" style="color:var(--ce)">'+moneda(saldo)+'</div><div class="caja-sub">Tiempo real · comisiones + honorarios − gastos</div></div>'+
+    '<div class="caja-card"><div class="caja-lbl">Comisiones '+mesNombre(mesHoy)+'</div><div class="caja-val" style="color:#5ddb8a">'+moneda(comAuto)+'</div><div class="caja-sub">'+pctCom+'% del objetivo mensual ('+moneda(comMesObjetivo)+')</div></div>'+
+    '<div class="caja-card"><div class="caja-lbl">Adelantos pendientes</div><div class="caja-val" style="color:#ff7b6b">'+moneda(adelantosPend)+'</div><div class="caja-sub">Plata puesta por inquilinos sin recuperar</div></div>'+
+  '</div>'+
+  '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'+
+    '<button class="btn sm" onclick="window.abrirModalCaja(&#39;honorario&#39;)">+ Honorario</button>'+
+    '<button class="btn sm" onclick="window.abrirModalCaja(&#39;gasto&#39;)">+ Gasto</button>'+
+    '<button class="btn sm na" onclick="window.abrirModalCaja(&#39;retiro&#39;)">+ Retiro Matías</button>'+
+    '<button class="btn sm" style="background:rgba(243,156,18,.15);color:var(--am,#f39c12);border-color:rgba(243,156,18,.3)" onclick="window.abrirModalCaja(&#39;adelanto&#39;)">+ Adelanto inquilino</button>'+
+  '</div>'+
+  '<div class="tab-caja">'+tabsHtml+'</div>'+
+  '<div class="mov-list">'+(movsHtml||'<div class="empty">Sin movimientos registrados</div>')+'</div>';
+}
+
+function renderModalCaja(){
+  var f=S.form;
+  var tipo=f.tipo||"gasto";
+  var tipoLabel={gasto:"Gasto de agencia",retiro:"Retiro — Matías",adelanto:"Adelanto por inquilino",honorario:"Honorario por contrato",ingreso:"Ingreso"}[tipo]||tipo;
+  var colorTipo={gasto:"var(--ro)",retiro:"var(--na)",adelanto:"var(--am,#f39c12)",honorario:"var(--ve)",ingreso:"var(--ve)"}[tipo]||"var(--ce)";
+  var extra="";
+  if(tipo==="adelanto"||tipo==="honorario"){
+    extra+='<div><label class="fl">Inquilino</label><input class="inp" style="width:100%" placeholder="Nombre del inquilino" value="'+(f.inquilino||"")+'" oninput="S.form.inquilino=this.value"></div>';
+  }
+  if(tipo==="honorario"){
+    extra+='<div><label class="fl">Cuotas totales</label><select class="inp" style="width:100%" onchange="S.form.cuotas=+this.value"><option value="1"'+(+(f.cuotas||1)===1?" selected":"")+'>1 cuota (pago único)</option><option value="2"'+(+(f.cuotas||1)===2?" selected":"")+'>2 cuotas</option></select></div>';
+    if(+(f.cuotas||1)>1){
+      extra+='<div><label class="fl">N° de cuota</label><select class="inp" style="width:100%" onchange="S.form.cuotaNum=+this.value"><option value="1"'+(+(f.cuotaNum||1)===1?" selected":"")+'>1° cuota</option><option value="2"'+(+(f.cuotaNum||1)===2?" selected":"")+'>2° cuota</option></select></div>';
+    }
+  }
+  return '<div class="ov"><div class="mo"><button class="mcl" onclick="window.closeModal()">✕</button>'+
+    '<div class="mth"><div class="mic" style="background:'+colorTipo+'">💰</div>'+tipoLabel+'</div>'+
+    '<div class="fg">'+
+      '<div><label class="fl">Concepto *</label><input class="inp" style="width:100%" placeholder="Descripción" value="'+(f.concepto||"")+'" oninput="S.form.concepto=this.value"></div>'+
+      '<div><label class="fl">Monto ($) *</label><input class="inp" style="width:100%" type="number" placeholder="0" value="'+(f.monto||"")+'" oninput="S.form.monto=+this.value"></div>'+
+      '<div><label class="fl">Fecha</label><input class="inp" style="width:100%" type="date" value="'+(f.fecha||hoy())+'" oninput="S.form.fecha=this.value"></div>'+
+      extra+
+      '<div class="fgf"><label class="fl">Detalle adicional</label><input class="inp" style="width:100%" placeholder="Opcional" value="'+(f.detalle||"")+'" oninput="S.form.detalle=this.value"></div>'+
+    '</div>'+
+    '<div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarMovCaja()">Guardar</button></div>'+
+  '</div></div>';
+}
+
+
+var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja agencia"}];
+var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos, gastos y saldo en tiempo real"]};
 
 function render(){
   if(!S.usuario){renderLogin();return;}
@@ -709,7 +886,7 @@ function render(){
   else if(S.sec==="liquidaciones")body=renderLiquidaciones();
   else if(S.sec==="ipc")body=renderIPC();
   else if(S.sec==="inquilinos")body=renderInquilinos();
-  else if(S.sec==="propietarios")body=renderPropietarios();
+  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();
   var userLabel=(S.usuario.email||"").split("@")[0];
   var temaBtn=document.body.classList.contains("light")?"☀️":"🌙";
   $("root").innerHTML='<div class="app"><aside class="sb"><div class="slw"><div class="slr">'+logoSVG(30)+'<div><div class="sbr">ECKERDT <span>INMOBILIARIA</span></div></div></div><div class="sbs">Urdinarrain · Entre Ríos</div></div><ul class="nav">'+NAVS.map(function(n){return '<li class="'+(S.sec===n.id?"on":"")+'" onclick="window.go(&#39;'+n.id+'&#39;)"><span>'+n.ic+'</span>'+n.lbl+'</li>'}).join("")+'</ul><div class="nu"><div><div style="font-size:10px;color:var(--g4)">Usuario</div><strong>'+userLabel+'</strong></div><button class="nub" onclick="window.doLogout()">Salir</button></div><div id="presence-area">'+renderPresencia()+'</div><div class="sfoot">© 2025 Eckerdt Negocios Inmobiliarios</div></aside><main class="main"><div class="ph"><div class="phl"><div class="pha"></div><div><div class="pt">'+pt+'</div><div class="ps">'+ps+'</div></div></div><button onclick="window.toggleTema()" style="background:var(--n3);border:1px solid var(--n4);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--g3)">'+temaBtn+'</button></div>'+body+'</main></div>'+renderModal();
