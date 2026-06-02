@@ -354,19 +354,62 @@ function renderLogin(){$("root").innerHTML='<div class="lw"><div class="lc"><div
 
 function renderDashboard(){
   var activos=S.contratos.filter(function(c){return c.estado==="activo"});
-  var totalAlq=activos.reduce(function(s,c){return s+c.alquilerBase},0);
-  var totalCom=activos.reduce(function(s,c){return s+(c.alquilerBase*(c.comisionAgencia||5)/100)},0);
+  var mesHoy=mesActual();
+
+  // KPIs mes actual
+  var pagosMes=S.pagos.filter(function(p){return p.mes===mesHoy&&p.estado==="cobrado"});
+  var inqPagaron=new Set(pagosMes.map(function(p){return p.contratoId}));
+  var inqTotal=activos.length;
+  var propCobrados=new Set(pagosMes.map(function(p){return p.propietarioNombre}).filter(Boolean));
+  var propTotal=new Set(activos.map(function(c){return c.propietarioNombre}).filter(Boolean)).size;
+  var comMes=pagosMes.reduce(function(s,p){return s+(p.comision||Math.round((p.alquiler||p.monto||0)*(p.comisionAgencia||5)/100))},0);
+  var comObjetivo=activos.reduce(function(s,c){return s+Math.round(c.alquilerBase*(c.comisionAgencia||5)/100)},0);
+  var pctCom=comObjetivo>0?Math.round(comMes/comObjetivo*100):0;
+
+  // Alertas
   var pend=S.pagos.filter(function(p){return p.estado==="pendiente"||p.estado==="vencido"});
-  var montoPend=pend.reduce(function(s,p){return s+(p.total||p.monto||0)},0);
   var alertas=[];
   activos.forEach(function(c){
     if(c.fin){var d=diasPara(c.fin);if(d<0)alertas.push({col:"var(--ro)",ic:"⚠️",t:"Contrato VENCIDO: "+(c.direccion||""),s:c.inquilino+" · Venció el "+c.fin});else if(d<=60)alertas.push({col:"var(--na)",ic:"📋",t:"Vence en "+d+" días: "+(c.direccion||""),s:c.inquilino+" · "+c.fin});}
     var prox=getProxActualizacion(c);if(prox){var du=Math.round((prox-new Date())/86400000);if(du<0)alertas.push({col:"var(--am)",ic:"🔄",t:"Actualizar alquiler: "+(c.direccion||""),s:c.inquilino+" · Hace "+Math.abs(du)+" días ("+(c.indiceActualizacion||"IPC")+")"});else if(du<=30)alertas.push({col:"var(--ce)",ic:"🔄",t:"Próxima actualización: "+(c.direccion||""),s:c.inquilino+" · En "+du+" días ("+(c.indiceActualizacion||"IPC")+")"});}
   });
   S.pagos.filter(function(p){return p.estado==="vencido"}).forEach(function(p){alertas.push({col:"var(--ro)",ic:"💰",t:"Pago vencido: "+(p.direccion||""),s:(p.inquilino||"")+" · "+mesNombre(p.mes)+" · "+moneda(p.total||p.monto||0)})});
-  var ultP=S.pagos.slice(0,6).map(function(p){return '<tr><td class="tm">'+(p.inquilino||"")+'</td><td>'+(p.direccion||"")+'</td><td>'+mesNombre(p.mes)+'</td><td>'+moneda(p.alquiler||0)+'</td><td><strong>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</strong></td><td>'+badge(p.estado)+'</td></tr>'}).join("");
-  return '<div class="kg"><div class="kc" style="border-top-color:var(--ce)"><div class="kl">Contratos activos</div><div class="kv">'+activos.length+'</div><div class="ks">de '+S.contratos.length+' totales</div></div><div class="kc" style="border-top-color:var(--na)"><div class="kl">Alquileres / mes</div><div class="kv" style="font-size:17px">'+moneda(totalAlq)+'</div><div class="ks">cartera activa</div></div><div class="kc" style="border-top-color:var(--ve)"><div class="kl">Comisiones / mes</div><div class="kv" style="font-size:17px">'+moneda(totalCom)+'</div><div class="ks">honorarios agencia</div></div><div class="kc" style="border-top-color:var(--ro)"><div class="kl">Saldo pendiente</div><div class="kv" style="font-size:17px">'+moneda(montoPend)+'</div><div class="ks">'+pend.length+' cuota(s)</div></div></div>'+(alertas.length?'<div class="stit">Alertas</div><div class="als">'+alertas.map(function(a){return '<div class="al" style="border-left-color:'+a.col+'"><span style="font-size:16px">'+a.ic+'</span><div><strong>'+a.t+'</strong><span>'+a.s+'</span></div></div>'}).join("")+'</div>':"")+
-  '<div class="stit">Últimos movimientos</div><div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Período</th><th>Alquiler</th><th>Total</th><th>Estado</th></tr></thead><tbody>'+(ultP||'<tr><td colspan=6><div class="empty">Sin movimientos</div></td></tr>')+'</tbody></table></div>';
+
+  var ultP=S.pagos.filter(function(p){return p.estado==="cobrado"}).slice(0,6).map(function(p){
+    return '<tr><td class="tm">'+(p.inquilino||"")+'</td><td>'+(p.direccion||"")+'</td><td>'+mesNombre(p.mes)+'</td><td>'+moneda(p.alquiler||0)+'</td><td><strong>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</strong></td><td>'+badge(p.estado)+'</td></tr>';
+  }).join("");
+
+  return '<div class="kg" style="grid-template-columns:repeat(5,1fr)">'+
+    '<div class="kc" style="border-top-color:var(--ce)">'+
+      '<div class="kl">Contratos activos</div>'+
+      '<div class="kv">'+activos.length+'</div>'+
+      '<div class="ks">de '+S.contratos.length+' totales</div>'+
+    '</div>'+
+    '<div class="kc" style="border-top-color:var(--ve)">'+
+      '<div class="kl">Inquilinos que pagaron</div>'+
+      '<div class="kv">'+inqPagaron.size+' <span style="font-size:13px;color:var(--g3)">/ '+inqTotal+'</span></div>'+
+      '<div class="ks" style="color:'+(inqPagaron.size===inqTotal?"var(--ve)":"var(--am)")+'">'+mesNombre(mesHoy)+'</div>'+
+    '</div>'+
+    '<div class="kc" style="border-top-color:var(--az)">'+
+      '<div class="kl">Propietarios cobrados</div>'+
+      '<div class="kv">'+propCobrados.size+' <span style="font-size:13px;color:var(--g3)">/ '+propTotal+'</span></div>'+
+      '<div class="ks" style="color:'+(propCobrados.size===propTotal?"var(--ve)":"var(--am)")+'">'+mesNombre(mesHoy)+'</div>'+
+    '</div>'+
+    '<div class="kc" style="border-top-color:var(--na)">'+
+      '<div class="kl">Comisiones cobradas</div>'+
+      '<div class="kv" style="font-size:15px">'+moneda(comMes)+'</div>'+
+      '<div class="ks">'+pctCom+'% del objetivo</div>'+
+    '</div>'+
+    '<div class="kc" style="border-top-color:var(--g3)">'+
+      '<div class="kl">Objetivo comisiones</div>'+
+      '<div class="kv" style="font-size:15px">'+moneda(comObjetivo)+'</div>'+
+      '<div class="ks">si cobran todos</div>'+
+    '</div>'+
+  '</div>'+
+  (alertas.length?'<div class="stit">Alertas</div><div class="als">'+alertas.map(function(a){return '<div class="al" style="border-left-color:'+a.col+'"><span style="font-size:16px">'+a.ic+'</span><div><strong>'+a.t+'</strong><span>'+a.s+'</span></div></div>'}).join("")+'</div>':"")+
+  '<div class="stit">Últimos cobros</div>'+
+  '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Período</th><th>Alquiler</th><th>Total</th><th>Estado</th></tr></thead>'+
+  '<tbody>'+(ultP||'<tr><td colspan=6><div class="empty">Sin movimientos</div></td></tr>')+'</tbody></table></div>';
 }
 
 function renderContratos(){
