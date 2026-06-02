@@ -131,7 +131,7 @@ const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquilere
 const fireApp=initializeApp(FC);const db=getFirestore(fireApp);const auth=getAuth(fireApp);
 
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -176,7 +176,7 @@ window.pdfInquilino=function(pid){var p=S.pagos.find(function(x){return x._id===
 window.pdfPropietario=function(pid){var p=S.pagos.find(function(x){return x._id===pid});if(!p)return;var nombre=p.propietarioNombre;var mes=p.mes;var pagosP=S.pagos.filter(function(x){return x.mes===mes&&x.propietarioNombre===nombre&&x.estado==="cobrado"});var jsPDF=window.jspdf.jsPDF;var doc=new jsPDF({unit:"mm",format:"a4"});var nro=nroRec();var y=membrete(doc,nro);var fecha=new Date().toLocaleDateString("es-AR");var hora=new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});doc.setFontSize(9);doc.setFont("helvetica","bold");doc.setTextColor(40,40,40);doc.text("Fecha y Hora: "+fecha+"  "+hora,198,y,{align:"right"});y+=8;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text("Propietario:",12,y);doc.setFont("helvetica","bold");doc.text((nombre||"").toUpperCase(),40,y);y+=6;doc.setFont("helvetica","normal");doc.text("Período:",12,y);doc.setFont("helvetica","bold");doc.text(mesNombreMay(mes),32,y);y+=9;var totalNeto=0;pagosP.forEach(function(p){var alq=p.alquiler||p.monto||0;var com=p.comision||Math.round(alq*(p.comisionAgencia||5)/100);var neto=p.netoPropiertario||(alq-com);totalNeto+=neto;doc.setFillColor(245,245,245);doc.rect(12,y-5,186,9,"F");doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);doc.text("PAGO ALQUILER "+(p.inquilino||"").toUpperCase(),14,y);doc.text(moneda(alq),198,y,{align:"right"});y+=8;doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(60,60,60);doc.text("Propiedad: "+(p.direccion||""),16,y);y+=6;doc.setTextColor(180,30,30);doc.text("Honorarios administración ("+(p.comisionAgencia||5)+"%): - "+moneda(com),16,y);y+=6;doc.setFont("helvetica","bold");doc.setTextColor(27,142,60);doc.text("Neto a transferir: "+moneda(neto),16,y);y+=10;doc.setDrawColor(200,200,200);doc.line(12,y,198,y);y+=6;if(y>260){doc.addPage();y=membrete(doc,nro);}});doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(20,20,20);doc.text("TOTAL A TRANSFERIR:",12,y+6);doc.setTextColor(27,142,60);doc.text(moneda(totalNeto),198,y+6,{align:"right"});y+=12;doc.setFont("helvetica","italic");doc.setFontSize(8.5);doc.setTextColor(80,80,80);doc.text("("+numLetras(totalNeto)+" pesos)",12,y+3);y+=14;doc.setDrawColor(100,100,100);doc.setLineWidth(0.3);doc.line(12,y,70,y);doc.setFontSize(8);doc.setTextColor(100,100,100);doc.text("Firma",38,y+4,{align:"center"});doc.text("Eckerdt Negocios Inmobiliarios",198,y+4,{align:"right"});doc.save("Liquidacion-"+(nombre||"").replace(/ /g,"_")+"-"+mesNombreMay(mes)+".pdf");};
 
 // ACCIONES GLOBALES
-window.go=function(s){S.sec=s;S.modal=null;S.contratoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
+window.go=function(s){S.sec=s;S.modal=null;S.contratoActivo=null;S.inquilinoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
 window.closeModal=function(){S.modal=null;S.contratoActivo=null;render();};
 window.openModal=function(t){S.modal=t;S.form={comisionAgencia:5,tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC"};S.itemsCobro=[];render();};
 
@@ -265,6 +265,25 @@ window.syncItems=function(){
     return '<div class="rr '+(neg?"red":i.tipo==="saldo"?"am":"bl")+'"><span>'+(i.desc||i.tipo)+'</span><span>'+(neg?"- ":"")+moneda(Math.abs(i.monto||0))+'</span></div>';
   }).join("");
   el.innerHTML='<div class="rr"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'+rows+'<div class="rr" style="font-weight:600;font-size:13px"><span>TOTAL INQUILINO</span><span>'+moneda(totalInq)+'</span></div><div style="height:5px"></div><div class="rr red"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div><div class="rr gr" style="font-weight:600;font-size:13px"><span>NETO PROPIETARIO</span><span>'+moneda(netoP)+'</span></div>';
+};
+
+window.abrirFichaInquilino=function(nombre){
+  // Reconstruir el objeto inquilino desde el estado
+  var todos={};
+  S.contratos.forEach(function(c){
+    if(!c.inquilino)return;
+    if(!todos[c.inquilino])todos[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",garante:c.garante||"",contratos:[]};
+    todos[c.inquilino].contratos.push(c);
+    if(c.telefono&&!todos[c.inquilino].telefono)todos[c.inquilino].telefono=c.telefono;
+    if(c.email&&!todos[c.inquilino].email)todos[c.inquilino].email=c.email;
+    if(c.dni&&!todos[c.inquilino].dni)todos[c.inquilino].dni=c.dni;
+  });
+  S.inquilinos.forEach(function(i){
+    if(!todos[i.nombre])todos[i.nombre]={nombre:i.nombre,dni:i.dni||"",telefono:i.telefono||"",email:i.email||"",garante:"",contratos:[]};
+    else{if(i.telefono)todos[i.nombre].telefono=i.telefono;if(i.email)todos[i.nombre].email=i.email;if(i.dni)todos[i.nombre].dni=i.dni;}
+  });
+  S.inquilinoActivo=todos[nombre]||{nombre:nombre,contratos:[]};
+  render();
 };
 
 window.eliminarPago=async function(pid){
@@ -450,13 +469,101 @@ function renderIPC(){
 
 
 function renderInquilinos(){
-  var todos={};S.contratos.forEach(function(c){if(!c.inquilino)return;if(!todos[c.inquilino])todos[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos[c.inquilino].contratos.push(c);});
-  S.inquilinos.forEach(function(i){if(!todos[i.nombre])todos[i.nombre]=Object.assign({},i,{contratos:[]});else Object.assign(todos[i.nombre],i);});
-  var lista=Object.values(todos);var fq=S.filtros.buscar.toLowerCase();
-  var fil=fq?lista.filter(function(i){return(i.nombre||"").toLowerCase().includes(fq)}):lista;
-  var rows=fil.map(function(i){var ca=i.contratos.filter(function(c){return c.estado==="activo"});return '<tr><td class="tm">'+(i.nombre||"")+'</td><td>'+(i.dni||"—")+'</td><td>'+(i.telefono||"—")+'</td><td style="color:var(--ce)">'+(i.email||"—")+'</td><td>'+ca.map(function(c){return '<span style="display:block;font-size:11px">'+(c.direccion||"")+'</span>'}).join("")+'</td><td>'+(ca.length?'<span class="badge bg">'+ca.length+' activo'+(ca.length>1?"s":"")+'</span>':'<span class="badge bgr">Sin contrato</span>')+'</td></tr>'}).join("");
-  return '<div class="filt"><input class="inp" placeholder="Buscar inquilino..." oninput="S.filtros.buscar=this.value;render()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px"><button class="btn pr" onclick="window.openModal(&#39;inquilino&#39;)">+ Nuevo inquilino</button></div><div class="tw"><table><thead><tr><th>Nombre</th><th>DNI</th><th>Teléfono</th><th>Email</th><th>Propiedades</th><th>Estado</th></tr></thead><tbody>'+(rows||'<tr><td colspan=6><div class="empty">Sin inquilinos</div></td></tr>')+'</tbody></table></div>';
+  // Construir lista de inquilinos unificados
+  var todos={};
+  S.contratos.forEach(function(c){
+    if(!c.inquilino)return;
+    if(!todos[c.inquilino])todos[c.inquilino]={
+      nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",
+      email:c.email||"",garante:c.garante||"",contratos:[]
+    };
+    todos[c.inquilino].contratos.push(c);
+    // Completar datos si están en el contrato
+    if(c.telefono&&!todos[c.inquilino].telefono)todos[c.inquilino].telefono=c.telefono;
+    if(c.email&&!todos[c.inquilino].email)todos[c.inquilino].email=c.email;
+    if(c.dni&&!todos[c.inquilino].dni)todos[c.inquilino].dni=c.dni;
+  });
+  S.inquilinos.forEach(function(i){
+    if(!todos[i.nombre])todos[i.nombre]={nombre:i.nombre,dni:i.dni||"",telefono:i.telefono||"",email:i.email||"",garante:"",contratos:[]};
+    else{if(i.telefono)todos[i.nombre].telefono=i.telefono;if(i.email)todos[i.nombre].email=i.email;if(i.dni)todos[i.nombre].dni=i.dni;}
+  });
+  var lista=Object.values(todos).sort(function(a,b){return(a.nombre||"").localeCompare(b.nombre||"")});
+  var fq=S.filtros.buscar.toLowerCase();
+  var fil=fq?lista.filter(function(i){return(i.nombre||"").toLowerCase().includes(fq)||(i.direccion||"").toLowerCase().includes(fq)}):lista;
+
+  // Si hay inquilino seleccionado, mostrar ficha
+  if(S.inquilinoActivo){
+    var inq=S.inquilinoActivo;
+    var contratos=inq.contratos;
+    var activos=contratos.filter(function(c){return c.estado==="activo"});
+    var historicos=contratos.filter(function(c){return c.estado!=="activo"});
+    var pagosInq=S.pagos.filter(function(p){return p.inquilino===inq.nombre}).sort(function(a,b){return(b.mes||"").localeCompare(a.mes||"")});
+    var totalCobrado=pagosInq.filter(function(p){return p.estado==="cobrado"}).reduce(function(s,p){return s+(p.totalInquilino||p.total||p.monto||0)},0);
+    var pendiente=pagosInq.filter(function(p){return p.estado==="pendiente"||p.estado==="vencido"}).reduce(function(s,p){return s+(p.total||p.monto||0)},0);
+
+    var contratosHtml=contratos.map(function(c){
+      return '<div class="lcard" style="margin-bottom:8px;padding:12px"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:600">'+(c.direccion||"")+'</div><div style="font-size:11px;color:var(--g3);margin-top:2px">Prop: '+(c.propietarioNombre||"—")+" · "+moneda(c.alquilerBase)+" · c/"+(c.frecActualizacion||6)+"m</div><div style=\"font-size:11px;color:var(--g3)\">"+(c.inicio||"")+" → "+(c.fin||"S/F")+'</div></div>'+badge(c.estado)+'</div></div>';
+    }).join("");
+
+    var pagosHtml=pagosInq.slice(0,12).map(function(p){
+      var items=(p.itemsCobro||p.extras||[]);
+      var detalleId="di-"+p._id;
+      var itemsDetalle=items.map(function(it){
+        var neg=(it.monto||0)<0;
+        return '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;color:'+(neg?"#ff7b6b":"var(--g2)")+'"><span>'+(it.desc||it.tipo)+'</span><span>'+(neg?"- ":"")+moneda(Math.abs(it.monto||0))+'</span></div>';
+      }).join("");
+      var detalle=items.length?'<tr id="'+detalleId+'" style="display:none"><td colspan="5"><div style="background:var(--n3);border-radius:6px;padding:8px 12px;margin:3px 0;font-size:11px"><div style="font-weight:500;color:var(--g3);margin-bottom:4px">Items — '+mesNombre(p.mes)+'</div><div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--n4)"><span>Alquiler</span><span>'+moneda(p.alquiler||0)+'</span></div>'+itemsDetalle+'<div style="display:flex;justify-content:space-between;padding:4px 0;font-weight:600"><span>Total</span><span>'+moneda(p.totalInquilino||p.total||0)+'</span></div></div></td></tr>':"";
+      return '<tr style="cursor:pointer" onclick="var d=document.getElementById(&#39;'+detalleId+'&#39;);if(d)d.style.display=d.style.display===&#39;none&#39;?&#39;table-row&#39;:&#39;none&#39;"><td>'+(c.direccion||p.direccion||"")+'</td><td>'+mesNombre(p.mes)+(items.length?" ▸":"")+'</td><td>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</td><td>'+badge(p.estado)+'</td><td>'+(p.fechaCobro||"—")+'</td></tr>'+detalle;
+      var c2=S.contratos.find(function(x){return x._id===p.contratoId})||{};
+    }).join("");
+
+    return '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">'+
+      '<button class="btn sm" onclick="S.inquilinoActivo=null;render()">← Volver</button>'+
+      '<div class="filt" style="margin:0;flex:1"><input class="inp" placeholder="Buscar inquilino..." oninput="S.filtros.buscar=this.value;render()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px"></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'+
+      '<div class="lcard"><div style="font-size:18px;font-weight:700;margin-bottom:4px">'+(inq.nombre||"")+'</div>'+
+        '<div style="font-size:12px;color:var(--g3);margin-bottom:12px">'+activos.length+' contrato(s) activo(s)</div>'+
+        (inq.dni?'<div style="font-size:12px;margin-bottom:6px">📋 DNI: <strong>'+(inq.dni||"")+'</strong></div>':"")+
+        (inq.telefono?'<div style="font-size:12px;margin-bottom:6px">📞 <a href="tel:'+(inq.telefono||"")+'" style="color:var(--ce);text-decoration:none">'+(inq.telefono||"")+'</a></div>':"")+
+        (inq.email?'<div style="font-size:12px;margin-bottom:6px">✉️ <a href="mailto:'+(inq.email||"")+'" style="color:var(--ce);text-decoration:none">'+(inq.email||"")+'</a></div>':"")+
+        (inq.garante?'<div style="font-size:12px;color:var(--g3)">Garante: '+(inq.garante||"")+'</div>':"")+
+      '</div>'+
+      '<div class="kg" style="grid-template-columns:1fr 1fr;margin:0;gap:8px">'+
+        '<div class="kc" style="border-top-color:var(--ve)"><div class="kl">Total cobrado</div><div class="kv" style="font-size:15px">'+moneda(totalCobrado)+'</div></div>'+
+        '<div class="kc" style="border-top-color:var(--ro)"><div class="kl">Pendiente</div><div class="kv" style="font-size:15px">'+moneda(pendiente)+'</div></div>'+
+        '<div class="kc" style="border-top-color:var(--ce)"><div class="kl">Contratos activos</div><div class="kv">'+activos.length+'</div></div>'+
+        '<div class="kc" style="border-top-color:var(--g4)"><div class="kl">Históricos</div><div class="kv">'+historicos.length+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="stit">Contratos</div>'+contratosHtml+
+    (pagosInq.length?'<div class="stit" style="margin-top:16px">Historial de pagos</div>'+
+    '<div class="tw"><table><thead><tr><th>Propiedad</th><th>Período</th><th>Total</th><th>Estado</th><th>Fecha cobro</th></tr></thead><tbody>'+pagosHtml+'</tbody></table></div>':"");
+  }
+
+  // Vista lista
+  var rows=fil.map(function(inq){
+    var ca=inq.contratos.filter(function(c){return c.estado==="activo"});
+    var dirs=ca.map(function(c){return c.direccion||""}).filter(Boolean).join(", ");
+    return '<tr class="cl" data-inq="'+inq.nombre.replace(/"/g,"&quot;")+' " onclick="window.abrirFichaInquilino(this.dataset.inq.trim())">'+
+      '<td class="tm">'+(inq.nombre||"")+'</td>'+
+      '<td>'+(inq.dni||"—")+'</td>'+
+      '<td>'+(inq.telefono?'<a href="tel:'+(inq.telefono)+'" onclick="event.stopPropagation()" style="color:var(--ce)">'+(inq.telefono)+'</a>':"—")+'</td>'+
+      '<td>'+(inq.email?'<a href="mailto:'+(inq.email)+'" onclick="event.stopPropagation()" style="color:var(--ce)">'+(inq.email)+'</a>':"—")+'</td>'+
+      '<td style="font-size:11px">'+(dirs||"—")+'</td>'+
+      '<td>'+(ca.length?'<span class="badge bg">'+ca.length+' activo'+(ca.length>1?"s":"")+'</span>':'<span class="badge bgr">Sin contrato</span>')+'</td>'+
+    '</tr>';
+  }).join("");
+
+  return '<div class="filt">'+
+    '<input class="inp" placeholder="Buscar inquilino..." oninput="S.filtros.buscar=this.value;render()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px">'+
+    '<button class="btn pr" onclick="window.openModal(&#39;inquilino&#39;)">+ Nuevo inquilino</button>'+
+  '</div>'+
+  '<p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un inquilino para ver su ficha completa</p>'+
+  '<div class="tw"><table><thead><tr><th>Nombre</th><th>DNI</th><th>Teléfono</th><th>Email</th><th>Propiedades activas</th><th>Estado</th></tr></thead>'+
+  '<tbody>'+(rows||'<tr><td colspan=6><div class="empty">Sin inquilinos</div></td></tr>')+'</tbody></table></div>';
 }
+
 
 function renderPropietarios(){
   var fq=S.filtros.buscar.toLowerCase();var lista=fq?S.propietarios.filter(function(o){return(o.nombre||"").toLowerCase().includes(fq)}):S.propietarios;
@@ -546,7 +653,7 @@ function renderModal(){
 }
 
 var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"}];
-var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"]};
+var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"]};
 
 function render(){
   if(!S.usuario){renderLogin();return;}
