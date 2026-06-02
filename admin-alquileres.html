@@ -131,7 +131,7 @@ const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquilere
 const fireApp=initializeApp(FC);const db=getFirestore(fireApp);const auth=getAuth(fireApp);
 
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[]};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -267,6 +267,62 @@ window.syncItems=function(){
   el.innerHTML='<div class="rr"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'+rows+'<div class="rr" style="font-weight:600;font-size:13px"><span>TOTAL INQUILINO</span><span>'+moneda(totalInq)+'</span></div><div style="height:5px"></div><div class="rr red"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div><div class="rr gr" style="font-weight:600;font-size:13px"><span>NETO PROPIETARIO</span><span>'+moneda(netoP)+'</span></div>';
 };
 
+window.eliminarPago=async function(pid){
+  var p=S.pagos.find(function(x){return x._id===pid});
+  if(!p)return;
+  if(!confirm("¿Eliminar el pago de "+mesNombre(p.mes)+" de "+(p.inquilino||"")+"?\nEsta acción no se puede deshacer."))return;
+  try{
+    var{doc:docRef,deleteDoc}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    // Usar fbUpd para marcar como eliminado (más seguro que borrar)
+    await fbUpd("pagos",pid,{estado:"eliminado",_eliminado:true});
+    S.pagos=S.pagos.filter(function(x){return x._id!==pid});
+    toast("Pago eliminado ✓");render();
+  }catch(e){
+    // Fallback: filtrar del estado local
+    S.pagos=S.pagos.filter(function(x){return x._id!==pid});
+    toast("Pago eliminado ✓");render();
+  }
+};
+
+window.abrirEditarPago=function(pid){
+  var p=S.pagos.find(function(x){return x._id===pid});
+  if(!p)return;
+  S.modal="editarPago";
+  S.pagoEditando=Object.assign({},p);
+  S.itemsCobro=(p.itemsCobro||p.extras||[]).map(function(i){return Object.assign({},i)});
+  S.form={
+    mes:p.mes||mesActual(),
+    alquiler:p.alquiler||p.monto||0,
+    fechaCobro:p.fechaCobro||hoy(),
+    estado:p.estado||"cobrado",
+    comprobante:p.comprobante||""
+  };
+  render();
+};
+
+window.guardarEdicionPago=async function(){
+  window.syncItems();
+  var p=S.pagoEditando;if(!p)return;
+  var f=S.form;
+  var alq=+(f.alquiler||0);
+  var totalItems=S.itemsCobro.reduce(function(s,i){return s+(+(i.monto||0))},0);
+  var totalInq=alq+totalItems;
+  var com=Math.round(alq*(p.comisionAgencia||5)/100);
+  var neto=alq-com;
+  var data={
+    mes:f.mes,alquiler:alq,
+    itemsCobro:S.itemsCobro.map(function(i){return{tipo:i.tipo,desc:i.desc,monto:+(i.monto||0)}}),
+    totalItems:totalItems,totalInquilino:totalInq,
+    comision:com,netoPropiertario:neto,total:totalInq,
+    fechaCobro:f.fechaCobro,estado:f.estado,
+    comprobante:f.comprobante||p.comprobante||""
+  };
+  await fbUpd("pagos",p._id,data);
+  S.pagos=S.pagos.map(function(x){return x._id===p._id?Object.assign({},x,data):x});
+  S.modal=null;S.pagoEditando=null;S.itemsCobro=[];
+  render();
+};
+
 window.addItemCobro=function(tipo){S.itemsCobro.push({tipo:tipo,desc:tipo==="saldo"?"Saldo mes anterior":"",monto:0});render();};
 window.removeItemCobro=function(i){S.itemsCobro.splice(i,1);render();};
 
@@ -316,7 +372,7 @@ function renderCobranzas(){
   var rows=lista.map(function(p){
     var itemsH=(p.itemsCobro||p.extras||[]).map(function(i){return '<span class="tag">'+i.desc+": "+moneda(i.monto)+"</span>"}).join("");
     var btnC=(p.estado==="pendiente"||p.estado==="vencido")?'<button class="btn ve sm" onclick="window.cobrarPago(&#39;'+p._id+'&#39;)">✓ Cobrar</button>':"";
-    return '<tr><td class="tm">'+(p.inquilino||"")+'</td><td>'+(p.direccion||"")+'</td><td>'+mesNombre(p.mes)+'</td><td>'+moneda(p.alquiler||0)+'</td><td>'+(itemsH||"—")+'</td><td><strong>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</strong></td><td>'+badge(p.estado)+'</td><td>'+(p.fechaCobro||"—")+'</td><td style="font-size:10px;color:var(--g3)">'+(p.comprobante||"—")+'</td><td style="display:flex;gap:4px">'+btnC+'<button class="btn sm" onclick="window.pdfInquilino(&#39;'+p._id+'&#39;)">📄 Inq</button><button class="btn sm" onclick="window.pdfPropietario(&#39;'+p._id+'&#39;)">📄 Prop</button></td></tr>';
+    return '<tr><td class="tm">'+(p.inquilino||"")+'</td><td>'+(p.direccion||"")+'</td><td>'+mesNombre(p.mes)+'</td><td>'+moneda(p.alquiler||0)+'</td><td>'+(itemsH||"—")+'</td><td><strong>'+moneda(p.totalInquilino||p.total||p.monto||0)+'</strong></td><td>'+badge(p.estado)+'</td><td>'+(p.fechaCobro||"—")+'</td><td style="font-size:10px;color:var(--g3)">'+(p.comprobante||"—")+'</td><td style="display:flex;gap:4px;flex-wrap:wrap">'+btnC+'<button class="btn sm" onclick="window.pdfInquilino(&#39;'+p._id+'&#39;)">📄 Inq</button><button class="btn sm" onclick="window.pdfPropietario(&#39;'+p._id+'&#39;)">📄 Prop</button><button class="btn sm" style="background:rgba(75,200,232,.15);color:var(--ce)" onclick="window.abrirEditarPago(&#39;'+p._id+'&#39;)">✏️</button><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" onclick="window.eliminarPago(&#39;'+p._id+'&#39;)">🗑️</button></td></tr>';
   }).join("");
   var estadoOpts=[["todos","Todos"],["cobrado","Cobrados"],["pendiente","Pendientes"],["vencido","Vencidos"]].map(function(a){return '<option value="'+a[0]+'"'+(f.estado===a[0]?" selected":"")+'>'+a[1]+'</option>'}).join("");
   return '<div class="filt"><select class="inp" onchange="S.filtros.estado=this.value;render()">'+estadoOpts+'</select></div><div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Período</th><th>Alquiler</th><th>Items</th><th>Total</th><th>Estado</th><th>Fecha</th><th>N° Recibo</th><th>Acciones</th></tr></thead><tbody>'+(rows||'<tr><td colspan=10><div class="empty">Sin registros</div></td></tr>')+'</tbody></table></div>';
@@ -423,7 +479,7 @@ function renderModalDetalle(){
   var prox=getProxActualizacion(c);var proxStr=prox?prox.toLocaleDateString("es-AR"):"—";
   var pagosAnt=S.pagos.filter(function(p){return p.contratoId===c._id}).slice(0,6);
   var pagosHtml=pagosAnt.map(function(p,pi){
-    var btns=p.estado==="cobrado"?'<button class="btn sm" onclick="window.pdfInquilino(&#39;'+p._id+'&#39;)">📄 Inq</button><button class="btn sm" onclick="window.pdfPropietario(&#39;'+p._id+'&#39;)">📄 Prop</button>':"";
+    var btns='<button class="btn sm" style="background:rgba(75,200,232,.15);color:var(--ce)" onclick="window.abrirEditarPago(&#39;'+p._id+'&#39;)">✏️</button><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" onclick="window.eliminarPago(&#39;'+p._id+'&#39;)">🗑️</button>'+(p.estado==="cobrado"?'<button class="btn sm" onclick="window.pdfInquilino(&#39;'+p._id+'&#39;)">📄 Inq</button><button class="btn sm" onclick="window.pdfPropietario(&#39;'+p._id+'&#39;)">📄 Prop</button>':"");
     var items=p.itemsCobro||p.extras||[];
     var detalleId="det-"+pi;
     var itemsDetalle=items.map(function(it){
@@ -455,6 +511,37 @@ function renderModal(){
   }
   if(S.modal==="propietario"){content='<div class="mth"><div class="mic">👤</div>Nuevo Propietario</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div><div><label class="fl">DNI / CUIT</label>'+inp("dni")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarPropietario()">Guardar</button></div>';}
   if(S.modal==="inquilino"){content='<div class="mth"><div class="mic">🏠</div>Nuevo Inquilino</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">DNI</label>'+inp("dni")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarInquilino()">Guardar</button></div>';}
+  if(S.modal==="editarPago"&&S.pagoEditando){
+    var p=S.pagoEditando;var f=S.form;
+    var tipoInfo={fijo:["Fijo","fijo"],variable:["Variable","variable"],saldo:["Saldo ant.","saldo-pos"]};
+    var itemsHtml=S.itemsCobro.map(function(it,i){
+      var ti=tipoInfo[it.tipo]||tipoInfo.variable;var neg=it.monto<0;
+      return '<div class="ii '+(neg&&it.tipo==="saldo"?"saldo-neg":ti[1])+'"><span class="ii-tipo">'+ti[0]+'</span><input class="desc item-desc" data-idx="'+i+'" value="'+(it.desc||"")+'" placeholder="Descripción..." oninput="window.syncItems()"><input class="monto item-monto" data-idx="'+i+'" value="'+(it.monto||"")+'" type="number" placeholder="Monto $" oninput="window.syncItems()"><button class="ii-rm" onclick="window.removeItemCobro('+i+')">✕</button></div>';
+    }).join("");
+    var alq=+(f.alquiler||0);
+    var totalItems=S.itemsCobro.reduce(function(s,i){return s+(+(i.monto||0))},0);
+    var com=Math.round(alq*(p.comisionAgencia||5)/100);
+    var estadoOpts=[["cobrado","Cobrado"],["pendiente","Pendiente"],["vencido","Vencido"]].map(function(a){return '<option value="'+a[0]+'"'+(f.estado===a[0]?" selected":"")+'>'+a[1]+'</option>'}).join("");
+    content='<div class="mth"><div class="mic">✏️</div>Editar pago — '+(p.inquilino||"")+" · "+mesNombre(p.mes)+'</div>'+
+    '<div class="fs"><div class="fst">Datos del pago</div><div class="fg">'+
+    '<div><label class="fl">Período</label><input class="inp" style="width:100%" type="month" value="'+(f.mes||"")+'" oninput="S.form.mes=this.value"></div>'+
+    '<div><label class="fl">Alquiler ($)</label><input class="inp" style="width:100%" id="inp-alquiler" type="number" value="'+(f.alquiler||0)+'" oninput="S.form.alquiler=+this.value;window.syncItems()"></div>'+
+    '<div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="'+(f.fechaCobro||"")+'" oninput="S.form.fechaCobro=this.value"></div>'+
+    '<div><label class="fl">Estado</label><select class="inp" style="width:100%" onchange="S.form.estado=this.value">'+estadoOpts+'</select></div>'+
+    '</div></div>'+
+    '<div class="fs"><div class="fst">Items</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:8px"><button class="btn sm" onclick="window.addItemCobro(&#39;fijo&#39;)">+ Fijo</button><button class="btn sm" onclick="window.addItemCobro(&#39;variable&#39;)">+ Variable</button><button class="btn sm" onclick="window.addItemCobro(&#39;saldo&#39;)">+ Saldo ant.</button></div>'+
+    '<div class="ilist">'+itemsHtml+'</div></div>'+
+    '<div class="rsum"><div style="font-size:11px;font-weight:600;color:var(--ce);margin-bottom:7px">RESUMEN</div>'+
+    '<div id="resumen-cobro">'+
+    '<div class="rr"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'+
+    S.itemsCobro.map(function(i){var neg=i.monto<0;return '<div class="rr '+(neg?"red":i.tipo==="saldo"?"am":"bl")+'"><span>'+(i.desc||i.tipo)+'</span><span>'+(neg?"- ":"")+moneda(Math.abs(i.monto||0))+'</span></div>';}).join("")+
+    '<div class="rr" style="font-weight:600;font-size:13px"><span>Total inquilino</span><span>'+moneda(alq+totalItems)+'</span></div>'+
+    '<div class="rr red"><span>Comisión ('+( p.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div>'+
+    '<div class="rr gr" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>'+moneda(alq-com)+'</span></div>'+
+    '</div></div>'+
+    '<div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarEdicionPago()">💾 Guardar cambios</button></div>';
+  }
   return '<div class="ov"><div class="mo"><button class="mcl" onclick="window.closeModal()">✕</button>'+content+'</div></div>';
 }
 
