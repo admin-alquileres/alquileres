@@ -6,45 +6,82 @@
 <title>Limpiar pagos de prueba — Eckerdt</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0A0A0A;color:#fff;font-family:Inter,sans-serif;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}
+body{background:#0A0A0A;color:#fff;font-family:Inter,system-ui,sans-serif;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}
 .card{background:#141414;border:1px solid #2a2a2a;border-radius:16px;padding:40px;max-width:500px;width:100%}
 h1{font-size:18px;margin-bottom:8px}
 .sub{font-size:12px;color:#888;margin-bottom:24px}
 .warn{background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:12px;font-size:12px;color:#ff7b6b;margin-bottom:20px}
-.btn{display:block;width:100%;padding:14px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;border-radius:8px;margin-bottom:10px}
+.btn{display:block;width:100%;padding:14px;font-family:Inter,system-ui,sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;border-radius:8px;margin-bottom:10px}
 .btn-red{background:#e74c3c;color:#fff}
 .btn-red:hover{background:#c0392b}
+.btn-red:disabled{background:#555;cursor:not-allowed}
 .btn-grey{background:#2a2a2a;color:#888;font-size:12px}
-.log{margin-top:20px;background:#1e1e1e;border-radius:8px;padding:14px;font-size:11px;color:#4BC8E8;max-height:200px;overflow-y:auto;display:none}
+.log{margin-top:20px;background:#1e1e1e;border-radius:8px;padding:14px;font-size:11px;color:#4BC8E8;max-height:200px;overflow-y:auto}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
 .stat{background:#1e1e1e;border-radius:8px;padding:12px;text-align:center}
 .stat-val{font-size:24px;font-weight:700;color:#4BC8E8}
 .stat-lbl{font-size:10px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+.login{margin-bottom:20px}
+.login input{width:100%;padding:10px 14px;font-family:Inter,system-ui,sans-serif;font-size:13px;border:1px solid #2a2a2a;border-radius:8px;background:#1e1e1e;color:#fff;outline:none;margin-bottom:10px}
+.login input:focus{border-color:#4BC8E8}
+.btn-blue{background:linear-gradient(135deg,#4BC8E8,#3A9DB5);color:#0A0A0A;font-weight:600}
+#app{display:none}
 </style>
 </head>
 <body>
 <div class="card">
 <h1>🧹 Limpiar pagos de prueba</h1>
 <div class="sub">Elimina todos los registros de pagos. Los contratos, propietarios, propiedades e inquilinos NO se tocan.</div>
+
+<div id="login-section" class="login">
+<input id="l-email" type="email" placeholder="Email (ej: gaston@ie.com)">
+<input id="l-pass" type="password" placeholder="Contraseña">
+<button class="btn btn-blue" id="btn-login" onclick="hacerLogin()">Ingresar</button>
+</div>
+
+<div id="app">
 <div id="stats" class="stats">
 <div class="stat"><div class="stat-val" id="n-pagos">—</div><div class="stat-lbl">Pagos a eliminar</div></div>
 <div class="stat"><div class="stat-val" id="n-contratos">—</div><div class="stat-lbl">Contratos (se mantienen)</div></div>
 </div>
 <div class="warn">⚠️ Esta acción no se puede deshacer. Solo usá esto para limpiar datos de prueba.</div>
-<button class="btn btn-red" id="btn-limpiar" onclick="limpiarPagos()" disabled>Cargando...</button>
-<button class="btn btn-grey" onclick="window.close()">Cancelar</button>
-<div class="log" id="log"></div>
+<button class="btn btn-red" id="btn-limpiar" onclick="limpiarPagos()" disabled>Cargando datos...</button>
+</div>
+
+<div class="log" id="log">Esperando login...</div>
 </div>
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getFirestore,collection,getDocs,deleteDoc,doc}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import{getAuth,signInWithEmailAndPassword}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquileres-eckerdt.firebaseapp.com",projectId:"alquileres-eckerdt",storageBucket:"alquileres-eckerdt.firebasestorage.app",messagingSenderId:"368148074641",appId:"1:368148074641:web:4369af59f3e7b2f3daef30"};
-const app=initializeApp(FC);
-const db=getFirestore(app);
-
+var FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquileres-eckerdt.firebaseapp.com",projectId:"alquileres-eckerdt",storageBucket:"alquileres-eckerdt.firebasestorage.app",messagingSenderId:"368148074641",appId:"1:368148074641:web:4369af59f3e7b2f3daef30"};
+var app=initializeApp(FC);
+var db=getFirestore(app);
+var auth=getAuth(app);
 var pagosSnap=null;
+var logEl=document.getElementById("log");
+
+function log(msg){logEl.textContent=msg;}
+
+window.hacerLogin=async function(){
+  var email=document.getElementById("l-email").value.trim();
+  var pass=document.getElementById("l-pass").value;
+  var btn=document.getElementById("btn-login");
+  if(!email||!pass){log("Completá email y contraseña");return;}
+  btn.disabled=true;btn.textContent="Ingresando...";
+  try{
+    await signInWithEmailAndPassword(auth,email,pass);
+    document.getElementById("login-section").style.display="none";
+    document.getElementById("app").style.display="block";
+    log("✅ Conectado. Cargando datos...");
+    cargar();
+  }catch(e){
+    log("❌ Error de login: "+e.message);
+    btn.disabled=false;btn.textContent="Ingresar";
+  }
+};
 
 async function cargar(){
   try{
@@ -60,8 +97,9 @@ async function cargar(){
       btn.textContent="✅ No hay pagos para eliminar";
       btn.disabled=true;
     }
+    log("✅ Datos cargados. "+pagosSnap.size+" pagos encontrados, "+contSnap.size+" contratos.");
   }catch(e){
-    log("Error: "+e.message);
+    log("❌ Error al cargar: "+e.message);
   }
 }
 
@@ -69,25 +107,25 @@ window.limpiarPagos=async function(){
   if(!confirm("¿Estás seguro? Se van a eliminar TODOS los pagos registrados."))return;
   var btn=document.getElementById("btn-limpiar");
   btn.disabled=true;btn.textContent="Eliminando...";
-  var logEl=document.getElementById("log");
-  logEl.style.display="block";
   var count=0;
   for(var i=0;i<pagosSnap.docs.length;i++){
     var d=pagosSnap.docs[i];
     try{
       await deleteDoc(doc(db,"pagos",d.id));
       count++;
-      logEl.textContent="Eliminado "+count+" de "+pagosSnap.size+"...";
+      log("Eliminado "+count+" de "+pagosSnap.size+"...");
     }catch(e){
-      logEl.textContent+=" Error en "+d.id+": "+e.message;
+      log("Error en "+d.id+": "+e.message);
     }
   }
-  logEl.textContent="✅ Listo — "+count+" pago(s) eliminado(s)";
+  log("✅ Listo — "+count+" pago(s) eliminado(s)");
   btn.textContent="✅ Limpieza completada";
   document.getElementById("n-pagos").textContent="0";
 };
 
-cargar();
+document.getElementById("l-pass").addEventListener("keydown",function(e){
+  if(e.key==="Enter")window.hacerLogin();
+});
 </script>
 </body>
 </html>
