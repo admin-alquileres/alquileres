@@ -192,25 +192,22 @@ function numLetras(n){n=Math.round(n);var u=["","uno","dos","tres","cuatro","cin
 function nroRec(){return String(Math.floor(10000000+Math.random()*90000000)).padStart(8,"0");}
 function membreteRecibo(doc,nro){
   doc.setFillColor(255,255,255);doc.rect(0,0,210,297,"F");
-  // "RECIBO" grande a la izquierda
-  doc.setFont("helvetica","bold");doc.setFontSize(28);doc.setTextColor(20,20,20);
-  doc.text("RECIBO",12,22);
-  // Número en recuadro
-  var nroW=doc.getTextWidth(nro)+8;
-  doc.setFontSize(14);
-  var nroX=12+doc.getTextWidth("RECIBO")+8;
-  doc.setDrawColor(40,40,40);doc.setLineWidth(0.5);
-  doc.rect(nroX,10,nroW,14,{});
-  doc.setTextColor(40,40,40);doc.setFont("helvetica","bold");
-  doc.text(nro,nroX+4,20);
+  // "RECIBO" encima del recuadro
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(20,20,20);
+  doc.text("RECIBO",12,10);
+  // X grande en recuadro — tipo de comprobante
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.8);
+  doc.rect(12,13,18,18);
+  doc.setFont("helvetica","bold");doc.setFontSize(20);doc.setTextColor(20,20,20);
+  doc.text("X",21,26,{align:"center"});
   // Derecha
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(80,80,80);
   doc.text("DOCUMENTO NO VÁLIDO COMO FACTURA",198,12,{align:"right"});
-  doc.setFontSize(8);doc.setTextColor(40,40,40);
-  doc.text("N° "+nro,198,19,{align:"right"});
+  doc.setFontSize(8.5);doc.setFont("helvetica","bold");doc.setTextColor(40,40,40);
+  doc.text("N° "+nro,198,20,{align:"right"});
   // Línea separadora
-  doc.setDrawColor(180,180,180);doc.setLineWidth(0.3);doc.line(12,30,198,30);
-  return 36;
+  doc.setDrawColor(180,180,180);doc.setLineWidth(0.3);doc.line(12,35,198,35);
+  return 41;
 }
 function membreteLiquidacion(doc,nro){
   doc.setFillColor(255,255,255);doc.rect(0,0,210,297,"F");
