@@ -320,6 +320,93 @@ window.syncItems=function(){
   el.innerHTML='<div class="rr"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'+rows+'<div class="rr" style="font-weight:600;font-size:13px"><span>TOTAL INQUILINO</span><span>'+moneda(totalInq)+'</span></div><div style="height:5px"></div><div class="rr red"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div><div class="rr gr" style="font-weight:600;font-size:13px"><span>NETO PROPIETARIO</span><span>'+moneda(netoP)+'</span></div>';
 };
 
+// ── HISTORIAL INQUILINO ───────────────────────────────────────────────────────
+var S_HISTORIAL={};// {nombreInquilino: [entradas]}
+
+async function cargarHistorialInquilino(nombre){
+  if(S_HISTORIAL[nombre])return;
+  try{
+    var snap=await getDocs(collection(db,"historial"));
+    var entradas=snap.docs.map(function(d){return Object.assign({},d.data(),{_id:d.id})})
+      .filter(function(e){return e.inquilino===nombre})
+      .sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")});
+    S_HISTORIAL[nombre]=entradas;
+  }catch(e){S_HISTORIAL[nombre]=[];}
+}
+
+window.agregarHistorial=async function(){
+  var elFecha=document.getElementById("hist-fecha");
+  var elObs=document.getElementById("hist-obs");
+  var elNombre=document.getElementById("hist-nombre");
+  if(!elFecha||!elObs||!elNombre)return;
+  var fecha=elFecha.value;
+  var obs=elObs.value.trim();
+  var nombre=elNombre.value;
+  if(!obs)return toast("Escribí una observación",false);
+  if(!fecha)return toast("Ingresá la fecha",false);
+  var data={inquilino:nombre,fecha:fecha,observacion:obs,creadoEn:Date.now()};
+  var id=await fbAdd("historial",data);
+  if(id){
+    if(!S_HISTORIAL[nombre])S_HISTORIAL[nombre]=[];
+    S_HISTORIAL[nombre].unshift(Object.assign({},data,{_id:id}));
+    elObs.value="";
+    elFecha.value=hoy();
+    renderHistorialInline(nombre);
+    toast("Registrado ✓");
+  }
+};
+
+window.eliminarHistorial=async function(id,nombre){
+  if(!confirm("¿Eliminar esta entrada?"))return;
+  try{
+    await updateDoc(doc(db,"historial",id),{_eliminado:true});
+  }catch(e){}
+  if(S_HISTORIAL[nombre]){
+    S_HISTORIAL[nombre]=S_HISTORIAL[nombre].filter(function(e){return e._id!==id});
+  }
+  renderHistorialInline(nombre);
+};
+
+function renderHistorialInline(nombre){
+  var el=document.getElementById("historial-tabla-"+CSS.escape(nombre));
+  if(!el)return;
+  var entradas=(S_HISTORIAL[nombre]||[]).filter(function(e){return !e._eliminado});
+  if(!entradas.length){
+    el.innerHTML='<div class="empty" style="padding:16px">Sin registros aún. Agregá la primera observación.</div>';
+    return;
+  }
+  el.innerHTML='<div class="tw"><table><thead><tr>'+
+    '<th style="width:120px">Fecha</th>'+
+    '<th>Observación</th>'+
+    '<th style="width:40px"></th>'+
+    '</tr></thead><tbody>'+
+    entradas.map(function(e){
+      return '<tr>'+
+        '<td style="white-space:nowrap;color:var(--g3)">'+( e.fecha||"—")+'</td>'+
+        '<td style="color:var(--bl)">'+( e.observacion||"")+'</td>'+
+        '<td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px" onclick="window.eliminarHistorial(&#39;'+e._id+'&#39;,&#39;'+nombre.replace(/'/g,"\\'")+'&#39;)">✕</button></td>'+
+      '</tr>';
+    }).join("")+
+    '</tbody></table></div>';
+}
+
+function renderSeccionHistorial(nombre){
+  // Carga async y renderiza
+  cargarHistorialInquilino(nombre).then(function(){
+    renderHistorialInline(nombre);
+  });
+  return '<div class="fs" style="margin-top:20px;border-top:1px solid var(--n4);padding-top:16px">'+
+    '<div class="fst">📋 Historial del inquilino</div>'+
+    '<input type="hidden" id="hist-nombre" value="'+nombre+'">'+
+    '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap">'+
+      '<div><label class="fl">Fecha</label><input id="hist-fecha" class="inp" type="date" value="'+hoy()+'" style="width:150px"></div>'+
+      '<div style="flex:1;min-width:200px"><label class="fl">Observación</label><input id="hist-obs" class="inp" style="width:100%" placeholder="Ej: Se mandó plomero por pérdida de agua, llamado por atraso en pago, etc."></div>'+
+      '<button class="btn na sm" onclick="window.agregarHistorial()" style="padding:8px 14px;height:36px">+ Agregar</button>'+
+    '</div>'+
+    '<div id="historial-tabla-'+nombre+'"><div class="load"><div class="sp"></div>Cargando historial...</div></div>'+
+  '</div>';
+}
+
 window.abrirFichaInquilino=function(nombre){
   // Reconstruir el objeto inquilino desde el estado
   var todos={};
@@ -634,7 +721,8 @@ function renderInquilinos(){
     '</div>'+
     '<div class="stit">Contratos</div>'+contratosHtml+
     (pagosInq.length?'<div class="stit" style="margin-top:16px">Historial de pagos</div>'+
-    '<div class="tw"><table><thead><tr><th>Propiedad</th><th>Período</th><th>Total</th><th>Estado</th><th>Fecha cobro</th></tr></thead><tbody>'+pagosHtml+'</tbody></table></div>':"");
+    '<div class="tw"><table><thead><tr><th>Propiedad</th><th>Período</th><th>Total</th><th>Estado</th><th>Fecha cobro</th></tr></thead><tbody>'+pagosHtml+'</tbody></table></div>':"")+
+    renderSeccionHistorial(inq.nombre);
   }
 
   // Vista lista
