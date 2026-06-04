@@ -105,14 +105,15 @@ tr:hover td{background:rgba(75,200,232,.03)}
   <table>
     <thead>
       <tr>
-        <th style="width:18%">Inquilino</th>
-        <th style="width:16%">Dirección</th>
-        <th style="width:10%">Propietario</th>
-        <th style="width:10%">Inicio contrato</th>
-        <th style="width:10%">Venc. contrato</th>
-        <th style="width:12%">Alquiler actual $</th>
-        <th style="width:12%">Última actualiz.</th>
-        <th style="width:8%">Frecuencia</th>
+        <th style="width:15%">Inquilino</th>
+        <th style="width:13%">Dirección</th>
+        <th style="width:9%">Propietario</th>
+        <th style="width:8%">Inicio</th>
+        <th style="width:8%">Vence</th>
+        <th style="width:10%">Alquiler actual $</th>
+        <th style="width:10%">Última actualiz.</th>
+        <th style="width:7%">Frec.</th>
+        <th style="width:14%">Depósito</th>
         <th style="width:4%">✓</th>
       </tr>
     </thead>
@@ -273,12 +274,75 @@ function renderTabla(lista){
           '<option value="12"'+(frVal===12?" selected":"")+'>12 meses</option>'+
         '</select>'+
       '</td>'+
+      // Estado depósito
+    var dep=cam.deposito!==undefined?cam.deposito:(c.deposito||null);
+    var tieneDeposito=dep&&dep.registrado!==false;
+    var depPagado=dep?(dep.pagado||0):0;
+    var depCompleto=dep&&dep.completo;
+    var depCell='<td>'+
+      '<select class="sel dep-tiene" data-id="'+c._id+'" style="width:100%;margin-bottom:4px" onchange="marcarDepositoCambio(this)">'+
+        '<option value="no"'+(tieneDeposito?'':' selected')+'>Sin depósito</option>'+
+        '<option value="si"'+(tieneDeposito?' selected':'')+'>Tiene depósito</option>'+
+      '</select>'+
+      (tieneDeposito?
+        '<input class="cell-inp dep-pagado" data-id="'+c._id+'" type="number" value="'+depPagado+'" placeholder="$ pagado" style="width:100%" oninput="marcarDepositoPagado(this)">'+
+        '<div style="font-size:10px;color:'+(depCompleto?"var(--ve)":"var(--na)")+';margin-top:2px">'+(depCompleto?"✓ Completo":"Pendiente: $"+Math.max(0,Math.round((cam.alquilerBase||c.alquilerBase||0)-(dep.pagado||0))).toLocaleString("es-AR"))+'</div>'
+      :"")+
+    '</td>';
+    return '<tr id="row-'+c._id+'" style="'+(modificado?"background:rgba(245,166,35,.04)":"")+'">'+
+      '<td><div class="td-name">'+(c.inquilino||"")+'</div><div style="font-size:10px;color:var(--g3)">'+(c.dni||"")+'</div></td>'+
+      '<td style="font-size:11px">'+(c.direccion||"")+'</td>'+
+      '<td style="font-size:11px;color:var(--g3)">'+(c.propietarioNombre||"")+'</td>'+
+      '<td style="font-size:11px;color:var(--g3)">'+(c.inicio||"—")+'</td>'+
+      '<td style="font-size:11px;color:'+vencColor+'">'+(dvenc!==null&&dvenc<=90?'<strong>':"")+vencTxt+(dvenc!==null&&dvenc<=0?" ⚠️":dvenc!==null&&dvenc<=90?" ("+dvenc+"d)":"")+( dvenc!==null&&dvenc<=90?'</strong>':"")+
+      '</td>'+
+      '<td>'+
+        '<input class="cell-inp'+(modificado&&cam.alquilerBase!==undefined?" changed":"")+'" type="number" value="'+alqVal+'" placeholder="'+( c.alquilerBase||"sin dato")+'" data-id="'+c._id+'" data-field="alquilerBase" oninput="marcarCambio(this)">'+
+        '<div class="td-old">'+(c.alquilerBase?"$"+Math.round(c.alquilerBase).toLocaleString("es-AR"):"")+'</div>'+
+      '</td>'+
+      '<td>'+
+        '<input class="cell-inp'+(modificado&&cam.ultimaActualizacion!==undefined?" changed":"")+'" type="date" value="'+ultVal+'" data-id="'+c._id+'" data-field="ultimaActualizacion" oninput="marcarCambio(this)">'+
+      '</td>'+
+      '<td>'+
+        '<select class="sel" data-id="'+c._id+'" data-field="frecActualizacion" onchange="marcarCambio(this)">'+
+          '<option value="3"'+(frVal===3?" selected":"")+'>3m</option>'+
+          '<option value="4"'+(frVal===4?" selected":"")+'>4m</option>'+
+          '<option value="6"'+(frVal===6?" selected":"")+'>6m</option>'+
+          '<option value="12"'+(frVal===12?" selected":"")+'>12m</option>'+
+        '</select>'+
+      '</td>'+
+      depCell+
       '<td style="text-align:center">'+(modificado?'<span style="color:var(--na)">●</span>':'<span style="color:var(--g4)">○</span>')+'</td>'+
     '</tr>';
   }).join("");
   document.getElementById("tabla-body").innerHTML=html||'<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--g3)">Sin resultados</td></tr>';
 }
 
+window.marcarDepositoCambio=function(el){
+  var id=el.dataset.id;
+  var c=contratos.find(function(x){return x._id===id});
+  var tieneDeposito=el.value==="si";
+  if(!cambios[id])cambios[id]={};
+  var alq=(cambios[id].alquilerBase)||( c&&c.alquilerBase)||0;
+  cambios[id].deposito=tieneDeposito?{registrado:true,cuotas:1,cuotasPagadas:tieneDeposito?1:0,pagado:tieneDeposito?alq:0,completo:tieneDeposito,diferenciaPendiente:0}:{registrado:false,cuotas:1,cuotasPagadas:0,pagado:0,completo:false,diferenciaPendiente:0};
+  actualizarContador();
+  // Re-render fila
+  var row=document.getElementById("row-"+id);
+  if(row)row.style.background="rgba(245,166,35,.04)";
+  window.filtrar();
+};
+window.marcarDepositoPagado=function(el){
+  var id=el.dataset.id;
+  var c=contratos.find(function(x){return x._id===id});
+  var alq=(cambios[id]&&cambios[id].alquilerBase)||(c&&c.alquilerBase)||0;
+  var pagado=+(el.value||0);
+  if(!cambios[id])cambios[id]={};
+  if(!cambios[id].deposito)cambios[id].deposito={registrado:true};
+  cambios[id].deposito.pagado=pagado;
+  cambios[id].deposito.completo=pagado>=alq;
+  cambios[id].deposito.diferenciaPendiente=Math.max(0,alq-pagado);
+  actualizarContador();
+};
 window.marcarCambio=function(el){
   var id=el.dataset.id;
   var field=el.dataset.field;
