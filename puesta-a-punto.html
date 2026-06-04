@@ -64,7 +64,7 @@ tr:hover td{background:rgba(75,200,232,.03)}
   <input id="l-email" class="inp" type="email" placeholder="Email">
   <input id="l-pass" class="inp" type="password" placeholder="Contraseña">
   <div id="l-err" style="color:#ff7b6b;font-size:12px;margin-bottom:10px;display:none"></div>
-  <button class="btn btn-pr" style="width:100%" onclick="hacerLogin()">Ingresar</button>
+  <button id="btn-login" class="btn btn-pr" style="width:100%" onclick="hacerLogin()">Ingresar</button>
 </div>
 </div>
 
@@ -174,9 +174,22 @@ window.hacerLogin=async function(){
   var email=document.getElementById("l-email").value.trim();
   var pass=document.getElementById("l-pass").value;
   var err=document.getElementById("l-err");
+  var btn=document.getElementById("btn-login");
   err.style.display="none";
-  try{await signInWithEmailAndPassword(auth,email,pass);}
-  catch(e){err.textContent="Usuario o contraseña incorrectos";err.style.display="block";}
+  if(!email||!pass){err.textContent="Completá email y contraseña";err.style.display="block";return;}
+  btn.disabled=true;btn.textContent="Ingresando...";
+  try{
+    await signInWithEmailAndPassword(auth,email,pass);
+  }catch(e){
+    var msg="Error al ingresar";
+    if(e.code==="auth/wrong-password"||e.code==="auth/invalid-credential")msg="Contraseña incorrecta";
+    else if(e.code==="auth/user-not-found")msg="Usuario no encontrado";
+    else if(e.code==="auth/invalid-email")msg="Email inválido";
+    else if(e.code==="auth/too-many-requests")msg="Demasiados intentos. Esperá unos minutos.";
+    else msg="Error: "+e.code+" — "+e.message;
+    err.textContent=msg;err.style.display="block";
+    btn.disabled=false;btn.textContent="Ingresar";
+  }
 };
 window.doLogout=async function(){await signOut(auth);cambios={};};
 document.addEventListener("keydown",function(e){if(e.key==="Enter"&&document.getElementById("login-section").style.display!=="none")window.hacerLogin();});
