@@ -655,7 +655,14 @@ function renderDashboard(){
   var alertas=[];
   activos.forEach(function(c){
     if(c.fin){var d=diasPara(c.fin);if(d<0)alertas.push({col:"var(--ro)",ic:"⚠️",t:"Contrato VENCIDO: "+(c.direccion||""),s:c.inquilino+" · Venció el "+c.fin});else if(d<=60)alertas.push({col:"var(--na)",ic:"📋",t:"Vence en "+d+" días: "+(c.direccion||""),s:c.inquilino+" · "+c.fin});}
-    var prox=getProxActualizacion(c);if(prox){var du=Math.round((prox-new Date())/86400000);if(du<0)alertas.push({col:"var(--am)",ic:"🔄",t:"Actualizar alquiler: "+(c.direccion||""),s:c.inquilino+" · Hace "+Math.abs(du)+" días ("+(c.indiceActualizacion||"IPC")+")"});else if(du<=30)alertas.push({col:"var(--ce)",ic:"🔄",t:"Próxima actualización: "+(c.direccion||""),s:c.inquilino+" · En "+du+" días ("+(c.indiceActualizacion||"IPC")+")"});}
+    var prox=getProxActualizacion(c);if(prox){
+      var hoyD=new Date();
+      var proxMesInicio=new Date(hoyD.getFullYear(),hoyD.getMonth()+1,1);
+      var proxMesFin=new Date(hoyD.getFullYear(),hoyD.getMonth()+2,0);
+      var du=Math.round((prox-hoyD)/86400000);
+      if(du<0)alertas.push({col:"var(--ro)",ic:"🔄",t:"Actualización VENCIDA: "+(c.direccion||""),s:c.inquilino+" · Hace "+Math.abs(du)+" días"});
+      else if(prox>=proxMesInicio&&prox<=proxMesFin)alertas.push({col:"var(--am)",ic:"🔄",t:"Actualizar próximo mes: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR")+" (c/"+c.frecActualizacion+"m)"});
+    }
   });
   S.pagos.filter(function(p){return p.estado==="vencido"}).forEach(function(p){alertas.push({col:"var(--ro)",ic:"💰",t:"Pago vencido: "+(p.direccion||""),s:(p.inquilino||"")+" · "+mesNombre(p.mes)+" · "+moneda(p.total||p.monto||0)})});
 
@@ -759,7 +766,7 @@ function renderIPC(){
     var prox=getProxActualizacion(c);if(!prox)return;
     var du=Math.round((prox-hoy)/86400000);
     if(du<0)grupos[fr].vencidos.push({c:c,dias:Math.abs(du),prox:prox});
-    else if(prox>=mesProx&&prox<=mesProxFin)grupos[fr].proxMes.push({c:c,dias:du,prox:prox});
+    else if(du<=60)grupos[fr].proxMes.push({c:c,dias:du,prox:prox});
   });
 
   var totalProxMes=frecuencias.reduce(function(s,fr){return s+grupos[fr].proxMes.length},0);
@@ -809,7 +816,7 @@ function renderIPC(){
           '<div style="font-size:15px;font-weight:700">Cada '+fr+' meses</div>'+
           '<div style="font-size:11px;color:var(--g3);margin-top:3px">'+
             (g.vencidos.length?"<span style='color:var(--ro)'>"+g.vencidos.length+" atrasada(s)</span> · ":"")+
-            g.proxMes.length+' para '+mesNombreProx+
+            g.proxMes.length+' en los próximos 60 días'+
           '</div>'+
         '</div>'+
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
