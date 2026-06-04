@@ -1295,6 +1295,10 @@ var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Cl
 
 function render(){
   if(!S.usuario){renderLogin();return;}
+  var _ae=document.activeElement;
+  var _fid=_ae&&_ae.id?_ae.id:null;
+  var _fstart=null,_fend=null;
+  if(_fid&&_ae.tagName==="INPUT"){try{_fstart=_ae.selectionStart;_fend=_ae.selectionEnd;}catch(e){}}
   var sec=TITLES[S.sec];var pt=sec[0];var ps=sec[1];
   var body="";
   if(S.loading)body='<div class="load"><div class="sp"></div>Cargando datos...</div>';
@@ -1308,6 +1312,8 @@ function render(){
   var userLabel=(S.usuario.email||"").split("@")[0];
   var temaBtn=document.body.classList.contains("light")?"☀️":"🌙";
   $("root").innerHTML='<div class="app"><aside class="sb"><div class="slw"><div class="slr">'+logoSVG(30)+'<div><div class="sbr">ECKERDT <span>INMOBILIARIA</span></div></div></div><div class="sbs">Urdinarrain · Entre Ríos</div></div><ul class="nav">'+NAVS.map(function(n){return '<li class="'+(S.sec===n.id?"on":"")+'" onclick="window.go(&#39;'+n.id+'&#39;)"><span>'+n.ic+'</span>'+n.lbl+'</li>'}).join("")+'</ul><div class="nu"><div><div style="font-size:10px;color:var(--g4)">Usuario</div><strong>'+userLabel+'</strong></div><button class="nub" onclick="window.doLogout()">Salir</button></div><div id="presence-area">'+renderPresencia()+'</div><div class="sfoot">© 2025 Eckerdt Negocios Inmobiliarios</div></aside><main class="main"><div class="ph"><div class="phl"><div class="pha"></div><div><div class="pt">'+pt+'</div><div class="ps">'+ps+'</div></div></div><button onclick="window.toggleTema()" style="background:var(--n3);border:1px solid var(--n4);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--g3)">'+temaBtn+'</button></div>'+body+'</main></div>'+renderModal();
+  // Restaurar foco al input activo después del re-render
+  if(_fid){var _el=document.getElementById(_fid);if(_el){_el.focus();try{if(_fstart!==null)_el.setSelectionRange(_fstart,_fend);}catch(e){}}}
 }
 
 render();
