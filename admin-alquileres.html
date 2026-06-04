@@ -879,7 +879,7 @@ function renderInquilinos(){
   }).join("");
 
   return '<div class="filt">'+
-    '<input class="inp" placeholder="Buscar inquilino..." oninput="S.filtros.buscar=this.value;render()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px">'+
+    '<input class="inp" placeholder="Buscar inquilino..." id="buscador-inq-ficha" oninput="S.filtros.buscar=this.value;renderParcial()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px">'+
     '<button class="btn pr" onclick="window.openModal(&#39;inquilino&#39;)">+ Nuevo inquilino</button>'+
   '</div>'+
   '<p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un inquilino para ver su ficha completa</p>'+
@@ -900,7 +900,7 @@ function renderPropietarios(){
     return '<tr><td class="tm">'+(o.nombre||"")+'</td><td>'+(o.telefono||"—")+'</td><td style="color:var(--ce)">'+(o.email||"—")+'</td><td>'+props.map(function(p){return '<span style="display:block;font-size:11px">'+(p.direccion||"")+'</span>'}).join("")+'</td><td style="color:var(--na);font-weight:600">'+contratosActivos.length+'</td><td>'+(totalAlq>0?moneda(totalAlq):"—")+'</td><td>'+estadoHtml+'</td></tr>';
   }).join("");
   var mesOptsH=mesesDisp.map(function(m){return '<option value="'+m+'"'+(m===mesSel?" selected":"")+'>'+mesNombre(m)+'</option>'}).join("");
-  return '<div class="filt" style="margin-bottom:14px"><input class="inp" placeholder="Buscar propietario..." oninput="S.filtros.buscar=this.value;render()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px"><button class="btn pr" onclick="window.openModal(&#39;propietario&#39;)">+ Propietario</button><div style="margin-left:auto;display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--g3)">Estado cobro:</span><select class="inp" onchange="S.mesPropietarios=this.value;render()">'+mesOptsH+'</select></div></div><div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap"><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("cobrado")+' Listo</span><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("pendiente")+' Parcial</span><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("vencido")+' Pendiente</span></div><div class="tw"><table><thead><tr><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Propiedades</th><th>Activos</th><th>Alq/mes</th><th>Estado '+mesNombre(mesSel)+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan=7><div class="empty">Sin propietarios</div></td></tr>')+'</tbody></table></div>';
+  return '<div class="filt" style="margin-bottom:14px"><input class="inp" placeholder="Buscar propietario..." id="buscador-contratos" oninput="S.filtros.buscar=this.value;renderParcial()" value="'+(S.filtros.buscar||"")+'" style="min-width:200px"><button class="btn pr" onclick="window.openModal(&#39;propietario&#39;)">+ Propietario</button><div style="margin-left:auto;display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--g3)">Estado cobro:</span><select class="inp" onchange="S.mesPropietarios=this.value;render()">'+mesOptsH+'</select></div></div><div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap"><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("cobrado")+' Listo</span><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("pendiente")+' Parcial</span><span style="font-size:11px;color:var(--g3);display:flex;align-items:center;gap:4px">'+badge("vencido")+' Pendiente</span></div><div class="tw"><table><thead><tr><th>Propietario</th><th>Teléfono</th><th>Email</th><th>Propiedades</th><th>Activos</th><th>Alq/mes</th><th>Estado '+mesNombre(mesSel)+'</th></tr></thead><tbody>'+(rows||'<tr><td colspan=7><div class="empty">Sin propietarios</div></td></tr>')+'</tbody></table></div>';
 }
 
 function renderModalDetalle(){
@@ -1215,7 +1215,7 @@ window.setupGuardar=async function(){
   render();
 };
 
-window.setupFiltrar=function(val){S.setupBuscar=val;render();};
+window.setupFiltrar=function(val){S.setupBuscar=val;renderParcial();};
 
 function renderSetup(){
   var activos=S.contratos.filter(function(c){return c.estado==="activo"});
@@ -1268,7 +1268,7 @@ function renderSetup(){
     '<div class="kc" style="border-top-color:var(--am,#f39c12)"><div class="kl">Sin depósito registrado</div><div class="kv">'+sinDep+'</div></div>'+
   '</div>'+
   '<div class="filt" style="margin-bottom:12px">'+
-    '<input class="inp" placeholder="Buscar inquilino, dirección, propietario..." style="min-width:280px" value="'+(S.setupBuscar||"")+'" oninput="window.setupFiltrar(this.value)">'+
+    '<input class="inp" placeholder="Buscar inquilino, dirección, propietario..." style="min-width:280px" value="'+(S.setupBuscar||"")+'" id="buscador-setup" oninput="window.setupFiltrar(this.value)">'+
     '<span style="font-size:11px;color:var(--g3)">'+lista.length+' de '+activos.length+' contratos</span>'+
   '</div>'+
   '<div class="tw setup-table"><table><thead><tr>'+
@@ -1293,6 +1293,25 @@ function renderSetup(){
 var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja agencia"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"}];
 var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos, gastos y saldo en tiempo real"],setup:["Puesta a punto","Actualización masiva de valores y depósitos"]};
 
+function renderParcial(){
+  // Renderiza solo el contenido principal sin tocar el DOM del header/sidebar
+  // Así los inputs de búsqueda no pierden el foco
+  var _ae=document.activeElement;
+  var _fid=_ae&&_ae.id?_ae.id:null;
+  var _fval=_ae?_ae.value:null;
+  var _fstart=null,_fend=null;
+  if(_ae&&_ae.tagName==="INPUT"){try{_fstart=_ae.selectionStart;_fend=_ae.selectionEnd;}catch(e){}}
+  render();
+  if(_fid){
+    setTimeout(function(){
+      var el=document.getElementById(_fid);
+      if(el){
+        el.focus();
+        try{if(_fstart!==null)el.setSelectionRange(_fstart,_fend);}catch(e){}
+      }
+    },0);
+  }
+}
 function render(){
   if(!S.usuario){renderLogin();return;}
   var _ae=document.activeElement;
