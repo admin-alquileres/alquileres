@@ -233,7 +233,7 @@ window.go=function(s){S.sec=s;S.modal=null;S.contratoActivo=null;S.inquilinoActi
 window.closeModal=function(){S.modal=null;S.contratoActivo=null;render();};
 window.openModal=function(t){S.modal=t;S.form={comisionAgencia:5,tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC"};S.itemsCobro=[];render();};
 
-window.abrirContrato=function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;S.contratoActivo=c;S.modal="detalle";S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};S.itemsCobro=(c.extras||[]).map(function(e){return {tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}});render();};
+window.abrirContrato=function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;S.contratoActivo=c;S.modal="detalle";S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};var itemsFijos=(c.extras||[]).map(function(e){return {tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}});var itemsPend=itemsPendientesContrato(c);S.itemsCobro=itemsFijos.concat(itemsPend);render();};
 
 window.buscarContratos=function(){var tipo=document.getElementById("cb-tipo");var texto=document.getElementById("cb-texto");var estado=document.getElementById("cb-estado");S.filtros.buscarPor=tipo?tipo.value:"inquilino";S.filtros.buscar=texto?texto.value.trim():"";S.filtros.estado=estado?estado.value:"todos";render();};
 window.limpiarBusqueda=function(){S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
@@ -242,7 +242,8 @@ window.cobrarPago=function(pid){var p=S.pagos.find(function(x){return x._id===pi
 
 window.registrarPago=async function(){window.syncItems();var c=S.contratoActivo;if(!c)return;var f=S.form;if(!f.mes)return toast("Ingresá el período",false);var alq=+(f.alquiler||c.alquilerBase||0);var totalItems=S.itemsCobro.reduce(function(s,i){return s+(+(i.monto||0))},0);var totalInq=alq+totalItems;var com=Math.round(alq*(c.comisionAgencia||5)/100);var neto=alq-com;var nro=f.comprobante||nroRec();var data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:S.itemsCobro.map(function(i){return {tipo:i.tipo,desc:i.desc,monto:+(i.monto||0)}}),totalItems:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia||5};var id=await fbAdd("pagos",data);if(id){S.pagos.unshift(Object.assign({},data,{_id:id}));S.modal=null;S.contratoActivo=null;render();setTimeout(function(){if(confirm("¿Emitir comprobante para el INQUILINO?"))window.pdfInquilino(id);},400);setTimeout(function(){if(confirm("¿Emitir liquidación para el PROPIETARIO?"))window.pdfPropietario(id);},900);}};
 
-window.actualizarAlquiler=async function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;var pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");if(!pct||isNaN(+pct))return;var nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));await fbUpd("contratos",cid,{alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:+pct});S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,{alquilerBase:nuevo,ultimaActualizacion:hoy()}):x});toast("Alquiler actualizado a "+moneda(nuevo));render();};
+window.actualizarAlquiler=async function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;var pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");if(!pct||isNaN(+pct))return;var nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));var update={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:+pct};// Calcular diferencia de depósito si tiene depósito registrado
+var dep=c.deposito||{};if(dep.pagado>0){var depPagado=dep.pagado||0;var diferencia=nuevo-depPagado;if(diferencia>0){update.deposito=Object.assign({},dep,{diferenciaPendiente:diferencia});toast("Alquiler actualizado a "+moneda(nuevo)+" · Diferencia depósito pendiente: "+moneda(diferencia),"orange");}else{toast("Alquiler actualizado a "+moneda(nuevo));}}else{toast("Alquiler actualizado a "+moneda(nuevo));}await fbUpd("contratos",cid,update);S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});render();};
 
 window.aplicarIPCGrupo=async function(freq){
   var pctInput=document.getElementById("ipc-pct-"+freq);
@@ -407,6 +408,127 @@ function renderSeccionHistorial(nombre){
   '</div>';
 }
 
+// ── DEPÓSITO Y HONORARIOS ─────────────────────────────────────────────────────
+
+// Calcular estado del depósito de un contrato
+function estadoDeposito(c){
+  var dep=c.deposito||{};
+  var montoTotal=c.alquilerBase||0; // siempre = 1 mes de alquiler
+  var pagado=dep.pagado||0;
+  var diferencia=montoTotal-pagado;
+  var cuotas=dep.cuotas||1;
+  var cuotasPagadas=dep.cuotasPagadas||0;
+  return{
+    montoTotal:montoTotal,
+    pagado:pagado,
+    diferencia:diferencia,
+    completo:diferencia<=0,
+    cuotas:cuotas,
+    cuotasPagadas:cuotasPagadas,
+    pendienteCuota:cuotas>1&&cuotasPagadas<cuotas,
+    diferenciaPendiente:dep.diferenciaPendiente||0
+  };
+}
+
+// Calcular estado de honorarios de un contrato
+function estadoHonorarios(c){
+  var hon=c.honorarios||{};
+  var base=c.alquilerBase||0;
+  var montoTotal=hon.montoTotal||(hon.tipo==="mes"?base:Math.round(base/2));
+  var pagado=hon.pagado||0;
+  var cuotas=hon.cuotas||1;
+  var cuotasPagadas=hon.cuotasPagadas||0;
+  return{
+    montoTotal:montoTotal,
+    pagado:pagado,
+    completo:pagado>=montoTotal,
+    cuotas:cuotas,
+    cuotasPagadas:cuotasPagadas,
+    pendienteCuota:cuotas>1&&cuotasPagadas<cuotas
+  };
+}
+
+// Registrar pago de depósito (cuota)
+window.pagarCuotaDeposito=async function(cid){
+  var c=S.contratos.find(function(x){return x._id===cid});
+  if(!c)return;
+  var dep=c.deposito||{};
+  var montoTotal=c.alquilerBase||0;
+  var cuotas=dep.cuotas||1;
+  var cuotasPagadas=dep.cuotasPagadas||0;
+  var montoCuota=dep.diferenciaPendiente>0?dep.diferenciaPendiente:Math.round(montoTotal/cuotas);
+  var nuevasPagadas=cuotasPagadas+1;
+  var nuevoPagado=(dep.pagado||0)+montoCuota;
+  var update={
+    deposito:{
+      cuotas:cuotas,
+      cuotasPagadas:nuevasPagadas,
+      pagado:nuevoPagado,
+      diferenciaPendiente:0
+    }
+  };
+  await fbUpd("contratos",cid,update);
+  S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});
+  toast("Cuota de depósito registrada ✓");render();
+};
+
+// Registrar pago de honorarios (cuota)
+window.pagarCuotaHonorarios=async function(cid){
+  var c=S.contratos.find(function(x){return x._id===cid});
+  if(!c)return;
+  var hon=c.honorarios||{};
+  var montoTotal=hon.montoTotal||Math.round((c.alquilerBase||0)/2);
+  var cuotas=hon.cuotas||1;
+  var cuotasPagadas=hon.cuotasPagadas||0;
+  var montoCuota=Math.round(montoTotal/cuotas);
+  var nuevasPagadas=cuotasPagadas+1;
+  var nuevoPagado=(hon.pagado||0)+montoCuota;
+  var update={
+    honorarios:{
+      tipo:hon.tipo||"medio",
+      montoTotal:montoTotal,
+      cuotas:cuotas,
+      cuotasPagadas:nuevasPagadas,
+      pagado:nuevoPagado
+    }
+  };
+  await fbUpd("contratos",cid,update);
+  S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});
+  // Registrar en caja
+  await fbAdd("caja",{
+    tipo:"honorario",
+    fecha:hoy(),
+    monto:montoCuota,
+    concepto:"Honorarios "+( c.inquilino||"")+" cuota "+nuevasPagadas+"/"+cuotas,
+    inquilino:c.inquilino||"",
+    cuotas:cuotas,
+    cuotaNum:nuevasPagadas,
+    contratoId:cid
+  });
+  toast("Honorarios registrados en caja ✓");render();
+};
+
+// Items automáticos pendientes para el cobro del mes
+function itemsPendientesContrato(c){
+  var items=[];
+  // Depósito pendiente
+  var dep=estadoDeposito(c);
+  if(dep.pendienteCuota){
+    var montoCuota=Math.round(dep.montoTotal/dep.cuotas);
+    items.push({tipo:"variable",desc:"Depósito cuota "+(dep.cuotasPagadas+1)+"/"+dep.cuotas,monto:montoCuota,_esDep:true,_cid:c._id});
+  }
+  if(dep.diferenciaPendiente>0){
+    items.push({tipo:"variable",desc:"Diferencia depósito (actualiz. IPC)",monto:dep.diferenciaPendiente,_esDep:true,_cid:c._id});
+  }
+  // Honorarios pendientes
+  var hon=estadoHonorarios(c);
+  if(hon.pendienteCuota){
+    var montoCuotaH=Math.round(hon.montoTotal/hon.cuotas);
+    items.push({tipo:"variable",desc:"Honorarios cuota "+(hon.cuotasPagadas+1)+"/"+hon.cuotas,monto:montoCuotaH,_esHon:true,_cid:c._id});
+  }
+  return items;
+}
+
 window.abrirFichaInquilino=function(nombre){
   // Reconstruir el objeto inquilino desde el estado
   var todos={};
@@ -485,7 +607,7 @@ window.guardarEdicionPago=async function(){
 window.addItemCobro=function(tipo){S.itemsCobro.push({tipo:tipo,desc:tipo==="saldo"?"Saldo mes anterior":"",monto:0});render();};
 window.removeItemCobro=function(i){S.itemsCobro.splice(i,1);render();};
 
-window.guardarContrato=async function(){window.syncItems();var f=S.form;if(!f.inquilino||!f.direccion||!f.inicio)return toast("Completá: Inquilino, Dirección e Inicio",false);var propId="";if(f.propietarioNombre){var p=S.propietarios.find(function(x){return x.nombre===f.propietarioNombre});if(!p){var id=await fbAdd("propietarios",{nombre:f.propietarioNombre,telefono:"",email:""});if(id){p={nombre:f.propietarioNombre,_id:id};S.propietarios.push(p);}}var pr=S.propiedades.find(function(x){return x.direccion===f.direccion&&x.propietarioNombre===f.propietarioNombre});if(!pr){var id=await fbAdd("propiedades",{direccion:f.direccion,tipo:f.tipo||"Casa",propietarioNombre:f.propietarioNombre,propietarioId:p?p._id:""});if(id){pr={direccion:f.direccion,_id:id};S.propiedades.push(pr);}}propId=pr?pr._id:"";}var extras=S.itemsCobro.filter(function(e){return e.desc});var data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:+(f.alquilerBase||0),comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:extras,frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC"};var id=await fbAdd("contratos",data);if(id){S.contratos.unshift(Object.assign({},data,{_id:id}));window.closeModal();}};
+window.guardarContrato=async function(){window.syncItems();var f=S.form;if(!f.inquilino||!f.direccion||!f.inicio)return toast("Completá: Inquilino, Dirección e Inicio",false);var propId="";if(f.propietarioNombre){var p=S.propietarios.find(function(x){return x.nombre===f.propietarioNombre});if(!p){var id=await fbAdd("propietarios",{nombre:f.propietarioNombre,telefono:"",email:""});if(id){p={nombre:f.propietarioNombre,_id:id};S.propietarios.push(p);}}var pr=S.propiedades.find(function(x){return x.direccion===f.direccion&&x.propietarioNombre===f.propietarioNombre});if(!pr){var id=await fbAdd("propiedades",{direccion:f.direccion,tipo:f.tipo||"Casa",propietarioNombre:f.propietarioNombre,propietarioId:p?p._id:""});if(id){pr={direccion:f.direccion,_id:id};S.propiedades.push(pr);}}propId=pr?pr._id:"";}var extras=S.itemsCobro.filter(function(e){return e.desc});var alqBase=+(f.alquilerBase||0);var depCuotas=+(f.depCuotas||1);var honCuotas=+(f.honCuotas||1);var honTipo=f.honTipo||"medio";var honMonto=honTipo==="mes"?alqBase:Math.round(alqBase/2);var data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:extras,frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",deposito:{cuotas:depCuotas,cuotasPagadas:0,pagado:0,diferenciaPendiente:0},honorarios:{tipo:honTipo,montoTotal:honMonto,cuotas:honCuotas,cuotasPagadas:0,pagado:0}};var id=await fbAdd("contratos",data);if(id){S.contratos.unshift(Object.assign({},data,{_id:id}));window.closeModal();}};
 window.guardarPropietario=async function(){var f=S.form;if(!f.nombre)return toast("Ingresá el nombre",false);var id=await fbAdd("propietarios",f);if(id){S.propietarios.push(Object.assign({},f,{_id:id}));window.closeModal();}};
 window.guardarInquilino=async function(){var f=S.form;if(!f.nombre)return toast("Ingresá el nombre",false);var id=await fbAdd("inquilinos",f);if(id){S.inquilinos.push(Object.assign({},f,{_id:id}));window.closeModal();}};
 
@@ -712,12 +834,26 @@ function renderInquilinos(){
         (inq.email?'<div style="font-size:12px;margin-bottom:6px">✉️ <a href="mailto:'+(inq.email||"")+'" style="color:var(--ce);text-decoration:none">'+(inq.email||"")+'</a></div>':"")+
         (inq.garante?'<div style="font-size:12px;color:var(--g3)">Garante: '+(inq.garante||"")+'</div>':"")+
       '</div>'+
-      '<div class="kg" style="grid-template-columns:1fr 1fr;margin:0;gap:8px">'+
+      (function(){
+      var depCards=activos.map(function(c){
+        var dep=estadoDeposito(c);
+        var depColor=dep.completo?"var(--ve)":dep.diferenciaPendiente>0?"var(--ro)":"var(--am,#f39c12)";
+        var depStatus=dep.completo?"✓ Completo":dep.diferenciaPendiente>0?"Diferencia $"+Math.round(dep.diferenciaPendiente).toLocaleString("es-AR")+" pendiente":"Cuota "+(dep.cuotasPagadas)+"/"+dep.cuotas+" pagada";
+        return '<div class="kc" style="border-top-color:'+depColor+';grid-column:1/-1"><div class="kl">Depósito — '+(c.direccion||"")+'</div>'+
+          '<div style="display:flex;justify-content:space-between;align-items:center">'+
+          '<div class="kv" style="font-size:15px">'+moneda(dep.montoTotal)+'</div>'+
+          '<span style="font-size:11px;color:'+depColor+'">'+depStatus+'</span>'+
+          (dep.pendienteCuota||dep.diferenciaPendiente>0?'<button class="btn sm ve" onclick="window.pagarCuotaDeposito(&#39;'+c._id+'&#39;)">✓ Cobrar cuota</button>':"")+
+          '</div><div class="ks">Pagado: '+moneda(dep.pagado)+' / '+moneda(dep.montoTotal)+'</div></div>';
+      }).join("");
+      return '<div class="kg" style="grid-template-columns:1fr 1fr;margin:0;gap:8px">'+
         '<div class="kc" style="border-top-color:var(--ve)"><div class="kl">Total cobrado</div><div class="kv" style="font-size:15px">'+moneda(totalCobrado)+'</div></div>'+
         '<div class="kc" style="border-top-color:var(--ro)"><div class="kl">Pendiente</div><div class="kv" style="font-size:15px">'+moneda(pendiente)+'</div></div>'+
         '<div class="kc" style="border-top-color:var(--ce)"><div class="kl">Contratos activos</div><div class="kv">'+activos.length+'</div></div>'+
         '<div class="kc" style="border-top-color:var(--g4)"><div class="kl">Históricos</div><div class="kv">'+historicos.length+'</div></div>'+
-      '</div>'+
+        depCards+
+      '</div>';
+    })()+
     '</div>'+
     '<div class="stit">Contratos</div>'+contratosHtml+
     (pagosInq.length?'<div class="stit" style="margin-top:16px">Historial de pagos</div>'+
@@ -798,7 +934,13 @@ function renderModal(){
   var content="";
   if(S.modal==="contrato"){
     var extH=S.itemsCobro.map(function(e,i){return '<div class="ii fijo"><span class="ii-tipo">Fijo</span><input class="desc" value="'+(e.desc||"")+'" placeholder="TGI, Agua..." oninput="S.itemsCobro['+i+'].desc=this.value"><input class="monto" value="'+(e.monto||"")+'" type="number" placeholder="Monto $" oninput="S.itemsCobro['+i+'].monto=+this.value;window.updateResumen()"><button class="ii-rm" onclick="window.removeItemCobro('+i+')">✕</button></div>'}).join("");
-    content='<div class="mth"><div class="mic">📋</div>Nuevo Contrato</div><div class="fs"><div class="fst">Partes</div><div class="fg"><div><label class="fl">Inquilino *</label>'+inp("inquilino")+'</div><div><label class="fl">DNI / CUIT</label>'+inp("dni")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div><div><label class="fl">Propietario</label>'+inp("propietarioNombre")+'</div><div><label class="fl">Garante</label>'+inp("garante")+'</div></div></div><div class="fs"><div class="fst">Propiedad</div><div class="fg"><div class="fgf"><label class="fl">Dirección *</label>'+inp("direccion")+'</div><div><label class="fl">Tipo</label>'+sel("tipo",[["Casa","Casa"],["Dpto","Departamento"],["Local","Local"],["Campo","Campo"],["Oficina","Oficina"],["Galpon","Galpón"]])+'</div><div><label class="fl">Descripción</label>'+inp("descripcion")+'</div></div></div><div class="fs"><div class="fst">Condiciones económicas</div><div class="fg"><div><label class="fl">Alquiler base ($) *</label>'+inp("alquilerBase","number")+'</div><div><label class="fl">Comisión agencia (%)</label>'+inp("comisionAgencia","number","5")+'</div></div><div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label class="fl" style="margin:0">Gastos fijos del inquilino</label><button class="btn sm" onclick="window.addItemCobro(&#39;fijo&#39;)">+ Agregar</button></div><div class="ilist">'+extH+'</div></div></div><div class="fs"><div class="fst">Vigencia</div><div class="fg"><div><label class="fl">Fecha inicio *</label>'+inp("inicio","date")+'</div><div><label class="fl">Fecha fin</label>'+inp("fin","date")+'</div></div></div><div class="fs" style="border:none;margin:0;padding:0"><div class="fst">Actualización</div><div class="fg3"><div><label class="fl">Cada cuántos meses</label>'+sel("frecActualizacion",[["3","3 meses"],["4","4 meses"],["6","6 meses"],["12","12 meses"]])+'</div><div><label class="fl">Índice</label>'+sel("indiceActualizacion",[["IPC","IPC"],["ICL","ICL"],["Libre","Libre"]])+'</div><div><label class="fl">Notas</label>'+inp("notasActualizacion","text","","según contrato...")+'</div></div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarContrato()">Guardar contrato</button></div>';
+    content='<div class="mth"><div class="mic">📋</div>Nuevo Contrato</div><div class="fs"><div class="fst">Partes</div><div class="fg"><div><label class="fl">Inquilino *</label>'+inp("inquilino")+'</div><div><label class="fl">DNI / CUIT</label>'+inp("dni")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div><div><label class="fl">Propietario</label>'+inp("propietarioNombre")+'</div><div><label class="fl">Garante</label>'+inp("garante")+'</div></div></div><div class="fs"><div class="fst">Propiedad</div><div class="fg"><div class="fgf"><label class="fl">Dirección *</label>'+inp("direccion")+'</div><div><label class="fl">Tipo</label>'+sel("tipo",[["Casa","Casa"],["Dpto","Departamento"],["Local","Local"],["Campo","Campo"],["Oficina","Oficina"],["Galpon","Galpón"]])+'</div><div><label class="fl">Descripción</label>'+inp("descripcion")+'</div></div></div><div class="fs"><div class="fst">Condiciones económicas</div><div class="fg"><div><label class="fl">Alquiler base ($) *</label>'+inp("alquilerBase","number")+'</div><div><label class="fl">Comisión agencia (%)</label>'+inp("comisionAgencia","number","5")+'</div></div><div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label class="fl" style="margin:0">Gastos fijos del inquilino</label><button class="btn sm" onclick="window.addItemCobro(&#39;fijo&#39;)">+ Agregar</button></div><div class="ilist">'+extH+'</div></div></div><div class="fs"><div class="fst">Vigencia</div><div class="fg"><div><label class="fl">Fecha inicio *</label>'+inp("inicio","date")+'</div><div><label class="fl">Fecha fin</label>'+inp("fin","date")+'</div></div></div><div class="fs" style="border:none;margin:0;padding:0"><div class="fst">Actualización</div><div class="fg3"><div><label class="fl">Cada cuántos meses</label>'+sel("frecActualizacion",[["3","3 meses"],["4","4 meses"],["6","6 meses"],["12","12 meses"]])+'</div><div><label class="fl">Índice</label>'+sel("indiceActualizacion",[["IPC","IPC"],["ICL","ICL"],["Libre","Libre"]])+'</div><div><label class="fl">Notas</label>'+inp("notasActualizacion","text","","según contrato...")+'</div></div></div>'+
+    '<div class="fs" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--n4)"><div class="fst">Depósito y honorarios de ingreso</div><div class="fg">'+
+    '<div><label class="fl">Depósito (cuotas)</label>'+sel("depCuotas",[["1","1 cuota (al ingreso)"],["2","2 cuotas"]])+'</div>'+
+    '<div><label class="fl">Honorarios</label>'+sel("honTipo",[["medio","Medio mes"],["mes","Un mes"]])+'</div>'+
+    '<div><label class="fl">Honorarios (cuotas)</label>'+sel("honCuotas",[["1","1 cuota (al ingreso)"],["2","2 cuotas"]])+'</div>'+
+    '</div><p style="font-size:10px;color:var(--g4);margin-top:6px">El depósito equivale siempre a 1 mes de alquiler. Los honorarios se registran en la Caja agencia.</p></div>'+
+    '<div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarContrato()">Guardar contrato</button></div>';
   }
   if(S.modal==="propietario"){content='<div class="mth"><div class="mic">👤</div>Nuevo Propietario</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div><div><label class="fl">DNI / CUIT</label>'+inp("dni")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarPropietario()">Guardar</button></div>';}
   if(S.modal==="inquilino"){content='<div class="mth"><div class="mic">🏠</div>Nuevo Inquilino</div><div class="fg"><div class="fgf"><label class="fl">Nombre *</label>'+inp("nombre")+'</div><div><label class="fl">DNI</label>'+inp("dni")+'</div><div><label class="fl">Teléfono</label>'+inp("telefono")+'</div><div><label class="fl">Email</label>'+inp("email","email")+'</div></div><div class="fa"><button class="btn" onclick="window.closeModal()">Cancelar</button><button class="btn na" onclick="window.guardarInquilino()">Guardar</button></div>';}
