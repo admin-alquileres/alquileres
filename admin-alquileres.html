@@ -132,6 +132,9 @@ td{padding:9px 12px;color:var(--g2);border-bottom:1px solid var(--n4)}tr:last-ch
 .tab-caja{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
 .tab-btn{padding:6px 14px;font-family:Inter,sans-serif;font-size:12px;cursor:pointer;border:1px solid var(--n4);border-radius:20px;background:var(--n3);color:var(--g3)}
 .tab-btn.on{background:var(--ce);border-color:var(--ce);color:var(--n);font-weight:600}
+.setup-table input[type=number],.setup-table input[type=date],.setup-table select{width:100%;padding:5px 7px;font-family:Inter,sans-serif;font-size:11px;border:1px solid var(--n4);border-radius:5px;background:var(--n3);color:var(--bl);outline:none}
+.setup-table input.changed,.setup-table select.changed{border-color:var(--na);background:rgba(245,166,35,.05)}
+.setup-bar{position:sticky;bottom:0;background:var(--n2);border-top:1px solid var(--n4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px}
 .adelanto-badge{display:inline-block;padding:2px 7px;font-size:10px;border-radius:4px;background:rgba(243,156,18,.15);color:var(--am,#f39c12);border:1px solid rgba(243,156,18,.25)}
 .pbar{padding:8px 16px;border-top:1px solid var(--n4);font-size:10px;color:var(--g4)}
 .plist{display:flex;flex-direction:column;gap:3px;margin-top:4px}
@@ -152,7 +155,7 @@ const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquilere
 const fireApp=initializeApp(FC);const db=getFirestore(fireApp);const auth=getAuth(fireApp);
 
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null,setupCambios:{},setupBuscar:""};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -1149,8 +1152,146 @@ function renderModalCaja(){
 }
 
 
-var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja agencia"}];
-var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos, gastos y saldo en tiempo real"]};
+// ── SETUP / PUESTA A PUNTO ────────────────────────────────────────────────────
+window.setupMarcar=function(el){
+  var id=el.dataset.id;var field=el.dataset.field;
+  var val=field==="alquilerBase"||field==="frecActualizacion"||field==="depPagado"?+(el.value||0):el.value;
+  if(!S.setupCambios[id])S.setupCambios[id]={};
+  S.setupCambios[id][field]=val;
+  el.classList.add("changed");
+  document.getElementById("setup-n-cambios").textContent=Object.keys(S.setupCambios).length;
+  document.getElementById("setup-btn-guardar").disabled=false;
+};
+
+window.setupMarcarDep=function(el){
+  var id=el.dataset.id;
+  var tieneDeposito=el.value==="si";
+  if(!S.setupCambios[id])S.setupCambios[id]={};
+  var c=S.contratos.find(function(x){return x._id===id});
+  var alq=(S.setupCambios[id].alquilerBase)||(c&&c.alquilerBase)||0;
+  S.setupCambios[id].deposito=tieneDeposito?{registrado:true,cuotas:1,cuotasPagadas:1,pagado:alq,completo:true,diferenciaPendiente:0}:{registrado:false,cuotas:1,cuotasPagadas:0,pagado:0,completo:false,diferenciaPendiente:0};
+  el.classList.add("changed");
+  document.getElementById("setup-n-cambios").textContent=Object.keys(S.setupCambios).length;
+  document.getElementById("setup-btn-guardar").disabled=false;
+  // Mostrar/ocultar campo de monto pagado
+  var depRow=document.getElementById("dep-pagado-"+id);
+  if(depRow)depRow.style.display=tieneDeposito?"block":"none";
+};
+
+window.setupMarcarDepPagado=function(el){
+  var id=el.dataset.id;
+  var c=S.contratos.find(function(x){return x._id===id});
+  var alq=(S.setupCambios[id]&&S.setupCambios[id].alquilerBase)||(c&&c.alquilerBase)||0;
+  var pagado=+(el.value||0);
+  if(!S.setupCambios[id])S.setupCambios[id]={};
+  if(!S.setupCambios[id].deposito)S.setupCambios[id].deposito={registrado:true};
+  S.setupCambios[id].deposito.pagado=pagado;
+  S.setupCambios[id].deposito.completo=pagado>=alq;
+  S.setupCambios[id].deposito.diferenciaPendiente=Math.max(0,alq-pagado);
+  el.classList.add("changed");
+};
+
+window.setupGuardar=async function(){
+  var ids=Object.keys(S.setupCambios);
+  if(!ids.length)return;
+  if(!confirm("¿Guardar "+ids.length+" cambio(s)?"))return;
+  var btn=document.getElementById("setup-btn-guardar");
+  btn.disabled=true;btn.textContent="Guardando...";
+  var ok=0;
+  for(var i=0;i<ids.length;i++){
+    var id=ids[i];
+    var data=Object.assign({},S.setupCambios[id],{_ts:Date.now()});
+    // Limpiar campos que no van directo al contrato
+    delete data.depPagado;
+    try{
+      await fbUpd("contratos",id,data);
+      S.contratos=S.contratos.map(function(x){return x._id===id?Object.assign({},x,data):x});
+      ok++;
+    }catch(e){toast("Error en "+id,false);}
+  }
+  S.setupCambios={};
+  btn.textContent="💾 Guardar todo";
+  toast("✅ "+ok+" contrato(s) actualizado(s)");
+  render();
+};
+
+window.setupFiltrar=function(val){S.setupBuscar=val;render();};
+
+function renderSetup(){
+  var activos=S.contratos.filter(function(c){return c.estado==="activo"});
+  var q=(S.setupBuscar||"").toLowerCase();
+  var lista=q?activos.filter(function(c){return(c.inquilino||"").toLowerCase().includes(q)||(c.direccion||"").toLowerCase().includes(q)||(c.propietarioNombre||"").toLowerCase().includes(q)}):activos;
+  var nCambios=Object.keys(S.setupCambios).length;
+
+  // Stats
+  var sinFecha=activos.filter(function(c){return !c.ultimaActualizacion}).length;
+  var conDep=activos.filter(function(c){return c.deposito&&c.deposito.registrado}).length;
+  var sinDep=activos.length-conDep;
+
+  var rows=lista.map(function(c){
+    var cam=S.setupCambios[c._id]||{};
+    var alqVal=cam.alquilerBase!==undefined?cam.alquilerBase:(c.alquilerBase||"");
+    var ultVal=cam.ultimaActualizacion!==undefined?cam.ultimaActualizacion:(c.ultimaActualizacion||"");
+    var frVal=cam.frecActualizacion!==undefined?cam.frecActualizacion:(+(c.frecActualizacion||6));
+    var dep=cam.deposito!==undefined?cam.deposito:(c.deposito||null);
+    var tieneDeposito=dep&&dep.registrado;
+    var depPagado=dep?(dep.pagado||0):0;
+    var alqActual=+(alqVal||c.alquilerBase||0);
+    var depCompleto=dep&&dep.completo;
+    var mod=cam&&Object.keys(cam).length>0;
+    return '<tr style="'+(mod?"background:rgba(245,166,35,.03)":"")+'">'+'<td><div style="font-weight:500;color:var(--bl);font-size:12px">'+(c.inquilino||"")+'</div><div style="font-size:10px;color:var(--g3)">'+(c.direccion||"")+'</div></td>'+
+    '<td style="font-size:10px;color:var(--g3)">'+(c.propietarioNombre||"")+'</td>'+
+    '<td><input type="number" data-id="'+c._id+'" data-field="alquilerBase" value="'+alqVal+'" placeholder="$" oninput="window.setupMarcar(this)" '+(mod&&cam.alquilerBase!==undefined?'class="changed"':"")+'>'+
+    (c.alquilerBase?'<div style="font-size:10px;color:var(--g3);text-decoration:line-through;margin-top:2px">$'+Math.round(c.alquilerBase).toLocaleString("es-AR")+'</div>':"")+
+    '</td>'+
+    '<td><input type="date" data-id="'+c._id+'" data-field="ultimaActualizacion" value="'+ultVal+'" oninput="window.setupMarcar(this)" '+(mod&&cam.ultimaActualizacion!==undefined?'class="changed"':"")+'>'+
+    (c.ultimaActualizacion?"":'<div style="font-size:10px;color:var(--ro)">Sin fecha</div>')+
+    '</td>'+
+    '<td><select data-id="'+c._id+'" data-field="frecActualizacion" onchange="window.setupMarcar(this)" '+(mod&&cam.frecActualizacion!==undefined?'class="changed"':"")+'>'+
+    ['3','4','6','12'].map(function(v){return '<option value="'+v+'"'+(+frVal===+v?' selected':'')+'>c/'+v+'m</option>';}).join("")+
+    '</select></td>'+
+    '<td>'+
+    '<select data-id="'+c._id+'" onchange="window.setupMarcarDep(this)" '+(mod&&cam.deposito!==undefined?'class="changed"':"")+'>'+
+    '<option value="no"'+(tieneDeposito?'':' selected')+'>Sin depósito</option>'+
+    '<option value="si"'+(tieneDeposito?' selected':'')+'>Con depósito</option>'+
+    '</select>'+
+    (tieneDeposito?'<div id="dep-pagado-'+c._id+'" style="margin-top:4px"><input type="number" data-id="'+c._id+'" value="'+depPagado+'" placeholder="$ pagado" oninput="window.setupMarcarDepPagado(this)"><div style="font-size:10px;margin-top:2px;color:'+(depCompleto?"var(--ve)":"var(--na)")+'">'+(depCompleto?"✓ Completo":"Faltan $"+Math.max(0,alqActual-depPagado).toLocaleString("es-AR"))+'</div></div>':'<div id="dep-pagado-'+c._id+'" style="display:none"></div>')+
+    '</td>'+
+    '<td style="text-align:center">'+(mod?'<span style="color:var(--na)">●</span>':'')+'</td>'+
+    '</tr>';
+  }).join("");
+
+  return '<div class="kg" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'+
+    '<div class="kc" style="border-top-color:var(--ce)"><div class="kl">Contratos activos</div><div class="kv">'+activos.length+'</div></div>'+
+    '<div class="kc" style="border-top-color:var(--ro)"><div class="kl">Sin fecha actualiz.</div><div class="kv">'+sinFecha+'</div><div class="ks">por completar</div></div>'+
+    '<div class="kc" style="border-top-color:var(--ve)"><div class="kl">Con depósito</div><div class="kv">'+conDep+'</div></div>'+
+    '<div class="kc" style="border-top-color:var(--am,#f39c12)"><div class="kl">Sin depósito registrado</div><div class="kv">'+sinDep+'</div></div>'+
+  '</div>'+
+  '<div class="filt" style="margin-bottom:12px">'+
+    '<input class="inp" placeholder="Buscar inquilino, dirección, propietario..." style="min-width:280px" value="'+(S.setupBuscar||"")+'" oninput="window.setupFiltrar(this.value)">'+
+    '<span style="font-size:11px;color:var(--g3)">'+lista.length+' de '+activos.length+' contratos</span>'+
+  '</div>'+
+  '<div class="tw setup-table"><table><thead><tr>'+
+    '<th>Inquilino / Dirección</th>'+
+    '<th>Propietario</th>'+
+    '<th style="width:120px">Alquiler real ($)</th>'+
+    '<th style="width:120px">Última actualiz.</th>'+
+    '<th style="width:80px">Frec.</th>'+
+    '<th style="width:160px">Depósito</th>'+
+    '<th style="width:30px"></th>'+
+  '</tr></thead><tbody>'+(rows||'<tr><td colspan=7><div class="empty">Sin contratos</div></td></tr>')+'</tbody></table></div>'+
+  '<div class="setup-bar">'+
+    '<span style="font-size:12px;color:var(--g3)"><span id="setup-n-cambios">'+nCambios+'</span> cambio(s) sin guardar</span>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn" onclick="S.setupCambios={};render()" style="background:var(--n3);color:var(--g3)">Descartar</button>'+
+      '<button id="setup-btn-guardar" class="btn na" onclick="window.setupGuardar()" '+(nCambios===0?"disabled":"")+'>💾 Guardar todo</button>'+
+    '</div>'+
+  '</div>';
+}
+
+
+var NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja agencia"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"}];
+var TITLES={dashboard:["Dashboard","Resumen general"],contratos:["Contratos","Clic en un contrato para registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualizaciones IPC","Contratos pendientes de actualización"],inquilinos:["Inquilinos","Clic en un inquilino para ver su ficha"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos, gastos y saldo en tiempo real"],setup:["Puesta a punto","Actualización masiva de valores y depósitos"]};
 
 function render(){
   if(!S.usuario){renderLogin();return;}
@@ -1163,7 +1304,7 @@ function render(){
   else if(S.sec==="liquidaciones")body=renderLiquidaciones();
   else if(S.sec==="ipc")body=renderIPC();
   else if(S.sec==="inquilinos")body=renderInquilinos();
-  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();
+  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();
   var userLabel=(S.usuario.email||"").split("@")[0];
   var temaBtn=document.body.classList.contains("light")?"☀️":"🌙";
   $("root").innerHTML='<div class="app"><aside class="sb"><div class="slw"><div class="slr">'+logoSVG(30)+'<div><div class="sbr">ECKERDT <span>INMOBILIARIA</span></div></div></div><div class="sbs">Urdinarrain · Entre Ríos</div></div><ul class="nav">'+NAVS.map(function(n){return '<li class="'+(S.sec===n.id?"on":"")+'" onclick="window.go(&#39;'+n.id+'&#39;)"><span>'+n.ic+'</span>'+n.lbl+'</li>'}).join("")+'</ul><div class="nu"><div><div style="font-size:10px;color:var(--g4)">Usuario</div><strong>'+userLabel+'</strong></div><button class="nub" onclick="window.doLogout()">Salir</button></div><div id="presence-area">'+renderPresencia()+'</div><div class="sfoot">© 2025 Eckerdt Negocios Inmobiliarios</div></aside><main class="main"><div class="ph"><div class="phl"><div class="pha"></div><div><div class="pt">'+pt+'</div><div class="ps">'+ps+'</div></div></div><button onclick="window.toggleTema()" style="background:var(--n3);border:1px solid var(--n4);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--g3)">'+temaBtn+'</button></div>'+body+'</main></div>'+renderModal();
