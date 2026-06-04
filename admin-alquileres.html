@@ -155,7 +155,7 @@ const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquilere
 const fireApp=initializeApp(FC);const db=getFirestore(fireApp);const auth=getAuth(fireApp);
 
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null,setupCambios:{},setupBuscar:"",alertasTipo:"todas",alertasPlazo:20};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null,setupCambios:{},setupBuscar:"",alertasTipo:"todas",alertasPlazo:30};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -553,6 +553,95 @@ function itemsPendientesContrato(c){
   return items;
 }
 
+window.finalizarContrato=async function(cid){
+  var c=S.contratos.find(function(x){return x._id===cid});
+  if(!c)return;
+  if(!confirm("¿Estás seguro que querés finalizar el contrato de "+(c.inquilino||"")+" en "+(c.direccion||"")+"?\n\nEl historial del inquilino y de la propiedad se va a conservar."))return;
+  var motivo=prompt("Motivo de finalización (opcional):");
+  if(motivo===null)return; // canceló
+  var fechaFin=hoy();
+  var update={estado:"finalizado",fechaFinalizacion:fechaFin,motivoFinalizacion:motivo||"Contrato finalizado"};
+  await fbUpd("contratos",cid,update);
+  S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});
+  toast("Contrato finalizado — el historial se conserva ✓");
+  S.modal=null;S.contratoActivo=null;
+  render();
+};
+
+// ── HISTORIAL PROPIEDADES ──────────────────────────────────────────────────────
+var S_HIST_PROP={};
+
+async function cargarHistorialPropiedad(propId){
+  if(S_HIST_PROP[propId])return;
+  try{
+    var snap=await getDocs(collection(db,"historial_propiedades"));
+    var entradas=snap.docs.map(function(d){return Object.assign({},d.data(),{_id:d.id})})
+      .filter(function(e){return e.propiedadId===propId&&!e._eliminado})
+      .sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")});
+    S_HIST_PROP[propId]=entradas;
+  }catch(e){S_HIST_PROP[propId]=[];}
+}
+
+window.agregarHistorialPropiedad=async function(){
+  var elFecha=document.getElementById("hprop-fecha");
+  var elObs=document.getElementById("hprop-obs");
+  var elPropId=document.getElementById("hprop-id");
+  if(!elFecha||!elObs||!elPropId)return;
+  var fecha=elFecha.value;
+  var obs=elObs.value.trim();
+  var propId=elPropId.value;
+  if(!obs)return toast("Escribí una observación",false);
+  if(!fecha)return toast("Ingresá la fecha",false);
+  var data={propiedadId:propId,fecha:fecha,observacion:obs,creadoEn:Date.now()};
+  var id=await fbAdd("historial_propiedades",data);
+  if(id){
+    if(!S_HIST_PROP[propId])S_HIST_PROP[propId]=[];
+    S_HIST_PROP[propId].unshift(Object.assign({},data,{_id:id}));
+    elObs.value="";
+    renderHistorialPropInline(propId);
+    toast("Registrado ✓");
+  }
+};
+
+window.eliminarHistorialProp=async function(id,propId){
+  if(!confirm("¿Eliminar esta entrada?"))return;
+  try{await updateDoc(doc(db,"historial_propiedades",id),{_eliminado:true});}catch(e){}
+  if(S_HIST_PROP[propId])S_HIST_PROP[propId]=S_HIST_PROP[propId].filter(function(e){return e._id!==id});
+  renderHistorialPropInline(propId);
+};
+
+function renderHistorialPropInline(propId){
+  var el=document.getElementById("hprop-tabla-"+propId);
+  if(!el)return;
+  var entradas=(S_HIST_PROP[propId]||[]).filter(function(e){return !e._eliminado});
+  if(!entradas.length){
+    el.innerHTML='<div class="empty" style="padding:12px">Sin registros. Agregá el primer evento.</div>';
+    return;
+  }
+  el.innerHTML='<div class="tw"><table><thead><tr><th style="width:120px">Fecha</th><th>Evento</th><th style="width:40px"></th></tr></thead><tbody>'+
+    entradas.map(function(e){
+      return '<tr><td style="white-space:nowrap;color:var(--g3)">'+( e.fecha||"—")+'</td>'+
+        '<td>'+( e.observacion||"")+'</td>'+
+        '<td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px" onclick="window.eliminarHistorialProp(&#39;'+e._id+'&#39;,&#39;'+propId+'&#39;)">✕</button></td>'+
+      '</tr>';
+    }).join("")+'</tbody></table></div>';
+}
+
+function renderSeccionHistorialProp(propId,direccion){
+  if(!propId)return"";
+  cargarHistorialPropiedad(propId).then(function(){renderHistorialPropInline(propId);});
+  return '<div class="fs" style="margin-top:16px;border-top:1px solid var(--n4);padding-top:14px">'+
+    '<div class="fst">🏠 Historial de la propiedad — '+(direccion||"")+'</div>'+
+    '<input type="hidden" id="hprop-id" value="'+propId+'">'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end;flex-wrap:wrap">'+
+      '<div><label class="fl">Fecha</label><input id="hprop-fecha" class="inp" type="date" value="'+hoy()+'" style="width:150px"></div>'+
+      '<div style="flex:1;min-width:200px"><label class="fl">Evento / observación</label><input id="hprop-obs" class="inp" style="width:100%" placeholder="Ej: Se cambió canilla, visita gasista, arreglo eléctrico..."></div>'+
+      '<button class="btn na sm" onclick="window.agregarHistorialPropiedad()" style="padding:8px 14px;height:36px">+ Agregar</button>'+
+    '</div>'+
+    '<div id="hprop-tabla-'+propId+'"><div class="load"><div class="sp"></div>Cargando...</div></div>'+
+  '</div>';
+}
+
 window.abrirFichaInquilino=function(nombre){
   // Reconstruir el objeto inquilino desde el estado
   var todos={};
@@ -707,7 +796,7 @@ function renderDashboard(){
   ];
   var plazoOpts=[
     {k:0,l:"Todos"},
-    {k:20,l:"20 días"},
+    {k:30,l:"30 días"},
     {k:60,l:"60 días"},
     {k:90,l:"90 días"},
   ];
@@ -764,7 +853,7 @@ function renderContratos(){
     return '<tr class="cl" data-id="'+c._id+'" onclick="window.abrirContrato(this.dataset.id)"><td class="tm">'+(c.inquilino||"")+'<br><span class="ts">'+(c.dni||"")+'</span></td><td>'+(c.direccion||"")+'<br><span class="ts">'+(c.propietarioNombre||"")+'</span></td><td>'+moneda(c.alquilerBase)+'<br><span class="ts">'+(c.comisionAgencia||5)+'% com.</span></td><td>'+(extH||'<span class="ts">—</span>')+'</td><td>'+(c.inicio||"")+(dt?'<br><span style="color:'+dc+';font-size:10px">'+dt+'</span>':"")+'</td><td>'+(updB||'<span class="ts">c/'+(c.frecActualizacion||6)+'m</span>')+'</td><td>'+badge(c.estado)+'</td></tr>';
   }).join("");
   var tipoOpts=["inquilino","propietario","domicilio"].map(function(v){return '<option value="'+v+'"'+(f.buscarPor===v?" selected":"")+'>'+v.charAt(0).toUpperCase()+v.slice(1)+'</option>'}).join("");
-  var estadoOpts=[["todos","Todos"],["activo","Activos"],["vencido","Vencidos"]].map(function(a){return '<option value="'+a[0]+'"'+(f.estado===a[0]?" selected":"")+'>'+a[1]+'</option>'}).join("");
+  var estadoOpts=[["todos","Todos"],["activo","Activos"],["vencido","Vencidos"],["finalizado","Finalizados"]].map(function(a){return '<option value="'+a[0]+'"'+(f.estado===a[0]?" selected":"")+'>'+a[1]+'</option>'}).join("");
   return '<div class="filt"><select class="inp" id="cb-tipo">'+tipoOpts+'</select><input class="inp" id="cb-texto" placeholder="Buscar..." value="'+(f.buscar||"")+'" style="min-width:180px" onkeydown="if(event.key===&#39;Enter&#39;)window.buscarContratos()"><button class="btn pr" onclick="window.buscarContratos()">🔍 Buscar</button><select class="inp" id="cb-estado">'+estadoOpts+'</select><button class="btn" onclick="window.limpiarBusqueda()">✕ Limpiar</button><button class="btn pr" onclick="window.openModal(&#39;contrato&#39;)">+ Nuevo contrato</button></div><p style="font-size:11px;color:var(--g3);margin-bottom:10px">Clic en un contrato para ver detalles y registrar el pago'+(f.buscar||f.estado!=="todos"?' · <strong style="color:var(--ce)">'+lista.length+' resultado(s)</strong>':"")+'</p><div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad/Prop.</th><th>Alquiler</th><th>Gastos fijos</th><th>Vigencia</th><th>Actualiz.</th><th>Estado</th></tr></thead><tbody>'+(rows||'<tr><td colspan=7><div class="empty">Sin resultados</div></td></tr>')+'</tbody></table></div>';
 }
 
