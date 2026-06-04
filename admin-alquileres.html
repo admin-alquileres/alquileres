@@ -248,6 +248,25 @@ window.registrarPago=async function(){window.syncItems();var c=S.contratoActivo;
 window.actualizarAlquiler=async function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;var pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");if(!pct||isNaN(+pct))return;var nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));var update={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:+pct};// Calcular diferencia de depósito si tiene depósito registrado
 var dep=c.deposito||{};if(dep.pagado>0){var depPagado=dep.pagado||0;var diferencia=nuevo-depPagado;if(diferencia>0){update.deposito=Object.assign({},dep,{diferenciaPendiente:diferencia});toast("Alquiler actualizado a "+moneda(nuevo)+" · Diferencia depósito pendiente: "+moneda(diferencia),"orange");}else{toast("Alquiler actualizado a "+moneda(nuevo));}}else{toast("Alquiler actualizado a "+moneda(nuevo));}await fbUpd("contratos",cid,update);S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});render();};
 
+window.calcularNuevosMontos=function(fr){
+  var input=document.getElementById("ipc-pct-"+fr);
+  if(!input)return;
+  var pct=parseFloat(input.value);
+  var rows=document.querySelectorAll(".ipc-row[data-fr='"+fr+"']");
+  rows.forEach(function(row){
+    var alq=+(row.dataset.alq||0);
+    var tdNuevo=row.querySelector(".nuevo-alq");
+    var tdDif=row.querySelector(".dif-alq");
+    if(!tdNuevo||!tdDif)return;
+    if(isNaN(pct)||!pct){tdNuevo.textContent="—";tdDif.textContent="—";return;}
+    var nuevo=Math.round(alq*(1+pct/100));
+    var dif=nuevo-alq;
+    tdNuevo.textContent=moneda(nuevo);
+    tdNuevo.style.color="var(--ce)";
+    tdDif.textContent="+"+moneda(dif);
+    tdDif.style.color="var(--ve)";
+  });
+};
 window.aplicarIPCGrupo=async function(freq){
   var pctInput=document.getElementById("ipc-pct-"+freq);
   if(!pctInput||!pctInput.value)return toast("Ingresá el % para contratos de "+freq+" meses",false);
@@ -725,54 +744,103 @@ function renderLiquidaciones(){
 
 function renderIPC(){
   var activos=S.contratos.filter(function(c){return c.estado==="activo"});
+  var hoy=new Date();
+  var mesProx=new Date(hoy.getFullYear(),hoy.getMonth()+1,1);
+  var mesProxFin=new Date(hoy.getFullYear(),hoy.getMonth()+2,0);
+
+  // Agrupar por frecuencia — solo los del próximo mes
   var frecuencias=[3,4,6,12];
-  var gruposPorFrec={};
-  frecuencias.forEach(function(fr){gruposPorFrec[fr]={pendientes:[],proximos:[]};});
+  var grupos={};
+  frecuencias.forEach(function(fr){grupos[fr]={proxMes:[],vencidos:[]};});
+
   activos.forEach(function(c){
     var fr=+(c.frecActualizacion||6);
-    if(!gruposPorFrec[fr])gruposPorFrec[fr]={pendientes:[],proximos:[]};
+    if(!grupos[fr])grupos[fr]={proxMes:[],vencidos:[]};
     var prox=getProxActualizacion(c);if(!prox)return;
-    var du=Math.round((prox-new Date())/86400000);
-    if(du<0)gruposPorFrec[fr].pendientes.push({c:c,dias:Math.abs(du)});
-    else if(du<=45)gruposPorFrec[fr].proximos.push({c:c,dias:du});
+    var du=Math.round((prox-hoy)/86400000);
+    if(du<0)grupos[fr].vencidos.push({c:c,dias:Math.abs(du),prox:prox});
+    else if(prox>=mesProx&&prox<=mesProxFin)grupos[fr].proxMes.push({c:c,dias:du,prox:prox});
   });
-  var totalPend=0;var totalProx=0;
-  frecuencias.forEach(function(fr){totalPend+=gruposPorFrec[fr].pendientes.length;totalProx+=gruposPorFrec[fr].proximos.length;});
-  var recientes=S.contratos.filter(function(c){return c.pctUltimaActualizacion&&c.ultimaActualizacion}).sort(function(a,b){return(b.ultimaActualizacion||"").localeCompare(a.ultimaActualizacion||"")}).slice(0,15);
-  var kpis='<div class="kg" style="grid-template-columns:repeat(3,1fr)"><div class="kc" style="border-top-color:var(--ro)"><div class="kl">Pendientes</div><div class="kv">'+totalPend+'</div><div class="ks">actualizaciones vencidas</div></div><div class="kc" style="border-top-color:var(--am)"><div class="kl">Próximas 45 días</div><div class="kv">'+totalProx+'</div><div class="ks">a actualizar pronto</div></div><div class="kc" style="border-top-color:var(--ve)"><div class="kl">Total activos</div><div class="kv">'+activos.length+'</div><div class="ks">contratos</div></div></div>';
 
-  // Configurador de frecuencias
-  var sinFrec=activos.filter(function(c){return +(c.frecActualizacion||6)===6});
-  var configHtml="";
-  if(sinFrec.length){
-    var configRows=activos.map(function(c){
-      var fr=+(c.frecActualizacion||6);
-      return '<tr><td class="tm">'+(c.inquilino||"")+'</td><td>'+(c.direccion||"")+'</td><td>'+(c.propietarioNombre||"")+'</td><td>'+moneda(c.alquilerBase)+'</td><td><select class="inp freq-sel" data-cid="'+c._id+'" style="width:90px"><option value="3"'+(fr===3?" selected":"")+'>3 meses</option><option value="4"'+(fr===4?" selected":"")+'>4 meses</option><option value="6"'+(fr===6?" selected":"")+'>6 meses</option><option value="12"'+(fr===12?" selected":"")+'>12 meses</option></select></td></tr>';
-    }).join("");
-    configHtml='<div class="lcard" style="border-left:3px solid var(--ce);margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><div style="font-size:15px;font-weight:700">⚙️ Configurar frecuencia de actualización</div><div style="font-size:11px;color:var(--g3);margin-top:3px">Asigná cada 3 o 4 meses a cada contrato. Después hacé clic en Guardar.</div></div><button class="btn na" onclick="window.guardarFrecuencias()">💾 Guardar frecuencias</button></div><div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Alquiler</th><th>Frecuencia</th></tr></thead><tbody>'+configRows+'</tbody></table></div></div>';
-  }
+  var totalProxMes=frecuencias.reduce(function(s,fr){return s+grupos[fr].proxMes.length},0);
+  var totalVenc=frecuencias.reduce(function(s,fr){return s+grupos[fr].vencidos.length},0);
 
-  // Grupos por frecuencia
-  var gruposHtml=frecuencias.map(function(fr){
-    var grupo=gruposPorFrec[fr];
-    var todos=grupo.pendientes.concat(grupo.proximos);
+  var mesNombreProx=mesProx.toLocaleString("es-AR",{month:"long",year:"numeric"});
+
+  var kpis='<div class="kg" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">'+
+    '<div class="kc" style="border-top-color:var(--na)"><div class="kl">A actualizar en '+mesNombreProx+'</div><div class="kv">'+totalProxMes+'</div><div class="ks">contratos</div></div>'+
+    '<div class="kc" style="border-top-color:var(--ro)"><div class="kl">Vencidas (atrasadas)</div><div class="kv">'+totalVenc+'</div><div class="ks">actualizaciones pendientes</div></div>'+
+    '<div class="kc" style="border-top-color:var(--ve)"><div class="kl">Contratos activos</div><div class="kv">'+activos.length+'</div></div>'+
+  '</div>';
+
+  // Sección configuración de frecuencias (si hay contratos en 6m)
+  var en6m=activos.filter(function(c){return +(c.frecActualizacion||6)===6}).length;
+  var configHtml=en6m?'<div class="lcard" style="border-left:3px solid var(--ce);margin-bottom:20px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<div><div style="font-size:14px;font-weight:700">⚙️ Configurar frecuencias</div>'+
+      '<div style="font-size:11px;color:var(--g3);margin-top:2px">Hay '+en6m+' contratos con frecuencia por defecto (6m) — asignales 3 o 4 meses</div></div>'+
+      '<button class="btn na sm" onclick="window.go(&#39;setup&#39;)">Ir a Puesta a punto →</button>'+
+    '</div></div>':"";
+
+  function renderGrupo(fr){
+    var g=grupos[fr];
+    var todos=g.vencidos.concat(g.proxMes);
     if(!todos.length)return"";
-    var cards=todos.map(function(item){
-      var c=item.c;var esPend=grupo.pendientes.indexOf(item)!==-1;
-      return '<div class="ipc-card"><div class="ipc-info"><div class="ipc-name">'+(c.inquilino||"")+'</div><div class="ipc-dir">'+(c.direccion||"")+'</div><div class="ipc-det">Prop: '+(c.propietarioNombre||"")+" · "+(esPend?"Vencida hace "+item.dias+" días":"En "+item.dias+" días")+'</div></div><div class="ipc-cur">'+moneda(c.alquilerBase)+'</div></div>';
-    }).join("");
-    return '<div class="lcard" style="border-left:3px solid '+(grupo.pendientes.length?"var(--ro)":"var(--am)")+'"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px"><div><div style="font-size:15px;font-weight:700">Cada '+fr+' meses</div><div style="font-size:11px;color:var(--g3);margin-top:3px">'+grupo.pendientes.length+' vencida(s) · '+grupo.proximos.length+' próxima(s) · '+todos.length+' contrato(s)</div></div><div class="ipc-act" style="gap:8px"><label style="font-size:11px;color:var(--g3)">% IPC acumulado '+fr+'m:</label><input class="ipc-inp" type="number" step="0.1" placeholder="%" id="ipc-pct-'+fr+'"><button class="btn na sm" onclick="window.aplicarIPCGrupo('+fr+')">Aplicar a todos</button></div></div>'+cards+'</div>';
-  }).join("");
+    var color=g.vencidos.length?"var(--ro)":"var(--na)";
+    var ipcInputId="ipc-pct-"+fr;
 
-  // Historial
-  var historialHtml="";
-  if(recientes.length){
-    var rows=recientes.map(function(c){
-      return '<tr><td class="tm">'+(c.inquilino||"")+'</td><td>'+(c.direccion||"")+'</td><td>'+(c.propietarioNombre||"")+'</td><td>'+moneda(c.alquilerBase)+'</td><td style="color:var(--ce);font-weight:600">+'+(c.pctUltimaActualizacion||0)+'%</td><td>'+(c.ultimaActualizacion||"—")+'</td><td><span class="ts">c/'+(c.frecActualizacion||6)+'m</span></td></tr>';
+    var filas=todos.map(function(item){
+      var c=item.c;var esVenc=g.vencidos.indexOf(item)!==-1;
+      var fechaStr=item.prox.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"});
+      return '<tr class="ipc-row" data-cid="'+c._id+'" data-alq="'+c.alquilerBase+'" data-fr="'+fr+'">'+
+        '<td class="tm">'+(c.inquilino||"")+'</td>'+
+        '<td style="font-size:11px">'+(c.direccion||"")+'</td>'+
+        '<td style="font-size:11px;color:var(--g3)">'+(c.propietarioNombre||"")+'</td>'+
+        '<td style="font-size:11px;color:'+(esVenc?"var(--ro)":"var(--g3)")+'">'+fechaStr+(esVenc?" ⚠️":"")+'</td>'+
+        '<td style="font-weight:600">'+moneda(c.alquilerBase)+'</td>'+
+        '<td class="nuevo-alq" style="font-weight:700;color:var(--ce)">—</td>'+
+        '<td class="dif-alq" style="font-size:11px;color:var(--ve)">—</td>'+
+      '</tr>';
     }).join("");
-    historialHtml='<div class="stit" style="margin-top:20px">📋 Últimas actualizaciones aplicadas</div><div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Alquiler actual</th><th>% Aplicado</th><th>Fecha</th><th>Frecuencia</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+
+    return '<div class="lcard" style="border-left:3px solid '+color+';margin-bottom:20px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">'+
+        '<div>'+
+          '<div style="font-size:15px;font-weight:700">Cada '+fr+' meses</div>'+
+          '<div style="font-size:11px;color:var(--g3);margin-top:3px">'+
+            (g.vencidos.length?"<span style='color:var(--ro)'>"+g.vencidos.length+" atrasada(s)</span> · ":"")+
+            g.proxMes.length+' para '+mesNombreProx+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<label style="font-size:11px;color:var(--g3)">% IPC acumulado '+fr+'m:</label>'+
+          '<input class="ipc-inp" type="number" step="0.01" placeholder="ej: 12.5" id="'+ipcInputId+'" oninput="window.calcularNuevosMontos('+fr+')">'+
+          '<button class="btn na sm" onclick="window.aplicarIPCGrupo('+fr+')">✓ Aplicar a todos</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="tw"><table>'+
+        '<thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th></tr></thead>'+
+        '<tbody>'+filas+'</tbody>'+
+      '</table></div>'+
+    '</div>';
   }
-  return kpis+configHtml+(gruposHtml||'<div class="empty">No hay actualizaciones pendientes ni próximas</div>')+historialHtml;
+
+  var gruposHtml=frecuencias.map(renderGrupo).join("");
+
+  // Historial últimas actualizaciones
+  var recientes=S.contratos.filter(function(c){return c.pctUltimaActualizacion&&c.ultimaActualizacion})
+    .sort(function(a,b){return(b.ultimaActualizacion||"").localeCompare(a.ultimaActualizacion||"")}).slice(0,15);
+  var histHtml=recientes.length?'<div class="stit" style="margin-top:20px">📋 Últimas actualizaciones aplicadas</div>'+
+    '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Alquiler actual</th><th>% Aplicado</th><th>Fecha</th><th>Frec.</th></tr></thead><tbody>'+
+    recientes.map(function(c){
+      return '<tr><td class="tm">'+(c.inquilino||"")+'</td><td>'+(c.direccion||"")+'</td><td>'+(c.propietarioNombre||"")+'</td>'+
+        '<td>'+moneda(c.alquilerBase)+'</td>'+
+        '<td style="color:var(--ce);font-weight:600">+'+( c.pctUltimaActualizacion||0)+'%</td>'+
+        '<td>'+(c.ultimaActualizacion||"—")+'</td>'+
+        '<td><span class="ts">c/'+(c.frecActualizacion||6)+'m</span></td></tr>';
+    }).join("")+'</tbody></table></div>':"";
+
+  return kpis+configHtml+(gruposHtml||'<div class="empty">No hay contratos a actualizar el próximo mes</div>')+histHtml;
 }
 
 
