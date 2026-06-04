@@ -155,7 +155,7 @@ const FC={apiKey:"AIzaSyDnsmUuwjiT2Gzq3y9NAvxaeFEmn3LTMw4",authDomain:"alquilere
 const fireApp=initializeApp(FC);const db=getFirestore(fireApp);const auth=getAuth(fireApp);
 
 
-let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null,setupCambios:{},setupBuscar:"",alertasTipo:"todas",alertasPlazo:30};
+let S={sec:"dashboard",usuario:null,propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],modal:null,contratoActivo:null,form:{},itemsCobro:[],filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},liqMes:"",mesPropietarios:"",loading:true,synced:false,presencia:[],pagoEditando:null,inquilinoActivo:null,setupCambios:{},setupBuscar:"",alertasTipo:"todas",alertasPlazo:20};
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
@@ -248,6 +248,8 @@ window.registrarPago=async function(){window.syncItems();var c=S.contratoActivo;
 window.actualizarAlquiler=async function(cid){var c=S.contratos.find(function(x){return x._id===cid});if(!c)return;var pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");if(!pct||isNaN(+pct))return;var nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));var update={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:+pct};// Calcular diferencia de depósito si tiene depósito registrado
 var dep=c.deposito||{};if(dep.pagado>0){var depPagado=dep.pagado||0;var diferencia=nuevo-depPagado;if(diferencia>0){update.deposito=Object.assign({},dep,{diferenciaPendiente:diferencia});toast("Alquiler actualizado a "+moneda(nuevo)+" · Diferencia depósito pendiente: "+moneda(diferencia),"orange");}else{toast("Alquiler actualizado a "+moneda(nuevo));}}else{toast("Alquiler actualizado a "+moneda(nuevo));}await fbUpd("contratos",cid,update);S.contratos=S.contratos.map(function(x){return x._id===cid?Object.assign({},x,update):x});render();};
 
+window.setAlertasTipo=function(t){S.alertasTipo=t;render();};
+window.setAlertasPlazo=function(p){S.alertasPlazo=p;render();};
 window.calcularNuevosMontos=function(fr){
   var input=document.getElementById("ipc-pct-"+fr);
   if(!input)return;
@@ -705,8 +707,7 @@ function renderDashboard(){
   ];
   var plazoOpts=[
     {k:0,l:"Todos"},
-    {k:7,l:"7 días"},
-    {k:30,l:"30 días"},
+    {k:20,l:"20 días"},
     {k:60,l:"60 días"},
     {k:90,l:"90 días"},
   ];
@@ -715,12 +716,12 @@ function renderDashboard(){
     '<span style="font-size:11px;color:var(--g3);margin-right:4px">Tipo:</span>'+
     tipoOpts.map(function(o){
       var on=tipoFiltro===o.k;
-      return '<button class="btn sm'+(on?" on":"")+'" style="'+(on?"background:var(--ce);color:var(--n)":"background:var(--n3);color:var(--g3)")+'" onclick="S.alertasTipo=\''+o.k+'\';render()">'+o.l+(o.n?' <span style="font-size:10px;opacity:.7">('+o.n+')</span>':'')+'</button>';
+      return '<button class="btn sm'+(on?" on":"")+'" style="'+(on?"background:var(--ce);color:var(--n)":"background:var(--n3);color:var(--g3)")+'" onclick="window.setAlertasTipo(this.dataset.key)" data-key="'+o.k+'">'+o.l+(o.n?' <span style="font-size:10px;opacity:.7">('+o.n+')</span>':'')+'</button>';
     }).join("")+
     '<span style="font-size:11px;color:var(--g3);margin-left:12px;margin-right:4px">Plazo:</span>'+
     plazoOpts.map(function(o){
       var on=plazoFiltro===o.k;
-      return '<button class="btn sm'+(on?" on":"")+'" style="'+(on?"background:var(--na);color:var(--n)":"background:var(--n3);color:var(--g3)")+'" onclick="S.alertasPlazo='+o.k+';render()">'+o.l+'</button>';
+      return '<button class="btn sm'+(on?" on":"")+'" style="'+(on?"background:var(--na);color:var(--n)":"background:var(--n3);color:var(--g3)")+'" onclick="window.setAlertasPlazo(+this.dataset.key)" data-key="'+o.k+'">'+o.l+'</button>';
     }).join("")+
   '</div>';
 
