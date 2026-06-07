@@ -391,14 +391,6 @@ function generarPDFPropietario(p){
 
 // onclick handlers usando data-id para evitar problemas de comillas
 
-function getProxActualizacion(c){
-  if(!c.frecActualizacion||!c.inicio) return null;
-  const base=new Date(c.ultimaActualizacion||c.inicio);
-  const prox=new Date(base);
-  prox.setMonth(prox.getMonth()+(+(c.frecActualizacion||6)));
-  return prox;
-}
-
 function renderIPC(){
   const activos=S.contratos.filter(c=>c.estado==="activo");
   const hoyD=new Date();
