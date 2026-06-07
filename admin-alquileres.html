@@ -515,6 +515,31 @@ async function aplicarIPCGrupo(fr){
   toast(`✅ ${promises.length} contrato(s) actualizados`);
   render();
 }
+
+async function cobrarCuotaDep(cid){
+  const c=S.contratos.find(x=>x._id===cid);if(!c)return;
+  const dep=c.deposito||{};
+  const montoFaltante=dep.pendiente||0;
+  if(!montoFaltante){toast("El depósito ya está completo",false);return;}
+  if(!confirm(`¿Registrar 2da cuota depósito de ${moneda(montoFaltante)} para ${c.inquilino}?`))return;
+  const nuevoDeposito={...dep,pagado:(dep.pagado||0)+montoFaltante,pendiente:0,pagadas:2,completo:true};
+  await fbUpd("contratos",cid,{deposito:nuevoDeposito});
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,deposito:nuevoDeposito}:x);
+  toast("2da cuota depósito registrada ✓");render();
+}
+
+async function cobrarCuotaHon(cid){
+  const c=S.contratos.find(x=>x._id===cid);if(!c)return;
+  const hon=c.honorarios||{};
+  const montoFaltante=hon.pendiente||0;
+  if(!montoFaltante){toast("Los honorarios ya están completos",false);return;}
+  if(!confirm(`¿Registrar 2da cuota honorarios de ${moneda(montoFaltante)} para ${c.inquilino}?`))return;
+  const nuevosHon={...hon,pagado:(hon.pagado||0)+montoFaltante,pendiente:0,pagadas:2,completo:true};
+  await fbUpd("contratos",cid,{honorarios:nuevosHon});
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,honorarios:nuevosHon}:x);
+  toast("2da cuota honorarios registrada ✓");render();
+}
+
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -524,7 +549,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
@@ -950,7 +975,7 @@ function renderInquilinos(){
     const pendDep=ca.some(c=>(c.deposito||{}).pendiente>0);
     const pendHon=ca.some(c=>(c.honorarios||{}).pendiente>0);
     const alertaChip=(pendDep||pendHon)?`<span style="background:rgba(231,76,60,.15);color:#ff7b6b;font-size:9px;padding:2px 6px;border-radius:10px;margin-left:4px">${[pendDep?"dep.":"",pendHon?"hon.":""].filter(Boolean).join("/")} pend.</span>`:"";
-    return `<tr class="cl" onclick="S.inquilinoActivo=${JSON.stringify({...i,contratos:ca})};render()">
+    return `<tr class="cl" data-action="abrirInquilino" data-nombre="${i.nombre||""}">
       <td class="tdm">${i.nombre||""}${alertaChip}</td>
       <td>${i.dni||"—"}</td>
       <td>${i.telefono||"—"}</td>
