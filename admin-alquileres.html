@@ -756,6 +756,122 @@ async function setupGuardar(){
   toast(`✅ ${ok} actualizado(s)`);
   render();
 }
+
+// ── HISTORIAL DE PROPIEDAD ──────────────────────────────────────────────────
+const S_HIST = {};  // cache: { propId: [{_id, fecha, desc, creadoEn}] }
+
+function propId(c){
+  // Usamos la dirección como ID de propiedad (normalizada)
+  return (c.propiedadId||c.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+}
+
+async function cargarHistorialProp(pid){
+  if(S_HIST[pid]) return;
+  try{
+    const snap = await getDocs(collection(db,"historial_prop"));
+    const todos = snap.docs.map(d=>({...d.data(),_id:d.id}));
+    // Agrupar por propiedadId en el cache
+    todos.forEach(e=>{
+      const k=e.propiedadId;
+      if(!S_HIST[k]) S_HIST[k]=[];
+      S_HIST[k].push(e);
+    });
+    // Asegurar que el pid buscado quede inicializado aunque no tenga entradas
+    if(!S_HIST[pid]) S_HIST[pid]=[];
+    // Ordenar cada grupo por fecha desc
+    Object.keys(S_HIST).forEach(k=>{
+      S_HIST[k].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+    });
+  }catch(e){ S_HIST[pid]=[]; }
+}
+
+async function agregarHistorialProp(pid){
+  const elFecha = document.getElementById("hp-fecha-"+pid);
+  const elDesc  = document.getElementById("hp-desc-"+pid);
+  if(!elFecha||!elDesc) return;
+  const fecha = elFecha.value;
+  const desc  = elDesc.value.trim();
+  if(!desc){ toast("Escribí una descripción",false); return; }
+  const data = {propiedadId:pid, fecha, descripcion:desc, creadoEn:Date.now()};
+  const id = await fbAdd("historial_prop", data);
+  if(id){
+    if(!S_HIST[pid]) S_HIST[pid]=[];
+    S_HIST[pid].unshift({...data,_id:id});
+    elDesc.value="";
+    // Re-render solo la tabla inline sin re-renderizar todo
+    renderHistPropInline(pid);
+    toast("Registrado ✓");
+  }
+}
+
+async function eliminarHistorialProp(id, pid){
+  if(!confirm("¿Eliminar este registro?")) return;
+  try{
+    await updateDoc(doc(db,"historial_prop",id),{_eliminado:true});
+  }catch(e){}
+  if(S_HIST[pid]) S_HIST[pid] = S_HIST[pid].filter(e=>e._id!==id);
+  renderHistPropInline(pid);
+}
+
+function renderHistPropInline(pid){
+  const el = document.getElementById("hp-tabla-"+pid);
+  if(!el) return;
+  const entradas = (S_HIST[pid]||[]).filter(e=>!e._eliminado);
+  if(!entradas.length){
+    el.innerHTML=`<p style="font-size:11px;color:var(--gris3);padding:8px 0">Sin registros todavía.</p>`;
+    return;
+  }
+  el.innerHTML=`<div class="tw" style="margin-top:8px"><table>
+    <thead><tr><th style="width:110px">Fecha</th><th>Descripción</th><th style="width:40px"></th></tr></thead>
+    <tbody>${entradas.map(e=>`<tr>
+      <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
+      <td style="font-size:12px">${e.descripcion||""}</td>
+      <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
+        onclick="eliminarHistorialProp('${e._id}','${pid}')">✕</button></td>
+    </tr>`).join("")}
+    </tbody>
+  </table></div>`;
+}
+
+function renderSeccionHistorialProp(c){
+  const pid = propId(c);
+  if(!pid) return "";
+  // Cargar en segundo plano y re-renderizar la tabla inline cuando lleguen los datos
+  if(!S_HIST[pid]){
+    cargarHistorialProp(pid).then(()=>renderHistPropInline(pid));
+  }
+  const entradas = (S_HIST[pid]||[]).filter(e=>!e._eliminado);
+  const tablaHTML = entradas.length
+    ? `<div class="tw" style="margin-top:8px"><table>
+        <thead><tr><th style="width:110px">Fecha</th><th>Descripción</th><th style="width:40px"></th></tr></thead>
+        <tbody>${entradas.map(e=>`<tr>
+          <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
+          <td style="font-size:12px">${e.descripcion||""}</td>
+          <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
+            onclick="eliminarHistorialProp('${e._id}','${pid}')">✕</button></td>
+        </tr>`).join("")}
+        </tbody>
+      </table></div>`
+    : `<p style="font-size:11px;color:var(--gris3);padding:8px 0">Sin registros todavía.</p>`;
+
+  return `
+  <div class="fsec" style="margin-top:4px">
+    <div class="fsec-t">🏠 Historial de la propiedad <span style="font-weight:400;color:var(--gris3);font-size:10px">— ${c.direccion||""} · persiste entre inquilinos</span></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+      <div><label class="fl">Fecha</label>
+        <input id="hp-fecha-${pid}" class="inp" type="date" value="${hoy()}" style="width:150px">
+      </div>
+      <div style="flex:1;min-width:220px"><label class="fl">Descripción del evento</label>
+        <input id="hp-desc-${pid}" class="inp" style="width:100%"
+          placeholder="Ej: Se cambió canilla cocina, plomero Pérez"
+          onkeydown="if(event.key==='Enter')agregarHistorialProp('${pid}')">
+      </div>
+      <button class="btn naranja" style="padding:8px 14px;height:36px"
+        onclick="agregarHistorialProp('${pid}')">+ Agregar</button>
+    </div>
+    <div id="hp-tabla-${pid}">${tablaHTML}</div>
+  </div>`;
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1336,6 +1452,7 @@ function renderModalDetalle(){
       <div class="tw"><table><thead><tr><th>Período</th><th>Monto</th><th>Estado</th><th>Fecha cobro</th><th>Comprobantes</th></tr></thead>
       <tbody>${pagosHtml}</tbody></table></div>
     </div>`:""}
+    ${renderSeccionHistorialProp(c)}
     <div class="fa">
       <button class="btn" data-action="closeModal">Cancelar</button>
       <button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" onclick="finalizarContrato(''+S.contratoActivo._id+'')">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
