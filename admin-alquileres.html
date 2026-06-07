@@ -157,7 +157,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},
   presencia:[]
 };
 
@@ -872,6 +872,52 @@ function renderSeccionHistorialProp(c){
     <div id="hp-tabla-${pid}">${tablaHTML}</div>
   </div>`;
 }
+
+// ── ITEMS DE COBRO (fijos, variables, saldo) ────────────────────────────────
+function addItemCobro(tipo){
+  const defaults={fijo:{desc:"",monto:0},variable:{desc:"",monto:0},saldo:{desc:"Saldo mes anterior",monto:0}};
+  S.itemsCobro.push({tipo,desc:defaults[tipo]?.desc||"",monto:defaults[tipo]?.monto||0});
+  render();
+}
+function removeItemCobro(i){
+  S.itemsCobro.splice(i,1);
+  render();
+}
+function updItemCobro(i,field,val){
+  if(S.itemsCobro[i]) S.itemsCobro[i][field] = field==="monto"?+(val||0):val;
+  // Actualizar resumen sin re-render completo
+  updateResumen();
+}
+function updateResumen(){
+  const el=document.getElementById("cobro-resumen");
+  if(!el||!S.contratoActivo)return;
+  const c=S.contratoActivo;
+  const alqEl=document.getElementById("cobro-alquiler");
+  const alq=alqEl?+(alqEl.value||0):+(S.form.alquiler||0);
+  // Leer items del DOM para tener valores actualizados
+  document.querySelectorAll(".item-cobro-row").forEach((row,i)=>{
+    const dEl=row.querySelector(".item-desc");
+    const mEl=row.querySelector(".item-monto");
+    if(dEl&&S.itemsCobro[i])S.itemsCobro[i].desc=dEl.value;
+    if(mEl&&S.itemsCobro[i])S.itemsCobro[i].monto=+(mEl.value||0);
+  });
+  const totalItems=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
+  const totalInq=alq+totalItems;
+  const com=Math.round(alq*(c.comisionAgencia||5)/100);
+  const netoP=alq-com;
+  const filas=S.itemsCobro.map(it=>{
+    const neg=(it.monto||0)<0;
+    const color=neg?"#ff7b6b":it.tipo==="saldo"?"var(--naranja)":"var(--celeste)";
+    return `<div class="rrow" style="color:${color}"><span>${it.desc||it.tipo}</span><span>${neg?"":"+"}${moneda(it.monto||0)}</span></div>`;
+  }).join("");
+  el.innerHTML=
+    `<div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>`+
+    filas+
+    `<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>`+
+    `<div style="height:6px"></div>`+
+    `<div class="rrow" style="color:#ff7b6b"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>`+
+    `<div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>`;
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -881,7 +927,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
@@ -922,7 +968,7 @@ function renderResumen(){
   const f=S.form;
   const alq=+(f.alquiler||c.alquilerBase||0);
   const extras=(c.extras||[]);
-  const totalExtras=extras.reduce((s,e)=>s+(+(e.monto||0)),0);
+  const totalExtras=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalExtras;
   const com=Math.round(alq*(c.comisionAgencia||5)/100);
   const netoP=alq-com;
@@ -950,6 +996,8 @@ function abrirContrato(cid){
   if(!S.contratoActivo)return;
   S.modal="contrato_detalle";
   S.form={mes:mesActual(),alquiler:S.contratoActivo.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
+  // Inicializar items con los gastos fijos del contrato
+  S.itemsCobro=(S.contratoActivo.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
   render();
 }
 
@@ -964,14 +1012,23 @@ async function registrarPago(){
   const c=S.contratoActivo;if(!c)return;
   const f=S.form;
   if(!f.mes)return toast("Ingresá el período",false);
-  const extras=(c.extras||[]).map(e=>({desc:e.desc,monto:+(e.monto||0)}));
-  const totalExtras=extras.reduce((s,e)=>s+e.monto,0);
-  const alq=+(f.alquiler||c.alquilerBase||0);
-  const totalInq=alq+totalExtras;
+  // Leer alquiler del DOM por si fue editado
+  const alqEl=document.getElementById("cobro-alquiler");
+  const alq=alqEl?+(alqEl.value||0):+(f.alquiler||c.alquilerBase||0);
+  // Leer items del DOM
+  document.querySelectorAll(".item-cobro-row").forEach((row,i)=>{
+    const dEl=row.querySelector(".item-desc");
+    const mEl=row.querySelector(".item-monto");
+    if(dEl&&S.itemsCobro[i])S.itemsCobro[i].desc=dEl.value;
+    if(mEl&&S.itemsCobro[i])S.itemsCobro[i].monto=+(mEl.value||0);
+  });
+  const items=S.itemsCobro.map(it=>({tipo:it.tipo,desc:it.desc,monto:+(it.monto||0)}));
+  const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
+  const totalInq=alq+totalItems;
   const com=Math.round(alq*(c.comisionAgencia||5)/100);
   const neto=alq-com;
   const nro=f.comprobante||nroRecibo();
-  const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,extras,totalExtras,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia||5};
+  const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia||5};
   const id=await fbAdd("pagos",data);
   if(id){
     S.pagos.unshift({...data,_id:id});
@@ -1367,7 +1424,7 @@ function renderModalDetalle(){
   const f=S.form;
   const alq=+(f.alquiler||c.alquilerBase||0);
   const extras=(c.extras||[]);
-  const totalExtras=extras.reduce((s,e)=>s+(+(e.monto||0)),0);
+  const totalExtras=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalExtras;
   const com=Math.round(alq*(c.comisionAgencia||5)/100);
   const netoP=alq-com;
@@ -1431,16 +1488,41 @@ function renderModalDetalle(){
       <div class="fsec-t">Registrar pago del mes</div>
       <div class="fg">
         <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
-        <div><label class="fl">Alquiler ($)</label><input class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" data-action="setAlquiler"></div>
+        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" oninput="S.form.alquiler=+this.value;updateResumen()"></div>
         <div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="${f.fechaCobro||hoy()}" data-action="setForm" data-key="fechaCobro"></div>
         <div><label class="fl">N° Comprobante</label><input class="inp" style="width:100%" placeholder="Auto" data-action="setForm" data-key="comprobante"></div>
       </div>
-      <div class="rsum">
-        <div style="font-size:11px;font-weight:600;color:var(--celeste);margin-bottom:7px;letter-spacing:.5px">RESUMEN DEL COBRO</div>
-        <div id="rsum-content">
+
+      <div style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label class="fl" style="margin:0">Items del cobro</label>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" data-action="addItem" data-tipo="fijo" style="background:rgba(75,200,232,.12);color:var(--celeste)">+ Fijo (TGI, agua...)</button>
+            <button class="btn sm" data-action="addItem" data-tipo="variable" style="background:rgba(245,166,35,.12);color:var(--naranja)">+ Variable</button>
+            <button class="btn sm" data-action="addItem" data-tipo="saldo" style="background:rgba(231,76,60,.12);color:#ff7b6b">± Saldo</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${S.itemsCobro.map((it,i)=>{
+            const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)"};
+            const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo"};
+            return `<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:${colors[it.tipo]||colors.variable};border-radius:6px;padding:7px 10px">
+              <span style="font-size:10px;font-weight:600;color:var(--gris3);min-width:48px;text-transform:uppercase">${labels[it.tipo]||it.tipo}</span>
+              <input class="item-desc inp" value="${it.desc||""}" placeholder="Descripción" oninput="updItemCobro(${i},'desc',this.value)" style="flex:1">
+              <input class="item-monto inp" value="${it.monto||""}" type="number" placeholder="$" oninput="updItemCobro(${i},'monto',this.value)" style="width:110px">
+              <button class="btn sm" data-action="removeItem" data-id="${i}" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>
+            </div>`;
+          }).join("")}
+          ${S.itemsCobro.length===0?`<p style="font-size:11px;color:var(--gris3);padding:4px 0">Sin items extra. Podés agregar TGI, agua, gastos variables o saldo del mes anterior.</p>`:""}
+        </div>
+      </div>
+
+      <div class="rsum" style="margin-top:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--celeste);margin-bottom:8px;letter-spacing:.5px">RESUMEN DEL COBRO</div>
+        <div id="cobro-resumen">
           <div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>
-          ${extras.map(e=>`<div class="rrow blue"><span>${e.desc}</span><span>${moneda(e.monto||0)}</span></div>`).join("")}
-          <div class="rrow" style="font-weight:600;font-size:13px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>
+          ${S.itemsCobro.map(it=>{const neg=(it.monto||0)<0;const col=neg?"#ff7b6b":it.tipo==="saldo"?"var(--naranja)":"var(--celeste)";return `<div class="rrow" style="color:${col}"><span>${it.desc||it.tipo}</span><span>${neg?"":"+"}${moneda(it.monto||0)}</span></div>`;}).join("")}
+          <div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>
           <div style="height:6px"></div>
           <div class="rrow red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>
           <div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>
