@@ -606,13 +606,32 @@ async function eliminarPago(pid){
 // ── CAJA ────────────────────────────────────────────────────────────────────
 var S_CAJA={tab:"todos",movimientos:[],cargado:false};
 
-async function cargarCaja(){
+async function cargarCaja(limit=120){
   if(S_CAJA.cargado)return;
   try{
-    const snap=await getDocs(collection(db,"caja"));
+    // Cargar los últimos `limit` movimientos ordenados por fecha desc
+    const q=query(collection(db,"caja"),orderBy("creadoEn","desc"),firestoreLimit(limit));
+    const snap=await getDocs(q);
     S_CAJA.movimientos=snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+    S_CAJA.total=snap.size;
     S_CAJA.cargado=true;
-  }catch(e){toast("Error cargando caja",false);}
+    S_CAJA.limit=limit;
+  }catch(e){
+    // Fallback sin query compleja si falla el índice
+    try{
+      const snap2=await getDocs(collection(db,"caja"));
+      S_CAJA.movimientos=snap2.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,limit);
+      S_CAJA.total=snap2.size;
+      S_CAJA.cargado=true;
+      S_CAJA.limit=limit;
+    }catch(e2){toast("Error cargando caja",false);}
+  }
+}
+
+async function cargarMasCaja(){
+  S_CAJA.cargado=false;
+  await cargarCaja((S_CAJA.limit||120)+120);
+  render();
 }
 
 function renderModalCaja(){
@@ -661,7 +680,7 @@ async function guardarMovCaja(){
 }
 
 function renderCaja(){
-  if(!S_CAJA.cargado){cargarCaja().then(()=>render());return `<div class="loading"><div class="spinner"></div>Cargando caja...</div>`;}
+  if(!S_CAJA.cargado){cargarCaja().then(()=>render());return '<div class="loading"><div class="spinner"></div>Cargando caja...</div>';}
   const movs=S_CAJA.movimientos;
   const mesHoy=mesActual();
   const comAuto=S.pagos.filter(p=>p.estado==="cobrado"&&p.mes===mesHoy).reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
@@ -675,47 +694,39 @@ function renderCaja(){
   const tab=S_CAJA.tab||"todos";
   const fil=tab==="todos"?movs:movs.filter(m=>m.tipo===tab);
   const tabs=[{k:"todos",l:"Todos"},{k:"honorario",l:"Honorarios"},{k:"gasto",l:"Gastos"},{k:"retiro",l:"Retiros"},{k:"adelanto",l:"Adelantos"}];
-  const tabsH=tabs.map(t=>`<button class="btn sm" data-action="cajaTab" data-tab="${t.k}"
-    style="${tab===t.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}">${t.l}</button>`).join("");
+  const tabsH=tabs.map(t=>'<button class="btn sm" data-action="cajaTab" data-tab="'+t.k+'" style="'+(tab===t.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)")+'">'+t.l+'</button>').join("");
   const movsH=fil.map(m=>{
     const pos=m.tipo==="honorario"||m.tipo==="ingreso";
     const lbl={gasto:"Gasto",retiro:"Retiro Matías",adelanto:"Adelanto",honorario:"Honorario",ingreso:"Ingreso"}[m.tipo]||m.tipo;
     let ex="";
-    if(m.inquilino) ex+=" · "+m.inquilino;
-    if(m.tipo==="adelanto") ex+=" "+(m.recuperado
-      ?`<span style="color:#5ddb8a;font-size:10px">✓ Recuperado</span>`
-      :`<span style="color:var(--naranja);font-size:10px">Pendiente</span>`);
-    if(m.tipo==="honorario"&&m.cuotas>1) ex+=` · Cuota ${m.cuotaNum||1}/${m.cuotas}`;
-    const btnElim=`<button class="btn sm" data-action="cajaEliminar" data-id="${m._id}"
-      style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 7px;font-size:10px">✕</button>`;
-    const btnRec=m.tipo==="adelanto"&&!m.recuperado
-      ?`<button class="btn sm" data-action="cajaRecuperar" data-id="${m._id}"
-        style="background:rgba(39,174,96,.15);color:#5ddb8a;padding:3px 7px;font-size:10px;margin-right:4px">✓ Recuperado</button>`
-      :"";
-    return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:10px 12px;gap:8px">
-      <div style="flex:1">
-        <div style="font-size:12px;font-weight:500">${lbl} — ${m.concepto}${ex}</div>
-        ${m.detalle?`<div style="font-size:10px;color:var(--gris3)">${m.detalle}</div>`:""}
-      </div>
-      <div style="font-size:14px;font-weight:700;color:${pos?"#5ddb8a":"#ff7b6b"}">${pos?"+":"-"}${moneda(m.monto||0)}</div>
-      <div style="font-size:10px;color:var(--gris3);white-space:nowrap">${m.fecha||""}</div>
-      ${btnRec}${btnElim}
-    </div>`;
+    if(m.inquilino)ex+=" · "+m.inquilino;
+    if(m.tipo==="adelanto")ex+=" "+(m.recuperado?'<span style="color:#5ddb8a;font-size:10px">✓ Recuperado</span>':'<span style="color:var(--naranja);font-size:10px">Pendiente</span>');
+    if(m.tipo==="honorario"&&m.cuotas>1)ex+=" · Cuota "+(m.cuotaNum||1)+"/"+m.cuotas;
+    const btnElim='<button class="btn sm" data-action="cajaEliminar" data-id="'+m._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 7px;font-size:10px">✕</button>';
+    const btnRec=(m.tipo==="adelanto"&&!m.recuperado)?'<button class="btn sm" data-action="cajaRecuperar" data-id="'+m._id+'" style="background:rgba(39,174,96,.15);color:#5ddb8a;padding:3px 7px;font-size:10px;margin-right:4px">✓ Recuperado</button>':"";
+    return '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:10px 12px;gap:8px">'
+      +'<div style="flex:1"><div style="font-size:12px;font-weight:500">'+lbl+" — "+m.concepto+ex+'</div>'+(m.detalle?'<div style="font-size:10px;color:var(--gris3)">'+m.detalle+'</div>':"")+'</div>'
+      +'<div style="font-size:14px;font-weight:700;color:'+(pos?"#5ddb8a":"#ff7b6b")+'">'+(pos?"+":"-")+moneda(m.monto||0)+'</div>'
+      +'<div style="font-size:10px;color:var(--gris3);white-space:nowrap">'+(m.fecha||"")+'</div>'
+      +btnRec+btnElim+'</div>';
   }).join("");
-  return `<div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
-    <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Saldo disponible</div><div class="kval" style="font-size:20px;color:var(--celeste)">${moneda(saldo)}</div></div>
-    <div class="kcard"><div class="klbl">Comisiones ${mesNombre(mesHoy)}</div><div class="kval" style="font-size:20px;color:#5ddb8a">${moneda(comAuto)}</div><div class="ksub">${pctCom}% del objetivo</div></div>
-    <div class="kcard"><div class="klbl">Adelantos pendientes</div><div class="kval" style="font-size:20px;color:#ff7b6b">${moneda(adelPend)}</div></div>
-  </div>
-  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="honorario">+ Honorario</button>
-    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="gasto">+ Gasto</button>
-    <button class="btn sm naranja" data-action="cajaAbrirModal" data-tipo="retiro">+ Retiro Matías</button>
-    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="adelanto"
-      style="background:rgba(245,166,35,.15);color:var(--naranja)">+ Adelanto inquilino</button>
-  </div>
-  <div style="display:flex;gap:6px;margin-bottom:16px">${tabsH}</div>
-  <div style="display:flex;flex-direction:column;gap:6px">${movsH||`<div class="empty">Sin movimientos</div>`}</div>`;
+  const btnMas=(S_CAJA.total||0)>movs.length
+    ?'<button class="btn" data-action="cajaMas" style="margin-top:12px;width:100%;background:var(--negro3);color:var(--gris3)">Cargar más ('+((S_CAJA.total||0)-movs.length)+' movimientos más)</button>'
+    :"";
+  return '<div class="kgrid" style="grid-template-columns:repeat(3,1fr)">'
+    +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Saldo disponible</div><div class="kval" style="font-size:20px;color:var(--celeste)">'+moneda(saldo)+'</div></div>'
+    +'<div class="kcard"><div class="klbl">Comisiones '+mesNombre(mesHoy)+'</div><div class="kval" style="font-size:20px;color:#5ddb8a">'+moneda(comAuto)+'</div><div class="ksub">'+pctCom+'% del objetivo</div></div>'
+    +'<div class="kcard"><div class="klbl">Adelantos pendientes</div><div class="kval" style="font-size:20px;color:#ff7b6b">'+moneda(adelPend)+'</div></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="honorario">+ Honorario</button>'
+    +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="gasto">+ Gasto</button>'
+    +'<button class="btn sm naranja" data-action="cajaAbrirModal" data-tipo="retiro">+ Retiro Matías</button>'
+    +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="adelanto" style="background:rgba(245,166,35,.15);color:var(--naranja)">+ Adelanto inquilino</button>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:16px">'+tabsH+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:6px">'+(movsH||'<div class="empty">Sin movimientos</div>')+'</div>'
+    +btnMas;
 }
 
 
@@ -1105,7 +1116,7 @@ document.addEventListener("click",e=>{
   else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
-  else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
+  else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
   else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
@@ -1487,7 +1498,8 @@ function renderLiquidaciones(){
     const alq=p.alquiler||p.monto||0;
     const com=p.comision||Math.round(alq*(p.comisionAgencia||5)/100);
     const neto=p.netoPropiertario||(alq-com);
-    const extH=(p.extras||[]).map(e=>`<div class="lrow lrow-blue"><span>${e.desc}</span><span>${moneda(e.monto)}</span></div>`).join("");
+    const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:'fijo',desc:e.desc,monto:+(e.monto||0)}));
+    const extH=items.filter(it=>(it.monto||0)!==0).map(it=>{const neg=(it.monto||0)<0;return '<div class="lrow '+(neg?'lrow-red':'lrow-blue')+'"><span>'+(it.desc||it.tipo)+'</span><span>'+(neg?'':'')+moneda(it.monto||0)+'</span></div>';}).join("");
     return `<div class="lcard">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div><div style="font-size:14px;font-weight:600">${p.direccion||""}</div>
@@ -1496,7 +1508,7 @@ function renderLiquidaciones(){
       </div>
       <div class="lrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>
       ${extH}
-      <div class="lrow"><span><strong>Total cobrado al inquilino</strong></span><span><strong>${moneda(p.totalInquilino||alq)}</strong></span></div>
+      <div class="lrow"><span><strong>Total cobrado al inquilino</strong></span><span><strong>${moneda(p.totalInquilino||alq+((p.extras||[]).reduce((s,e)=>s+(+(e.monto||0)),0)))}</strong></span></div>
       <div class="lrow lrow-red"><span>Comisión agencia (${p.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>
       <div class="lrow tot"><span>A transferir al propietario</span><span class="lrow-green">${moneda(neto)}</span></div>
       <div style="margin-top:10px;display:flex;gap:6px">
@@ -1507,7 +1519,7 @@ function renderLiquidaciones(){
   }).join("");
   const totAlq=pagosMes.reduce((s,p)=>s+(p.alquiler||p.monto||0),0);
   const totCom=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||p.monto||0)*(p.comisionAgencia||5)/100)),0);
-  const totExtras=pagosMes.reduce((s,p)=>s+(p.totalExtras||0),0);
+  const totExtras=pagosMes.reduce((s,p)=>{const items=p.itemsCobro||(p.extras||[]).map(e=>({monto:+(e.monto||0)}));return s+items.reduce((si,it)=>si+(it.monto||0),0);},0);
   const resumen=pagosMes.length>1?`<div class="lcard" style="border-color:var(--celeste);background:rgba(75,200,232,.04)">
     <div class="lrow"><span>Total alquileres</span><span>${moneda(totAlq)}</span></div>
     <div class="lrow lrow-blue"><span>Total extras</span><span>${moneda(totExtras)}</span></div>
