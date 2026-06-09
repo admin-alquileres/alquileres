@@ -675,20 +675,31 @@ function renderCaja(){
   const tab=S_CAJA.tab||"todos";
   const fil=tab==="todos"?movs:movs.filter(m=>m.tipo===tab);
   const tabs=[{k:"todos",l:"Todos"},{k:"honorario",l:"Honorarios"},{k:"gasto",l:"Gastos"},{k:"retiro",l:"Retiros"},{k:"adelanto",l:"Adelantos"}];
-  const tabsH=tabs.map(t=>`<button class="btn sm" style="${tab===t.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" onclick="S_CAJA.tab='${t.k}';render()">${t.l}</button>`).join("");
+  const tabsH=tabs.map(t=>`<button class="btn sm" data-action="cajaTab" data-tab="${t.k}"
+    style="${tab===t.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}">${t.l}</button>`).join("");
   const movsH=fil.map(m=>{
     const pos=m.tipo==="honorario"||m.tipo==="ingreso";
     const lbl={gasto:"Gasto",retiro:"Retiro Matías",adelanto:"Adelanto",honorario:"Honorario",ingreso:"Ingreso"}[m.tipo]||m.tipo;
     let ex="";
-    if(m.inquilino)ex+=" · "+m.inquilino;
-    if(m.tipo==="adelanto")ex+=" "+(m.recuperado?`<span style="color:#5ddb8a;font-size:10px">✓ Recuperado</span>`:`<span style="color:var(--naranja);font-size:10px">Pendiente</span>`);
-    const acc=`<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 7px;font-size:10px" onclick="eliminarMovCaja('${m._id}')">✕</button>`;
-    const rec=m.tipo==="adelanto"&&!m.recuperado?`<button class="btn sm" style="background:rgba(39,174,96,.15);color:#5ddb8a;padding:3px 7px;font-size:10px;margin-right:4px" onclick="marcarRecuperado('${m._id}')">✓ Recuperado</button>`:"";
+    if(m.inquilino) ex+=" · "+m.inquilino;
+    if(m.tipo==="adelanto") ex+=" "+(m.recuperado
+      ?`<span style="color:#5ddb8a;font-size:10px">✓ Recuperado</span>`
+      :`<span style="color:var(--naranja);font-size:10px">Pendiente</span>`);
+    if(m.tipo==="honorario"&&m.cuotas>1) ex+=` · Cuota ${m.cuotaNum||1}/${m.cuotas}`;
+    const btnElim=`<button class="btn sm" data-action="cajaEliminar" data-id="${m._id}"
+      style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 7px;font-size:10px">✕</button>`;
+    const btnRec=m.tipo==="adelanto"&&!m.recuperado
+      ?`<button class="btn sm" data-action="cajaRecuperar" data-id="${m._id}"
+        style="background:rgba(39,174,96,.15);color:#5ddb8a;padding:3px 7px;font-size:10px;margin-right:4px">✓ Recuperado</button>`
+      :"";
     return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:10px 12px;gap:8px">
-      <div style="flex:1"><div style="font-size:12px;font-weight:500">${lbl} — ${m.concepto}${ex}</div>${m.detalle?`<div style="font-size:10px;color:var(--gris3)">${m.detalle}</div>`:""}</div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:500">${lbl} — ${m.concepto}${ex}</div>
+        ${m.detalle?`<div style="font-size:10px;color:var(--gris3)">${m.detalle}</div>`:""}
+      </div>
       <div style="font-size:14px;font-weight:700;color:${pos?"#5ddb8a":"#ff7b6b"}">${pos?"+":"-"}${moneda(m.monto||0)}</div>
-      <div style="font-size:10px;color:var(--gris3)">${m.fecha||""}</div>
-      ${rec}${acc}
+      <div style="font-size:10px;color:var(--gris3);white-space:nowrap">${m.fecha||""}</div>
+      ${btnRec}${btnElim}
     </div>`;
   }).join("");
   return `<div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
@@ -697,14 +708,16 @@ function renderCaja(){
     <div class="kcard"><div class="klbl">Adelantos pendientes</div><div class="kval" style="font-size:20px;color:#ff7b6b">${moneda(adelPend)}</div></div>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-    <button class="btn sm" onclick="S.modal='caja';S.form={tipo:'honorario',fecha:hoy()};render()">+ Honorario</button>
-    <button class="btn sm" onclick="S.modal='caja';S.form={tipo:'gasto',fecha:hoy()};render()">+ Gasto</button>
-    <button class="btn sm naranja" onclick="S.modal='caja';S.form={tipo:'retiro',fecha:hoy()};render()">+ Retiro Matías</button>
-    <button class="btn sm" style="background:rgba(245,166,35,.15);color:var(--naranja)" onclick="S.modal='caja';S.form={tipo:'adelanto',fecha:hoy()};render()">+ Adelanto inquilino</button>
+    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="honorario">+ Honorario</button>
+    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="gasto">+ Gasto</button>
+    <button class="btn sm naranja" data-action="cajaAbrirModal" data-tipo="retiro">+ Retiro Matías</button>
+    <button class="btn sm" data-action="cajaAbrirModal" data-tipo="adelanto"
+      style="background:rgba(245,166,35,.15);color:var(--naranja)">+ Adelanto inquilino</button>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:16px">${tabsH}</div>
   <div style="display:flex;flex-direction:column;gap:6px">${movsH||`<div class="empty">Sin movimientos</div>`}</div>`;
 }
+
 
 async function marcarRecuperado(id){
   await fbUpd("caja",id,{recuperado:true});
@@ -1089,7 +1102,11 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="cajaEliminar"){eliminarMovCaja(id);}
+  else if(action==="cajaRecuperar"){marcarRecuperado(id);}
+  else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
+  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
