@@ -157,7 +157,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -968,6 +968,118 @@ function updateResumen(){
     `<div class="rrow" style="color:#ff7b6b"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>`+
     `<div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>`;
 }
+
+// ── HISTORIAL DEL INQUILINO ─────────────────────────────────────────────────
+const S_HIST_INQ = {};  // cache: { nombreNorm: [{_id, fecha, nota}] }
+
+function inqKey(nombre){
+  return (nombre||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+}
+
+async function cargarHistorialInq(nombre){
+  const k=inqKey(nombre);
+  if(S_HIST_INQ[k]) return;
+  try{
+    const snap=await getDocs(collection(db,"historial_inq"));
+    snap.docs.forEach(d=>{
+      const e={...d.data(),_id:d.id};
+      const ek=inqKey(e.inquilino||"");
+      if(!S_HIST_INQ[ek])S_HIST_INQ[ek]=[];
+      S_HIST_INQ[ek].push(e);
+    });
+    if(!S_HIST_INQ[k])S_HIST_INQ[k]=[];
+    Object.keys(S_HIST_INQ).forEach(kk=>{
+      S_HIST_INQ[kk].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+    });
+  }catch(e){ S_HIST_INQ[k]=[]; }
+}
+
+async function agregarHistorialInq(nombre){
+  const k=inqKey(nombre);
+  const elF=document.getElementById("hi-fecha-"+k);
+  const elN=document.getElementById("hi-nota-"+k);
+  if(!elF||!elN) return;
+  const fecha=elF.value;
+  const nota=elN.value.trim();
+  if(!nota){toast("Escribí una anotación",false);return;}
+  const data={inquilino:nombre,fecha,nota,creadoEn:Date.now()};
+  const id=await fbAdd("historial_inq",data);
+  if(id){
+    if(!S_HIST_INQ[k])S_HIST_INQ[k]=[];
+    S_HIST_INQ[k].unshift({...data,_id:id});
+    elN.value="";
+    renderHistInqInline(nombre);
+    toast("Anotación guardada ✓");
+  }
+}
+
+async function eliminarHistorialInq(id, nombre){
+  if(!confirm("¿Eliminar esta anotación?")) return;
+  try{ await updateDoc(doc(db,"historial_inq",id),{_eliminado:true}); }catch(e){}
+  const k=inqKey(nombre);
+  if(S_HIST_INQ[k]) S_HIST_INQ[k]=S_HIST_INQ[k].filter(e=>e._id!==id);
+  renderHistInqInline(nombre);
+}
+
+function renderHistInqInline(nombre){
+  const k=inqKey(nombre);
+  const el=document.getElementById("hi-tabla-"+k);
+  if(!el) return;
+  const entradas=(S_HIST_INQ[k]||[]).filter(e=>!e._eliminado);
+  if(!entradas.length){
+    el.innerHTML=`<p style="font-size:11px;color:var(--gris3);padding:8px 0">Sin anotaciones todavía.</p>`;
+    return;
+  }
+  el.innerHTML=`<div class="tw" style="margin-top:8px"><table>
+    <thead><tr><th style="width:110px">Fecha</th><th>Anotación</th><th style="width:40px"></th></tr></thead>
+    <tbody>${entradas.map(e=>`<tr>
+      <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
+      <td style="font-size:12px">${e.nota||""}</td>
+      <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
+        onclick="eliminarHistorialInq('${e._id}','${nombre.replace(/'/g,"")}')">✕</button></td>
+    </tr>`).join("")}
+    </tbody>
+  </table></div>`;
+}
+
+function renderSeccionHistorialInq(nombre){
+  const k=inqKey(nombre);
+  if(!S_HIST_INQ[k]){
+    cargarHistorialInq(nombre).then(()=>renderHistInqInline(nombre));
+  }
+  const entradas=(S_HIST_INQ[k]||[]).filter(e=>!e._eliminado);
+  const tablaHTML=entradas.length
+    ?`<div class="tw" style="margin-top:8px"><table>
+        <thead><tr><th style="width:110px">Fecha</th><th>Anotación</th><th style="width:40px"></th></tr></thead>
+        <tbody>${entradas.map(e=>`<tr>
+          <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
+          <td style="font-size:12px">${e.nota||""}</td>
+          <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
+            onclick="eliminarHistorialInq('${e._id}','${nombre.replace(/'/g,"")}')">✕</button></td>
+        </tr>`).join("")}
+        </tbody>
+      </table></div>`
+    :`<p style="font-size:11px;color:var(--gris3);padding:8px 0">Sin anotaciones todavía.</p>`;
+
+  return `<div class="fsec" style="margin-top:4px">
+    <div class="fsec-t">📋 Historial del inquilino
+      <span style="font-weight:400;color:var(--gris3);font-size:10px">— llamados, acuerdos, observaciones</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+      <div><label class="fl">Fecha</label>
+        <input id="hi-fecha-${k}" class="inp" type="date" value="${hoy()}" style="width:150px">
+      </div>
+      <div style="flex:1;min-width:220px"><label class="fl">Anotación</label>
+        <input id="hi-nota-${k}" class="inp" style="width:100%"
+          placeholder="Ej: Llamó para avisar desperfecto en baño, acordamos..."
+          onkeydown="if(event.key==='Enter')agregarHistorialInq('${nombre}')">
+      </div>
+      <button class="btn naranja" style="padding:8px 14px;height:36px"
+        onclick="agregarHistorialInq('${nombre}')">+ Agregar</button>
+    </div>
+    <div id="hi-tabla-${k}">${tablaHTML}</div>
+  </div>`;
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1032,7 +1144,7 @@ function renderResumen(){
 }
 
 // ── ACCIONES ──────────────────────────────────────────────────────────────────
-window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.inquilinoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos"};render();};
+window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.inquilinoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos"};render();};
 function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
 function setLiqMes(v){S.liqMes=v;render();}
@@ -1183,11 +1295,26 @@ function renderDashboard(){
       else if(prox>=proxMesI&&prox<=proxMesF)todas.push({tipo:"ipc",col:"var(--amarillo)",ic:"🔄",t:"Actualizar próximo mes: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR"),dias:du});
       else todas.push({tipo:"ipc",col:"var(--celeste)",ic:"🔄",t:"Actualización próxima: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR")+" (en "+du+" días)",dias:du});}
   });
+  // Alertas depósito y honorarios pendientes
+  S.contratos.filter(c=>c.estado==="activo").forEach(c=>{
+    const dep=c.deposito||{};
+    const hon=c.honorarios||{};
+    if((dep.pendiente||0)>0){
+      todas.push({tipo:"deposito",col:"var(--rojo)",ic:"🏦",
+        t:"Depósito pendiente: "+(c.direccion||""),
+        s:c.inquilino+" · 2da cuota: "+moneda(dep.pendiente),dias:-1});
+    }
+    if((hon.pendiente||0)>0){
+      todas.push({tipo:"honorario",col:"var(--rojo)",ic:"💼",
+        t:"Honorarios pendientes: "+(c.direccion||""),
+        s:c.inquilino+" · 2da cuota: "+moneda(hon.pendiente),dias:-1});
+    }
+  });
   S.pagos.filter(p=>p.estado==="vencido").forEach(p=>{todas.push({tipo:"pago",col:"var(--rojo)",ic:"💸",t:"Pago vencido: "+(p.direccion||""),s:(p.inquilino||"")+" · "+mesNombre(p.mes)+" · "+moneda(p.total||p.monto||0),dias:-1});});
   const tipoF=S.alertasTipo||"todas";const plazoF=+(S.alertasPlazo||30);
   const fil=todas.filter(a=>{if(tipoF!=="todas"&&a.tipo!==tipoF)return false;if(a.dias<0)return true;return plazoF===0||a.dias<=plazoF;}).sort((a,b)=>a.dias-b.dias);
   const cnt={};todas.forEach(a=>{cnt[a.tipo]=(cnt[a.tipo]||0)+1;});
-  const tipoOpts=[{k:"todas",l:"Todas",n:todas.length},{k:"ipc",l:"🔄 IPC",n:cnt.ipc||0},{k:"renovacion",l:"📋 Renovaciones",n:cnt.renovacion||0},{k:"pago",l:"💸 Pagos venc.",n:cnt.pago||0}];
+  const tipoOpts=[{k:"todas",l:"Todas",n:todas.length},{k:"ipc",l:"🔄 IPC",n:cnt.ipc||0},{k:"renovacion",l:"📋 Renovaciones",n:cnt.renovacion||0},{k:"pago",l:"💸 Pagos venc.",n:cnt.pago||0},{k:"deposito",l:"🏦 Depósitos",n:cnt.deposito||0},{k:"honorario",l:"💼 Honorarios",n:cnt.honorario||0}];
   const plazoOpts=[{k:0,l:"Todos"},{k:30,l:"30d"},{k:60,l:"60d"},{k:90,l:"90d"}];
   const filtrosH=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
     ${tipoOpts.map(o=>`<button class="btn sm" style="${tipoF===o.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" onclick="S.alertasTipo='${o.k}';render()">${o.l} (${o.n})</button>`).join("")}
@@ -1264,28 +1391,76 @@ function renderContratos(){
 
 
 function renderCobranzas(){
-  const f=S.filtros;
-  const lista=S.pagos.filter(p=>f.estado==="todos"||p.estado===f.estado);
-  const rows=lista.map(p=>{
-    const extH=(p.extras||[]).map(e=>`<span class="tag">${e.desc}: ${moneda(e.monto)}</span>`).join("");
-    const btnCobrar=(p.estado==="pendiente"||p.estado==="vencido")?`<button class="btn verde sm" data-action="cobrar" data-id="${p._id}">✓ Cobrar</button>`:"";
-    const btnINQ=`<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" onclick="eliminarPago('${p._id}')">🗑️</button><button class="btn sm" data-action="emitirINQ" data-id="${p._id}">📄 Inq</button>`;
-    const btnPROP=`<button class="btn sm" data-action="emitirPROP" data-id="${p._id}">📄 Prop</button>`;
+  const meses=[...new Set(S.pagos.map(p=>p.mes).filter(Boolean))].sort().reverse();
+  const propietarios=[...new Set(S.pagos.map(p=>p.propietarioNombre).filter(Boolean))].sort();
+  const fMes=S.filtros.cobranzaMes||"";
+  const fProp=S.filtros.cobranzaProp||"";
+  const fBuscar=(S.filtros.cobranzaBuscar||"").toLowerCase();
+  const fEstado=S.filtros.cobranzaEstado||"todos";
+
+  let pagos=S.pagos.filter(p=>!p._eliminado);
+  if(fMes) pagos=pagos.filter(p=>p.mes===fMes);
+  if(fProp) pagos=pagos.filter(p=>p.propietarioNombre===fProp);
+  if(fEstado!=="todos") pagos=pagos.filter(p=>p.estado===fEstado);
+  if(fBuscar) pagos=pagos.filter(p=>
+    (p.inquilino||"").toLowerCase().includes(fBuscar)||
+    (p.direccion||"").toLowerCase().includes(fBuscar)
+  );
+  pagos=pagos.sort((a,b)=>(b.mes||"").localeCompare(a.mes||"")||(a.inquilino||"").localeCompare(b.inquilino||""));
+
+  // KPIs del filtro actual
+  const cobrados=pagos.filter(p=>p.estado==="cobrado");
+  const totalCobrado=cobrados.reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
+  const totalCom=cobrados.reduce((s,p)=>s+(p.comision||0),0);
+
+  const mesOpts=`<option value="">Todos los meses</option>`+
+    meses.map(m=>`<option value="${m}"${fMes===m?" selected":""}>${mesNombre(m)}</option>`).join("");
+  const propOpts=`<option value="">Todos los propietarios</option>`+
+    propietarios.map(p=>`<option value="${p}"${fProp===p?" selected":""}>${p}</option>`).join("");
+  const estOpts=[["todos","Todos"],["cobrado","Cobrados"],["pendiente","Pendientes"],["vencido","Vencidos"]]
+    .map(([v,l])=>`<option value="${v}"${fEstado===v?" selected":""}>${l}</option>`).join("");
+
+  const rows=pagos.map(p=>{
+    const items=p.itemsCobro||(p.extras||[]).map(e=>({desc:e.desc,monto:e.monto}));
+    const hasItems=items.length>0;
+    const btnPDF=p.estado==="cobrado"
+      ?`<button class="btn sm" data-action="emitirINQ" data-id="${p._id}">📄 Inq</button>
+        <button class="btn sm" data-action="emitirPROP" data-id="${p._id}">📄 Prop</button>`
+      :"";
+    const btnElim=`<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" onclick="eliminarPago('${p._id}')">🗑️</button>`;
     return `<tr>
-      <td class="tdm">${p.inquilino||""}</td><td>${p.direccion||""}</td>
-      <td>${mesNombre(p.mes)}</td><td>${moneda(p.alquiler||0)}</td>
-      <td>${extH||"—"}</td><td><strong>${moneda(p.totalInquilino||p.total||p.monto||0)}</strong></td>
-      <td>${badge(p.estado)}</td><td>${p.fechaCobro||"—"}</td>
-      <td style="font-size:10px;color:var(--gris3)">${p.comprobante||"—"}</td>
-      <td style="display:flex;gap:4px">${btnCobrar}${btnINQ}${btnPROP}</td>
+      <td class="tdm">${p.inquilino||""}<br><span class="tds">${p.direccion||""}</span></td>
+      <td style="font-size:11px;color:var(--gris3)">${p.propietarioNombre||"—"}</td>
+      <td>${mesNombre(p.mes)}</td>
+      <td>${moneda(p.alquiler||0)}${hasItems?`<div style="font-size:10px;color:var(--gris3)">${items.map(it=>it.desc).join(", ")}</div>`:""}</td>
+      <td style="font-weight:600">${moneda(p.totalInquilino||p.total||p.monto||0)}</td>
+      <td>${badge(p.estado)}</td>
+      <td>${p.fechaCobro||"—"}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">${btnPDF}${btnElim}</td>
     </tr>`;
   }).join("");
-  return `<div class="filters">
-    <select class="inp" data-action="setFiltroEstadoSel"><option value="todos">Todos</option><option value="cobrado">Cobrados</option><option value="pendiente">Pendientes</option><option value="vencido">Vencidos</option></select>
+
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+    <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Pagos en filtro</div><div class="kval">${pagos.length}</div></div>
+    <div class="kcard" style="border-top-color:#5ddb8a"><div class="klbl">Total cobrado</div><div class="kval" style="font-size:17px;color:#5ddb8a">${moneda(totalCobrado)}</div></div>
+    <div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Comisiones</div><div class="kval" style="font-size:17px;color:var(--naranja)">${moneda(totalCom)}</div></div>
   </div>
-  <div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Período</th><th>Alquiler</th><th>Extras</th><th>Total</th><th>Estado</th><th>Fecha</th><th>N° Recibo</th><th>Acciones</th></tr></thead>
-  <tbody>${rows||`<tr><td colspan=10><div class="empty">Sin registros</div></td></tr>`}</tbody></table></div>`;
+  <div class="filters" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <select class="inp" style="width:160px" onchange="S.filtros.cobranzaMes=this.value;render()">${mesOpts}</select>
+    <select class="inp" style="width:180px" onchange="S.filtros.cobranzaProp=this.value;render()">${propOpts}</select>
+    <select class="inp" style="width:130px" onchange="S.filtros.cobranzaEstado=this.value;render()">${estOpts}</select>
+    <input class="inp" placeholder="Buscar inquilino o dirección..." value="${S.filtros.cobranzaBuscar||""}"
+      oninput="S.filtros.cobranzaBuscar=this.value;render()" style="min-width:200px">
+    <button class="btn" onclick="S.filtros.cobranzaMes='';S.filtros.cobranzaProp='';S.filtros.cobranzaBuscar='';S.filtros.cobranzaEstado='todos';render()"
+      style="background:var(--negro3);color:var(--gris3)">✕ Limpiar</button>
+    <span style="font-size:11px;color:var(--gris3);align-self:center">${pagos.length} resultado(s)</span>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>Inquilino / Dirección</th><th>Propietario</th><th>Período</th><th>Alquiler / Items</th><th>Total</th><th>Estado</th><th>Fecha cobro</th><th></th></tr></thead>
+    <tbody>${rows||`<tr><td colspan=8><div class="empty">Sin resultados para este filtro</div></td></tr>`}</tbody>
+  </table></div>`;
 }
+
 
 function renderLiquidaciones(){
   const meses=[...new Set(S.pagos.map(p=>p.mes))].sort().reverse();
@@ -1422,6 +1597,7 @@ function renderInquilinos(){
         ${badge(c.estado||"activo")}
       </div>
     </div>`).join("")}
+    ${renderSeccionHistorialInq(inq.nombre)}
     ${pagosInq.length?`<div class="stitle" style="margin-top:16px">Historial de pagos</div>
     <div class="tw"><table><thead><tr><th>Propiedad</th><th>Período</th><th>Total</th><th>Estado</th><th>Fecha cobro</th></tr></thead>
     <tbody>${pagosH}</tbody></table></div>`:""}`;
