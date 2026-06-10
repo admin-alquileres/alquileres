@@ -184,7 +184,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -1131,6 +1131,111 @@ function renderSeccionHistorialInq(nombre){
     <div id="hi-tabla-${k}">${tablaHTML}</div>
   </div>`;
 }
+
+function renderDeudores(){
+  const hoyD=new Date();
+  const mesHoy=mesActual();
+  const activos=S.contratos.filter(c=>c.estado==="activo");
+
+  // Para cada contrato activo, calcular deuda acumulada
+  const deudores=activos.map(c=>{
+    const pagosC=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado);
+    // Pagos vencidos o pendientes
+    const pendientes=pagosC.filter(p=>p.estado==="pendiente"||p.estado==="vencido");
+    // Meses sin cobrar: desde inicio hasta hoy
+    const mesesSinPago=[];
+    // Generar lista de meses desde inicio del contrato hasta mes actual
+    if(c.inicio){
+      let cur=new Date(c.inicio);
+      const limite=new Date(hoyD.getFullYear(),hoyD.getMonth(),1);
+      while(cur<=limite){
+        const m=cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0");
+        const tienePago=pagosC.some(p=>p.mes===m&&(p.estado==="cobrado"||p.estado==="pagado"));
+        if(!tienePago){
+          const diasAtraso=Math.round((hoyD-cur)/86400000);
+          if(diasAtraso>5) mesesSinPago.push({mes:m,diasAtraso});
+        }
+        cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+      }
+    }
+    const totalPendiente=pendientes.reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
+    const alqMensual=c.alquilerBase||0;
+    const deudaEstimada=mesesSinPago.length*alqMensual;
+    return {c,pendientes,mesesSinPago,totalPendiente,deudaEstimada,mesesAtraso:mesesSinPago.length};
+  }).filter(d=>d.mesesAtraso>0||d.pendientes.length>0)
+    .sort((a,b)=>b.mesesAtraso-a.mesesAtraso||b.deudaEstimada-a.deudaEstimada);
+
+  if(!deudores.length){
+    return '<div class="empty" style="padding:60px 0;font-size:16px">✅ Sin deudores — todos los contratos están al día</div>';
+  }
+
+  const totalDeuda=deudores.reduce((s,d)=>s+d.deudaEstimada,0);
+  const rows=deudores.map(d=>{
+    const c=d.c;
+    const color=d.mesesAtraso>=3?"var(--rojo)":d.mesesAtraso>=2?"var(--naranja)":"var(--amarillo)";
+    const mesesStr=d.mesesSinPago.slice(0,3).map(m=>mesNombre(m.mes)).join(", ")+(d.mesesSinPago.length>3?" y "+(d.mesesSinPago.length-3)+" más":"");
+    return '<tr>'
+      +'<td class="tdm">'+c.inquilino+'<br><span class="tds">'+(c.telefono?'<a href="tel:'+c.telefono+'" style="color:var(--celeste)">'+c.telefono+'</a>':"Sin tel.")+'</span></td>'
+      +'<td>'+c.direccion+'<br><span class="tds">Prop: '+c.propietarioNombre+'</span></td>'
+      +'<td style="font-weight:700;color:'+color+';font-size:16px">'+d.mesesAtraso+' mes'+(d.mesesAtraso!==1?"es":"")+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+'</td>'
+      +'<td style="font-weight:600;color:'+color+'">'+moneda(d.deudaEstimada)+'</td>'
+      +'<td><button class="btn sm primary" data-action="abrirContrato" data-id="'+c._id+'">Ver contrato</button></td>'
+      +'</tr>';
+  }).join("");
+
+  return '<div class="kgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">'
+    +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Contratos con atraso</div><div class="kval" style="color:var(--rojo)">'+deudores.length+'</div><div class="ksub">de '+activos.length+' activos</div></div>'
+    +'<div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Deuda estimada total</div><div class="kval" style="font-size:17px;color:var(--naranja)">'+moneda(totalDeuda)+'</div></div>'
+    +'<div class="kcard" style="border-top-color:var(--amarillo)"><div class="klbl">Peor caso</div><div class="kval">'+deudores[0].mesesAtraso+' mes'+(deudores[0].mesesAtraso!==1?"es":"")+'</div><div class="ksub">'+deudores[0].c.inquilino+'</div></div>'
+    +'</div>'
+    +'<div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Meses atraso</th><th>Períodos</th><th>Deuda estimada</th><th></th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table></div>';
+}
+
+function renderBusquedaGlobal(q){
+  if(!q||q.length<2) return "";
+  const ql=q.toLowerCase();
+  const results=[];
+  // Contratos
+  S.contratos.forEach(c=>{
+    const match=(c.inquilino||"").toLowerCase().includes(ql)
+      ||(c.direccion||"").toLowerCase().includes(ql)
+      ||(c.propietarioNombre||"").toLowerCase().includes(ql)
+      ||(c.dni||"").includes(ql)
+      ||(c.telefono||"").includes(ql);
+    if(match) results.push({tipo:"contrato",ic:"📋",titulo:c.inquilino,sub:(c.direccion||"")+" · "+(c.propietarioNombre||""),id:c._id,badge:badge(c.estado||"activo")});
+  });
+  // Pagos recientes
+  S.pagos.filter(p=>!p._eliminado).slice(0,200).forEach(p=>{
+    const match=(p.inquilino||"").toLowerCase().includes(ql)
+      ||(p.direccion||"").toLowerCase().includes(ql);
+    if(match) results.push({tipo:"pago",ic:"💰",titulo:p.inquilino+" · "+mesNombre(p.mes),sub:(p.direccion||"")+" · "+moneda(p.totalInquilino||p.total||0),id:p._id,badge:badge(p.estado)});
+  });
+  if(!results.length) return '<div style="padding:20px;text-align:center;color:var(--gris3)">Sin resultados para "'+q+'"</div>';
+  const rows=results.slice(0,12).map(r=>'<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-radius:8px;transition:background .15s" onmouseover="this.style.background=\'var(--negro3)\'" onmouseout="this.style.background=\'transparent\'" onclick="'+( r.tipo==="contrato"?"S.busqGlobal='';S.sec='contratos';S.modal='contrato_detalle';S.contratoActivo=S.contratos.find(x=>x._id==='"+r.id+"');S.itemsCobro=(S.contratoActivo&&S.contratoActivo.extras||[]).map(e=>({tipo:'fijo',desc:e.desc,monto:+(e.monto||0)}));render()":"S.busqGlobal='';S.sec='cobranzas';render()" )+'">'
+    +'<span style="font-size:20px">'+r.ic+'</span>'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+r.titulo+'</div><div style="font-size:11px;color:var(--gris3)">'+r.sub+'</div></div>'
+    +r.badge+'</div>').join("");
+  const mas=results.length>12?'<div style="padding:8px 14px;font-size:11px;color:var(--gris3)">+'+(results.length-12)+' resultados más — refiná la búsqueda</div>':"";
+  return rows+mas;
+}
+
+async function renovarContrato(cid){
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return;
+  const nuevoFin=prompt("Nueva fecha de fin del contrato (YYYY-MM-DD):\nActual: "+(c.fin||"sin fecha"),"");
+  if(!nuevoFin)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(nuevoFin)){toast("Formato incorrecto. Usá YYYY-MM-DD",false);return;}
+  const upd={fin:nuevoFin,estado:"activo",fechaRenovacion:hoy(),renovaciones:(c.renovaciones||0)+1};
+  await fbUpd("contratos",cid,upd);
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
+  // Guardar en historial de la propiedad
+  const pid=propId?propId(c):(c.propiedadId||c.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+  if(pid) await fbAdd("historial_prop",{propiedadId:pid,fecha:hoy(),descripcion:"Contrato renovado hasta "+nuevoFin+" · "+c.inquilino,creadoEn:Date.now()});
+  toast("Contrato renovado hasta "+nuevoFin+" ✓");
+  render();
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1140,7 +1245,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
@@ -1211,11 +1316,40 @@ function removeExtra(i){S.formExtras.splice(i,1);render();}
 function abrirContrato(cid){
   S.contratoActivo=S.contratos.find(x=>x._id===cid);
   if(!S.contratoActivo)return;
+  const c=S.contratoActivo;
   S.modal="contrato_detalle";
-  S.form={mes:mesActual(),alquiler:S.contratoActivo.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
-  // Inicializar items con los gastos fijos del contrato
-  S.itemsCobro=(S.contratoActivo.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+  S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
+  // Items fijos del contrato
+  const itemsFijos=(c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+  // Calcular saldo del mes anterior automáticamente
+  const mesPrev=mesPrevio(mesActual());
+  const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
+    .sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
+  const itemsSaldo=[];
+  if(pagoPrev){
+    const totalCobrado=pagoPrev.totalInquilino||pagoPrev.total||pagoPrev.monto||0;
+    const totalEsperado=pagoPrev.alquiler||0;
+    const itemsPrev=pagoPrev.itemsCobro||(pagoPrev.extras||[]).map(e=>({monto:+(e.monto||0)}));
+    const totalEsperadoConItems=totalEsperado+itemsPrev.reduce((s,it)=>s+(it.monto||0),0);
+    const diferencia=totalCobrado-totalEsperadoConItems;
+    if(Math.abs(diferencia)>1){
+      const signo=diferencia>0?"a favor del inquilino":"a favor de la agencia";
+      itemsSaldo.push({
+        tipo:"saldo",
+        desc:"Saldo "+mesNombre(mesPrev)+" ("+signo+")",
+        monto:diferencia>0?-diferencia:Math.abs(diferencia)*-1
+      });
+    }
+  }
+  S.itemsCobro=[...itemsFijos,...itemsSaldo];
   render();
+}
+
+function mesPrevio(mes){
+  if(!mes)return"";
+  const[y,m]=mes.split("-").map(Number);
+  const d=new Date(y,m-2,1);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
 }
 
 async function cobrarPago(pid){
@@ -1816,10 +1950,10 @@ function renderModalDetalle(){
       <div class="tw"><table><thead><tr><th>Período</th><th>Monto</th><th>Estado</th><th>Fecha cobro</th><th>Comprobantes</th></tr></thead>
       <tbody>${pagosHtml}</tbody></table></div>
     </div>`:""}
-    ${renderSeccionHistorialProp(c)}
+    ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}${renderSeccionHistorialProp(c)}
     <div class="fa">
       <button class="btn" data-action="closeModal">Cancelar</button>
-      <button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" onclick="finalizarContrato(''+S.contratoActivo._id+'')">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
+      ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" onclick="finalizarContrato(''+S.contratoActivo._id+'')">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
     </div>
   </div></div>`;
 }
@@ -1927,8 +2061,8 @@ window.toggleTema=function(){
   });
 };
 
-const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"}];
-const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"]};
+const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
+const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
 function render(){
   if(!S.usuario){renderLogin();return;}
@@ -1940,7 +2074,7 @@ function render(){
   else if(S.sec==="cobranzas")body=renderCobranzas();
   else if(S.sec==="liquidaciones")body=renderLiquidaciones();else if(S.sec==="ipc")body=renderIPC();
   else if(S.sec==="inquilinos")body=renderInquilinos();
-  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();
+  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();else if(S.sec==="deudores")body=renderDeudores();
   const userLabel=(S.usuario.email||"").split("@")[0];
   const presenciaHtml=S.presencia.length?
     `<div class="presence-bar"><div style="font-size:10px;color:var(--gris4);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">En línea ahora</div><div class="presence-list">${S.presencia.map(u=>`<div class="presence-item"><div class="presence-dot"></div>${u.nombre}</div>`).join("")}</div></div>`:
@@ -1954,8 +2088,8 @@ function render(){
       <div class="sidebar-foot">© 2025 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
-      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
-      ${body}
+      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><input id="busq-global" class="inp" placeholder="🔍 Buscar..." value="${S.busqGlobal||''}" oninput="S.busqGlobal=this.value;renderParcial?renderParcial():render()" style="width:200px;padding:6px 10px;font-size:12px" onkeydown="if(event.key==='Escape'){S.busqGlobal='';render();}"><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
+      ${S.busqGlobal?'<div style="position:fixed;top:56px;left:0;right:0;z-index:999;background:var(--negro2);border-bottom:1px solid var(--negro4);padding:8px 16px;max-height:60vh;overflow-y:auto">'+renderBusquedaGlobal(S.busqGlobal)+'</div>':""}${body}
     </main>
   </div>${renderModal()}`;
 }
