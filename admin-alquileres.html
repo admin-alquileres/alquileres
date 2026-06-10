@@ -977,12 +977,28 @@ function renderSeccionHistorialProp(c){
 }
 
 // ── ITEMS DE COBRO (fijos, variables, saldo) ────────────────────────────────
+
+function syncItemsFromDOM(){
+  // Sincroniza lo que el usuario escribió en los inputs al S.itemsCobro
+  document.querySelectorAll(".item-cobro-row").forEach((row,i)=>{
+    const dEl=row.querySelector(".item-desc");
+    const mEl=row.querySelector(".item-monto");
+    if(!S.itemsCobro[i]) return;
+    if(dEl) S.itemsCobro[i].desc=dEl.value;
+    if(mEl) S.itemsCobro[i].monto=+(mEl.value||0);
+  });
+  // También el alquiler
+  const alqEl=document.getElementById("cobro-alquiler");
+  if(alqEl) S.form.alquiler=+(alqEl.value||0);
+}
 function addItemCobro(tipo){
+  syncItemsFromDOM();
   const defaults={fijo:{desc:"",monto:0},variable:{desc:"",monto:0},saldo:{desc:"Saldo mes anterior",monto:0}};
   S.itemsCobro.push({tipo,desc:defaults[tipo]?.desc||"",monto:defaults[tipo]?.monto||0});
   render();
 }
 function removeItemCobro(i){
+  syncItemsFromDOM();
   S.itemsCobro.splice(i,1);
   render();
 }
@@ -994,16 +1010,9 @@ function updItemCobro(i,field,val){
 function updateResumen(){
   const el=document.getElementById("cobro-resumen");
   if(!el||!S.contratoActivo)return;
+  syncItemsFromDOM();
   const c=S.contratoActivo;
-  const alqEl=document.getElementById("cobro-alquiler");
-  const alq=alqEl?+(alqEl.value||0):+(S.form.alquiler||0);
-  // Leer items del DOM para tener valores actualizados
-  document.querySelectorAll(".item-cobro-row").forEach((row,i)=>{
-    const dEl=row.querySelector(".item-desc");
-    const mEl=row.querySelector(".item-monto");
-    if(dEl&&S.itemsCobro[i])S.itemsCobro[i].desc=dEl.value;
-    if(mEl&&S.itemsCobro[i])S.itemsCobro[i].monto=+(mEl.value||0);
-  });
+  const alq=+(S.form.alquiler||0);
   const totalItems=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalItems;
   const com=Math.round(alq*(c.comisionAgencia||5)/100);
@@ -1011,16 +1020,17 @@ function updateResumen(){
   const filas=S.itemsCobro.map(it=>{
     const neg=(it.monto||0)<0;
     const color=neg?"#ff7b6b":it.tipo==="saldo"?"var(--naranja)":"var(--celeste)";
-    return `<div class="rrow" style="color:${color}"><span>${it.desc||it.tipo}</span><span>${neg?"":"+"}${moneda(it.monto||0)}</span></div>`;
+    return '<div class="rrow" style="color:'+color+'"><span>'+(it.desc||it.tipo)+'</span><span>'+(neg?"":"")+moneda(it.monto||0)+'</span></div>';
   }).join("");
   el.innerHTML=
-    `<div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>`+
-    filas+
-    `<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>`+
-    `<div style="height:6px"></div>`+
-    `<div class="rrow" style="color:#ff7b6b"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>`+
-    `<div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>`;
+    '<div class="rrow"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'
+    +filas
+    +'<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>'+moneda(totalInq)+'</span></div>'
+    +'<div style="height:6px"></div>'
+    +'<div class="rrow" style="color:#ff7b6b"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div>'
+    +'<div class="rrow" style="color:#5ddb8a;font-weight:600;font-size:13px"><span>Neto propietario</span><span>'+moneda(netoP)+'</span></div>';
 }
+
 
 // ── HISTORIAL DEL INQUILINO ─────────────────────────────────────────────────
 const S_HIST_INQ = {};  // cache: { nombreNorm: [{_id, fecha, nota}] }
@@ -1562,16 +1572,8 @@ async function registrarPago(){
   const c=S.contratoActivo;if(!c)return;
   const f=S.form;
   if(!f.mes)return toast("Ingresá el período",false);
-  // Leer alquiler del DOM por si fue editado
-  const alqEl=document.getElementById("cobro-alquiler");
-  const alq=alqEl?+(alqEl.value||0):+(f.alquiler||c.alquilerBase||0);
-  // Leer items del DOM
-  document.querySelectorAll(".item-cobro-row").forEach((row,i)=>{
-    const dEl=row.querySelector(".item-desc");
-    const mEl=row.querySelector(".item-monto");
-    if(dEl&&S.itemsCobro[i])S.itemsCobro[i].desc=dEl.value;
-    if(mEl&&S.itemsCobro[i])S.itemsCobro[i].monto=+(mEl.value||0);
-  });
+  syncItemsFromDOM();
+  const alq=+(S.form.alquiler||c.alquilerBase||0);
   const items=S.itemsCobro.map(it=>({tipo:it.tipo,desc:it.desc,monto:+(it.monto||0)}));
   const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalItems;
@@ -2123,8 +2125,8 @@ function renderModalDetalle(){
             const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo"};
             return `<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:${colors[it.tipo]||colors.variable};border-radius:6px;padding:7px 10px">
               <span style="font-size:10px;font-weight:600;color:var(--gris3);min-width:48px;text-transform:uppercase">${labels[it.tipo]||it.tipo}</span>
-              <input class="item-desc inp" value="${it.desc||""}" placeholder="Descripción" oninput="updItemCobro(${i},'desc',this.value)" style="flex:1">
-              <input class="item-monto inp" value="${it.monto||""}" type="number" placeholder="$" oninput="updItemCobro(${i},'monto',this.value)" style="width:110px">
+              <input class="item-desc inp" value="${it.desc||""}" placeholder="Descripción" style="flex:1">
+              <input class="item-monto inp" value="${it.monto||""}" type="number" placeholder="$" style="width:110px">
               <button class="btn sm" data-action="removeItem" data-id="${i}" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>
             </div>`;
           }).join("")}
