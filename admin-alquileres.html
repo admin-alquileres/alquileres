@@ -15,6 +15,33 @@
   --blanco:#ffffff;--gris2:#cccccc;--gris3:#888888;--gris4:#555555;
   --verde:#27ae60;--rojo:#e74c3c;--amarillo:#f39c12;
 }
+body.light{
+  --negro:#f0f2f5;--negro2:#ffffff;--negro3:#f7f8fa;--negro4:#e0e3e8;
+  --blanco:#1a1a2e;--gris2:#444;--gris3:#666;--gris4:#999;
+}
+body.light .sb{background:#1a1a2e;border-right-color:#2a2a4a}
+body.light .nav li{color:rgba(255,255,255,.5)}
+body.light .nav li:hover{color:#fff;background:rgba(255,255,255,.05)}
+body.light .nav li.on{color:var(--celeste);background:rgba(75,200,232,.1)}
+body.light .nu{border-top-color:rgba(255,255,255,.1)}
+body.light .nu strong,body.light .sbr{color:#fff}
+body.light .nub{border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.5)}
+body.light .sfoot{color:rgba(255,255,255,.2);border-top-color:rgba(255,255,255,.1)}
+body.light .badge.bg{background:rgba(39,174,96,.15);color:#27ae60}
+body.light .badge.br{background:rgba(231,76,60,.12);color:var(--rojo)}
+body.light .badge.by{background:rgba(243,156,18,.12);color:#b8860b}
+body.light .badge.bgr{background:#e0e3e8;color:#666}
+body.light thead tr{background:#f0f2f5}
+body.light th{color:#888}
+body.light tr:hover{background:#f0f2f5}
+body.light .lcard{box-shadow:0 1px 4px rgba(0,0,0,.06)}
+body.light .mo{box-shadow:0 8px 32px rgba(0,0,0,.12)}
+body.light .kcard{box-shadow:0 1px 4px rgba(0,0,0,.06)}
+body.light .rsum{background:#f7f8fa}
+body.light .inp{background:#fff;border-color:#ccd0d8;color:#1a1a2e}
+body.light .inp:focus{border-color:var(--celeste)}
+body.light .btn{background:#f0f2f5;color:#444;border-color:#e0e3e8}
+body.light .btn.primary,body.light .btn.naranja{color:#fff}
 body{background:var(--negro);color:var(--blanco);font-family:Inter,sans-serif;font-size:13px}
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .login-card{background:var(--negro2);border:1px solid var(--negro4);border-radius:16px;padding:40px;width:380px}
@@ -1887,6 +1914,19 @@ function renderModal(){
   return `<div class="overlay"><div class="modal"><button class="mclose" data-action="closeModal">✕</button>${content}</div></div>`;
 }
 
+// ── TEMA CLARO/OSCURO ────────────────────────────────────────────────────────
+(function(){
+  const saved=localStorage.getItem("tema");
+  if(saved==="light")document.body.classList.add("light");
+})();
+window.toggleTema=function(){
+  const esLight=document.body.classList.toggle("light");
+  localStorage.setItem("tema",esLight?"light":"dark");
+  document.querySelectorAll(".tema-btn-icon").forEach(el=>{
+    el.textContent=esLight?"☀️":"🌙";
+  });
+};
+
 const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"}];
 const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"]};
 
@@ -1914,7 +1954,7 @@ function render(){
       <div class="sidebar-foot">© 2025 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
-      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div></div></div></div>
+      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
       ${body}
     </main>
   </div>${renderModal()}`;
