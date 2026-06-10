@@ -184,7 +184,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -785,41 +785,43 @@ function renderSetup(){
     const tieneDep=dep&&dep.total>0;
     const depPag=dep?(dep.pagado||0):0;
     const depComp=dep&&dep.completo;
+    const extras=cam.extras!==undefined?cam.extras:(c.extras||[]);
+    const extrasFijos=extras.filter(e=>+(e.monto||0)>0);
     const mod=Object.keys(cam).length>0;
-    return `<tr style="${mod?"background:rgba(245,166,35,.03)":""}">
-      <td><div style="font-weight:500;font-size:12px">${c.inquilino||""}</div><div style="font-size:10px;color:var(--gris3)">${c.direccion||""}</div></td>
-      <td style="font-size:10px;color:var(--gris3)">${c.propietarioNombre||""}</td>
-      <td><input type="number" value="${alqV}" oninput="setupMarcar('${c._id}','alquilerBase',+this.value,this)" style="${iS}">${c.alquilerBase?`<div style="font-size:10px;color:var(--gris3);text-decoration:line-through">$${Math.round(c.alquilerBase).toLocaleString("es-AR")}</div>`:""}</td>
-      <td><input type="date" value="${ultV}" oninput="setupMarcar('${c._id}','ultimaActualizacion',this.value,this)" style="${iS}">${!c.ultimaActualizacion?`<div style="font-size:10px;color:var(--rojo)">Sin fecha</div>`:""}</td>
-      <td><select onchange="setupMarcar('${c._id}','frecActualizacion',+this.value,this)" style="${iS}">
-        ${[3,4,6,12].map(v=>`<option value="${v}"${+frV===v?" selected":""}>c/${v}m</option>`).join("")}
-      </select></td>
-      <td><select onchange="setupMarcarDep('${c._id}',this.value)" style="${iS}">
-        <option value="no"${!tieneDep?" selected":""}>Sin depósito</option>
-        <option value="si"${tieneDep?" selected":""}>Con depósito</option>
-      </select>${tieneDep?`<div style="font-size:10px;color:${depComp?"#5ddb8a":"var(--naranja)"}">$${Math.round(depPag).toLocaleString("es-AR")} ${depComp?"✓ completo":"parcial"}</div>`:""}</td>
-      <td style="text-align:center">${mod?`<span style="color:var(--naranja)">●</span>`:""}</td>
-    </tr>`;
+    const extrasHtml=extrasFijos.length
+      ? extrasFijos.map(e=>'<div style="font-size:10px;display:flex;justify-content:space-between;gap:6px"><span>'+e.desc+'</span><span style="color:var(--celeste)">$'+Math.round(+(e.monto||0)).toLocaleString("es-AR")+'</span></div>').join("")
+      : '<span style="color:var(--gris4);font-size:10px">Sin gastos</span>';
+    return '<tr style="'+(mod?"background:rgba(245,166,35,.03)":"")+'">'
+      +'<td><div style="font-weight:500;font-size:12px">'+(c.inquilino||"")+'</div><div style="font-size:10px;color:var(--gris3)">'+(c.direccion||"")+'</div></td>'
+      +'<td style="font-size:10px;color:var(--gris3)">'+(c.propietarioNombre||"")+'</td>'
+      +'<td><input type="number" value="'+alqV+'" oninput="setupMarcar(\''+c._id+'\',\'alquilerBase\',+this.value,this)" style="'+iS+'">'+(c.alquilerBase?'<div style="font-size:10px;color:var(--gris3);text-decoration:line-through">$'+Math.round(c.alquilerBase).toLocaleString("es-AR")+'</div>':'')+'</td>'
+      +'<td><input type="date" value="'+ultV+'" oninput="setupMarcar(\''+c._id+'\',\'ultimaActualizacion\',this.value,this)" style="'+iS+'">'+(!c.ultimaActualizacion?'<div style="font-size:10px;color:var(--rojo)">Sin fecha</div>':"")+'</td>'
+      +'<td><select onchange="setupMarcar(\''+c._id+'\',\'frecActualizacion\',+this.value,this)" style="'+iS+'">'
+        +[3,4,6,12].map(v=>'<option value="'+v+'"'+(+frV===v?" selected":"")+'>c/'+v+'m</option>').join("")
+      +'</select></td>'
+      +'<td><select onchange="setupMarcarDep(\''+c._id+'\',this.value)" style="'+iS+'">'
+        +'<option value="no"'+(tieneDep?"":" selected")+'>Sin depósito</option>'
+        +'<option value="si"'+(tieneDep?" selected":"")+'>Con depósito</option>'
+      +'</select>'+(tieneDep?'<div style="font-size:10px;color:'+(depComp?"var(--verde)":"var(--naranja)")+'">$'+Math.round(depPag).toLocaleString("es-AR")+' '+(depComp?"completo":"parcial")+'</div>':"")+'</td>'
+      +'<td style="min-width:120px">'+extrasHtml
+        +'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:4px;width:100%" data-action="setupEditarExtras" data-id="'+c._id+'">✏️ Editar gastos</button>'
+      +'</td>'
+      +'<td style="text-align:center">'+(mod?'<span style="color:var(--naranja)">●</span>':"")+'</td>'
+      +'</tr>';
   }).join("");
-  return `<div class="kgrid" style="grid-template-columns:repeat(4,1fr)">
-    <div class="kcard"><div class="klbl">Contratos activos</div><div class="kval" style="color:var(--celeste)">${activos.length}</div></div>
-    <div class="kcard"><div class="klbl">Sin fecha actualiz.</div><div class="kval" style="color:var(--rojo)">${activos.filter(c=>!c.ultimaActualizacion).length}</div></div>
-    <div class="kcard"><div class="klbl">Con depósito</div><div class="kval" style="color:#5ddb8a">${activos.filter(c=>c.deposito&&c.deposito.total>0).length}</div></div>
-    <div class="kcard"><div class="klbl">Sin depósito</div><div class="kval" style="color:var(--naranja)">${activos.filter(c=>!c.deposito||!c.deposito.total).length}</div></div>
-  </div>
-  <div class="filters" style="margin-bottom:12px">
-    <input class="inp" placeholder="Buscar..." value="${S.setupBuscar||""}" oninput="S.setupBuscar=this.value;render()" style="min-width:280px">
-    <span style="font-size:11px;color:var(--gris3)">${lista.length} de ${activos.length}</span>
-  </div>
-  <div class="tw"><table><thead><tr><th>Inquilino / Dirección</th><th>Propietario</th><th>Alquiler real</th><th>Última actualiz.</th><th>Frec.</th><th>Depósito</th><th></th></tr></thead>
-  <tbody>${rows||`<tr><td colspan=7><div class="empty">Sin contratos activos</div></td></tr>`}</tbody></table></div>
-  <div style="position:sticky;bottom:0;background:var(--negro2);border-top:1px solid var(--negro4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px">
-    <span style="font-size:12px;color:var(--gris3)">${nC} cambio(s) sin guardar</span>
-    <div style="display:flex;gap:8px">
-      <button class="btn" onclick="S.setupCambios={};render()" style="background:var(--negro3);color:var(--gris3)">Descartar</button>
-      <button class="btn naranja" onclick="setupGuardar()" ${nC===0?"disabled":""}>💾 Guardar todo</button>
-    </div>
-  </div>`;
+  return '<div class="kgrid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
+    +'<div class="kcard"><div class="klbl">Contratos activos</div><div class="kval" style="color:var(--celeste)">'+activos.length+'</div></div>'
+    +'<div class="kcard"><div class="klbl">Sin fecha actualiz.</div><div class="kval" style="color:var(--rojo)">'+activos.filter(c=>!c.ultimaActualizacion).length+'</div></div>'
+    +'<div class="kcard"><div class="klbl">Con depósito</div><div class="kval" style="color:var(--verde)">'+activos.filter(c=>c.deposito&&c.deposito.total>0).length+'</div></div>'
+    +'<div class="kcard"><div class="klbl">Sin depósito</div><div class="kval" style="color:var(--naranja)">'+activos.filter(c=>!c.deposito||!c.deposito.total).length+'</div></div>'
+    +'</div>'
+    +'<div class="filters" style="margin-bottom:12px"><input class="inp" placeholder="Buscar..." value="'+(S.setupBuscar||"")+'" oninput="S.setupBuscar=this.value;render()" style="min-width:280px"><span style="font-size:11px;color:var(--gris3)">'+lista.length+' de '+activos.length+'</span></div>'
+    +'<div class="tw"><table><thead><tr><th>Inquilino / Dirección</th><th>Propietario</th><th>Alquiler real</th><th>Última actualiz.</th><th>Frec.</th><th>Depósito</th><th>Gastos fijos</th><th></th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan=8><div class="empty">Sin contratos activos</div></td></tr>')+'</tbody></table></div>'
+    +'<div style="position:sticky;bottom:0;background:var(--negro2);border-top:1px solid var(--negro4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px">'
+    +'<span style="font-size:12px;color:var(--gris3)">'+nC+' cambio(s)</span>'
+    +'<div style="display:flex;gap:8px"><button class="btn" onclick="S.setupCambios={};render()" style="background:var(--negro3);color:var(--gris3)">Descartar</button>'
+    +'<button class="btn naranja" onclick="setupGuardar()" '+(nC===0?"disabled":"")+'>💾 Guardar todo</button></div></div>';
 }
 
 function setupMarcar(id,field,val,el){
@@ -1361,6 +1363,43 @@ function renderModalGrillaGastos(){
     +'</div>'
     +'</div></div>';
 }
+
+function renderModalEditarExtras(){
+  const cid=S.editarExtrasId;
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return"";
+  const cam=S.setupCambios[cid]||{};
+  const extras=cam.extras!==undefined?[...cam.extras]:[...(c.extras||[])];
+  S._extrasTemp=extras;
+  const filas=extras.map((e,i)=>'<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'
+    +'<input class="inp" style="flex:1" placeholder="Descripción (TGI, Agua...)" value="'+(e.desc||"")+'" oninput="S._extrasTemp['+i+'].desc=this.value">'
+    +'<input class="inp" style="width:110px" type="number" placeholder="$" value="'+(e.monto||"")+'" oninput="S._extrasTemp['+i+'].monto=+this.value">'
+    +'<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:4px 8px" onclick="S._extrasTemp.splice('+i+',1);S.editarExtrasId=S.editarExtrasId;render()">✕</button>'
+    +'</div>').join("");
+  return '<div class="overlay"><div class="modal" style="max-width:480px">'
+    +'<button class="mclose" onclick="closeModal()">✕</button>'
+    +'<div class="mth"><div class="mth-ic">📝</div>Gastos fijos — '+(c.inquilino||"")+'</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:14px">'+(c.direccion||"")+'<br>Estos gastos aparecen pre-cargados cada mes al cobrar.</div>'
+    +'<div id="extras-lista">'+filas+'</div>'
+    +'<button class="btn sm" style="margin-top:8px;width:100%;background:rgba(75,200,232,.08);color:var(--celeste)" onclick="S._extrasTemp.push({desc:\'\',monto:0});S.editarExtrasId=S.editarExtrasId;render()">+ Agregar gasto</button>'
+    +'<div class="fa" style="margin-top:16px">'
+    +'<button class="btn" onclick="closeModal()">Cancelar</button>'
+    +'<button class="btn naranja" onclick="guardarExtrasSetup(\''+cid+'\')">💾 Guardar</button>'
+    +'</div></div></div>';
+}
+
+async function guardarExtrasSetup(cid){
+  const extras=(S._extrasTemp||[]).filter(e=>(e.desc||"").trim()&&+(e.monto||0)>0);
+  if(!S.setupCambios[cid])S.setupCambios[cid]={};
+  S.setupCambios[cid].extras=extras;
+  // Guardar directamente en Firebase también
+  await fbUpd("contratos",cid,{extras});
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,extras}:x);
+  toast("Gastos fijos guardados ✓");
+  S.modal=null;
+  S._extrasTemp=null;
+  render();
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1370,7 +1409,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="setupEditarExtras"){S.editarExtrasId=id;S.modal="editar_extras";render();}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
@@ -1688,7 +1727,7 @@ function renderContratos(){
       <td>${moneda(c.alquilerBase)}</td>
       <td style="font-size:11px;color:${dc}">${c.inicio||""} → ${c.fin||"S/F"}</td>
       <td style="font-size:11px;color:${pc}">${c.frecActualizacion||6}m · ${proxStr}</td>
-      <td>${badge(c.estado||"activo")}${(c.extras||[]).filter(e=>+(e.monto||0)>0).length>0?'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:6px" onclick="abrirGrillaGastos(\''+c._id+'\')" title="Ver seguimiento de gastos fijos">📊 Gastos</button>':""}</td>
+      <td>${badge(c.estado||"activo")}</td>
     </tr>`;
   }).join("");
   const estOpts=[["todos","Todos"],["activo","Activos"],["vencido","Vencidos"],["finalizado","Finalizados"]].map(([v,l])=>`<option value="${v}"${f.estado===v?" selected":""}>${l}</option>`).join("");
@@ -1978,7 +2017,7 @@ function renderModalDetalle(){
   }).join("");
   return `<div class="overlay"><div class="modal">
     <button class="mclose" data-action="closeModal">✕</button>
-    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}</div>
+    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}${(c.extras||[]).filter(e=>+(e.monto||0)>0).length>0?'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="'+c._id+'">📊 Ver gastos</button>':""}</div>
     <div class="fsec">
       <div class="fsec-t">Datos del contrato</div>
       <div class="fc-grid">
@@ -2085,7 +2124,7 @@ function renderModalDetalle(){
 
 function renderModal(){
   if(!S.modal)return"";
-  if(S.modal==="contrato_detalle")return renderModalDetalle();if(S.modal==="caja")return renderModalCaja();if(S.modal==="grilla_gastos")return renderModalGrillaGastos();
+  if(S.modal==="contrato_detalle")return renderModalDetalle();if(S.modal==="caja")return renderModalCaja();if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="editar_extras")return renderModalEditarExtras();
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
   const sel=(k,opts)=>`<select class="inp" style="width:100%" data-action="setForm" data-key="${k}">${opts.map(o=>`<option value="${o[0]}"${(f[k]||"")==o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>`;
