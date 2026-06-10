@@ -1236,6 +1236,131 @@ async function renovarContrato(cid){
   toast("Contrato renovado hasta "+nuevoFin+" ✓");
   render();
 }
+
+// ── GRILLA DE GASTOS FIJOS ───────────────────────────────────────────────────
+function abrirGrillaGastos(cid){
+  S.modal="grilla_gastos";
+  S.grillaContrato=cid;
+  render();
+}
+
+function renderModalGrillaGastos(){
+  const c=S.contratos.find(x=>x._id===S.grillaContrato);
+  if(!c) return "";
+
+  // Items fijos definidos en el contrato
+  const extras=(c.extras||[]).filter(e=>e.desc&&+(e.monto||0)>0);
+  if(!extras.length){
+    return '<div class="overlay"><div class="modal" style="max-width:480px">'
+      +'<button class="mclose" onclick="closeModal()">✕</button>'
+      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos</div>'
+      +'<p style="color:var(--gris3);padding:20px 0">Este contrato no tiene gastos fijos configurados.</p>'
+      +'<div class="fa"><button class="btn" onclick="closeModal()">Cerrar</button></div>'
+      +'</div></div>';
+  }
+
+  // Pagos del contrato ordenados por mes
+  const pagosC=S.pagos
+    .filter(p=>p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado")
+    .sort((a,b)=>(a.mes||"").localeCompare(b.mes||""));
+
+  if(!pagosC.length){
+    return '<div class="overlay"><div class="modal" style="max-width:600px">'
+      +'<button class="mclose" onclick="closeModal()">✕</button>'
+      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos</div>'
+      +'<p style="color:var(--gris3);padding:20px 0">Sin pagos cobrados registrados todavía.</p>'
+      +'<div class="fa"><button class="btn" onclick="closeModal()">Cerrar</button></div>'
+      +'</div></div>';
+  }
+
+  // Generar lista de meses desde el primer pago hasta hoy
+  const primerMes=pagosC[0].mes;
+  const ultimoMes=mesActual();
+  const meses=[];
+  let cur=new Date(primerMes+"-01");
+  const fin=new Date(ultimoMes+"-01");
+  while(cur<=fin){
+    meses.push(cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0"));
+    cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+  }
+  // Máximo 18 meses hacia atrás para no agrandar demasiado
+  const mesesVis=meses.slice(-18);
+
+  // Para cada mes y cada ítem, ver si fue cobrado
+  // Normalizar nombre para comparación flexible
+  function norm(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+
+  function fueCobrado(mes, itemDesc){
+    const pago=pagosC.find(p=>p.mes===mes);
+    if(!pago) return false;
+    const items=pago.itemsCobro||(pago.extras||[]).map(e=>({desc:e.desc,monto:e.monto}));
+    const nd=norm(itemDesc);
+    return items.some(it=>{
+      const ni=norm(it.desc||"");
+      // Match si el nombre del ítem contiene o está contenido en el desc del pago
+      return ni.includes(nd)||nd.includes(ni)||ni===nd;
+    });
+  }
+
+  // CSS de la grilla
+  const colAncho=Math.max(60, Math.floor(360/extras.length));
+  
+  // Encabezado de columnas (ítems)
+  const thItems=extras.map(e=>'<th style="text-align:center;padding:6px 4px;font-size:11px;white-space:nowrap;max-width:'+colAncho+'px;overflow:hidden;text-overflow:ellipsis" title="'+e.desc+'">'+e.desc+'</th>').join("");
+
+  // Filas (meses)
+  const filas=mesesVis.map(mes=>{
+    const tienePago=pagosC.some(p=>p.mes===mes);
+    const celdas=extras.map(e=>{
+      const cobrado=fueCobrado(mes,e.desc);
+      let celda;
+      if(!tienePago){
+        // Mes sin pago registrado
+        celda='<td style="text-align:center;padding:8px 4px"><span style="color:var(--gris4);font-size:14px">—</span></td>';
+      } else if(cobrado){
+        celda='<td style="text-align:center;padding:8px 4px;background:rgba(39,174,96,.08)"><span title="Cobrado" style="font-size:16px">✅</span></td>';
+      } else {
+        celda='<td style="text-align:center;padding:8px 4px;background:rgba(231,76,60,.05)"><span title="No cobrado este mes" style="font-size:14px;color:var(--gris4)">⬜</span></td>';
+      }
+      return celda;
+    }).join("");
+
+    const mesLabel=mesNombre(mes).substring(0,3)+" "+mes.substring(2,4);
+    const rowBg=mes===ultimoMes?"background:rgba(75,200,232,.05)":"";
+    return '<tr style="'+rowBg+'"><td style="white-space:nowrap;font-size:11px;color:var(--gris3);padding:6px 10px;font-weight:'+(mes===ultimoMes?"600":"400")+'">'+mesLabel+'</td>'+celdas+'</tr>';
+  }).join("");
+
+  // Leyenda de totales por ítem
+  const totales=extras.map(e=>{
+    const n=mesesVis.filter(mes=>fueCobrado(mes,e.desc)).length;
+    const pct=mesesVis.length>0?Math.round(n/mesesVis.length*100):0;
+    return '<div style="text-align:center;font-size:10px;color:var(--gris3);padding:4px 2px">'
+      +'<div style="font-weight:600;color:'+(pct>80?"#5ddb8a":pct>50?"var(--naranja)":"var(--rojo)")+'">'+n+'/'+mesesVis.length+'</div>'
+      +'<div>'+pct+'%</div></div>';
+  }).join("");
+
+  return '<div class="overlay"><div class="modal" style="max-width:min(700px,95vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
+    +'<button class="mclose" onclick="closeModal()">✕</button>'
+    +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+c.inquilino+'<span style="font-size:11px;font-weight:400;color:var(--gris3);margin-left:8px">'+c.direccion+'</span></div>'
+    +'<div style="overflow:auto;flex:1;padding:0 4px">'
+    +'<table style="border-collapse:collapse;width:100%;font-family:Inter,sans-serif">'
+    +'<thead><tr>'
+    +'<th style="text-align:left;padding:6px 10px;font-size:11px;color:var(--gris3);white-space:nowrap;position:sticky;top:0;background:var(--negro2)">Mes</th>'
+    +extras.map(e=>'<th style="text-align:center;padding:6px 4px;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--negro2);min-width:70px" title="'+e.desc+'">'+e.desc+'</th>').join("")
+    +'</tr></thead>'
+    +'<tbody>'+filas+'</tbody>'
+    +'<tfoot><tr>'
+    +'<td style="font-size:10px;color:var(--gris3);padding:6px 10px">Total</td>'
+    +totales.split('</div><div').map(t=>'<td>'+t+(t.endsWith('</div>')?'':'</div>')+'</td>').join('')
+    +'</tr></tfoot>'
+    +'</table></div>'
+    +'<div style="padding:10px 16px;border-top:1px solid var(--negro4);display:flex;gap:12px;font-size:11px;color:var(--gris3);align-items:center">'
+    +'<span>✅ Cobrado</span><span>⬜ No cobrado</span><span>— Sin pago registrado</span>'
+    +'<div style="flex:1"></div>'
+    +'<button class="btn" onclick="closeModal()" style="padding:6px 16px">Cerrar</button>'
+    +'</div>'
+    +'</div></div>';
+}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1245,7 +1370,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
@@ -1563,7 +1688,7 @@ function renderContratos(){
       <td>${moneda(c.alquilerBase)}</td>
       <td style="font-size:11px;color:${dc}">${c.inicio||""} → ${c.fin||"S/F"}</td>
       <td style="font-size:11px;color:${pc}">${c.frecActualizacion||6}m · ${proxStr}</td>
-      <td>${badge(c.estado||"activo")}</td>
+      <td>${badge(c.estado||"activo")}${(c.extras||[]).filter(e=>+(e.monto||0)>0).length>0?'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:6px" onclick="abrirGrillaGastos(\''+c._id+'\')" title="Ver seguimiento de gastos fijos">📊 Gastos</button>':""}</td>
     </tr>`;
   }).join("");
   const estOpts=[["todos","Todos"],["activo","Activos"],["vencido","Vencidos"],["finalizado","Finalizados"]].map(([v,l])=>`<option value="${v}"${f.estado===v?" selected":""}>${l}</option>`).join("");
@@ -1960,7 +2085,7 @@ function renderModalDetalle(){
 
 function renderModal(){
   if(!S.modal)return"";
-  if(S.modal==="contrato_detalle")return renderModalDetalle();if(S.modal==="caja")return renderModalCaja();
+  if(S.modal==="contrato_detalle")return renderModalDetalle();if(S.modal==="caja")return renderModalCaja();if(S.modal==="grilla_gastos")return renderModalGrillaGastos();
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
   const sel=(k,opts)=>`<select class="inp" style="width:100%" data-action="setForm" data-key="${k}">${opts.map(o=>`<option value="${o[0]}"${(f[k]||"")==o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>`;
