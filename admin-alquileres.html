@@ -184,7 +184,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -930,7 +930,7 @@ function renderHistPropInline(pid){
       <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
       <td style="font-size:12px">${e.descripcion||""}</td>
       <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
-        onclick="eliminarHistorialProp('${e._id}','${pid}')">✕</button></td>
+        data-action="hpropEliminar" data-id="${e._id}" data-pid="${pid}">✕</button></td>
     </tr>`).join("")}
     </tbody>
   </table></div>`;
@@ -951,7 +951,7 @@ function renderSeccionHistorialProp(c){
           <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
           <td style="font-size:12px">${e.descripcion||""}</td>
           <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
-            onclick="eliminarHistorialProp('${e._id}','${pid}')">✕</button></td>
+            data-action="hpropEliminar" data-id="${e._id}" data-pid="${pid}">✕</button></td>
         </tr>`).join("")}
         </tbody>
       </table></div>`
@@ -970,7 +970,7 @@ function renderSeccionHistorialProp(c){
           onkeydown="if(event.key==='Enter')agregarHistorialProp('${pid}')">
       </div>
       <button class="btn naranja" style="padding:8px 14px;height:36px"
-        onclick="agregarHistorialProp('${pid}')">+ Agregar</button>
+        data-action="hpropAgregar" data-pid="${pid}">+ Agregar</button>
     </div>
     <div id="hp-tabla-${pid}">${tablaHTML}</div>
   </div>`;
@@ -1089,7 +1089,7 @@ function renderHistInqInline(nombre){
       <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
       <td style="font-size:12px">${e.nota||""}</td>
       <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
-        onclick="eliminarHistorialInq('${e._id}','${nombre.replace(/'/g,"")}')">✕</button></td>
+        data-action="hinqEliminar" data-id="${e._id}" data-nombre="${nombre.replace(/'/g,'')}">✕</button></td>
     </tr>`).join("")}
     </tbody>
   </table></div>`;
@@ -1108,7 +1108,7 @@ function renderSeccionHistorialInq(nombre){
           <td style="white-space:nowrap;color:var(--gris3);font-size:11px">${e.fecha||"—"}</td>
           <td style="font-size:12px">${e.nota||""}</td>
           <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
-            onclick="eliminarHistorialInq('${e._id}','${nombre.replace(/'/g,"")}')">✕</button></td>
+            data-action="hinqEliminar" data-id="${e._id}" data-nombre="${nombre.replace(/'/g,'')}">✕</button></td>
         </tr>`).join("")}
         </tbody>
       </table></div>`
@@ -1128,7 +1128,7 @@ function renderSeccionHistorialInq(nombre){
           onkeydown="if(event.key==='Enter')agregarHistorialInq('${nombre}')">
       </div>
       <button class="btn naranja" style="padding:8px 14px;height:36px"
-        onclick="agregarHistorialInq('${nombre}')">+ Agregar</button>
+        data-action="hinqAgregar" data-nombre="${nombre}">+ Agregar</button>
     </div>
     <div id="hi-tabla-${k}">${tablaHTML}</div>
   </div>`;
@@ -1199,47 +1199,25 @@ function renderBusquedaGlobal(q){
   if(!q||q.length<2) return "";
   const ql=q.toLowerCase();
   const results=[];
-  // Contratos
   S.contratos.forEach(c=>{
-    const match=(c.inquilino||"").toLowerCase().includes(ql)
-      ||(c.direccion||"").toLowerCase().includes(ql)
-      ||(c.propietarioNombre||"").toLowerCase().includes(ql)
-      ||(c.dni||"").includes(ql)
-      ||(c.telefono||"").includes(ql);
-    if(match) results.push({tipo:"contrato",ic:"📋",titulo:c.inquilino,sub:(c.direccion||"")+" · "+(c.propietarioNombre||""),id:c._id,badge:badge(c.estado||"activo")});
+    const match=(c.inquilino||"").toLowerCase().includes(ql)||(c.direccion||"").toLowerCase().includes(ql)||(c.propietarioNombre||"").toLowerCase().includes(ql)||(c.dni||"").includes(ql)||(c.telefono||"").includes(ql);
+    if(match)results.push({tipo:"contrato",ic:"📋",titulo:c.inquilino||"",sub:(c.direccion||"")+" · "+(c.propietarioNombre||""),id:c._id,badge:badge(c.estado||"activo")});
   });
-  // Pagos recientes
   S.pagos.filter(p=>!p._eliminado).slice(0,200).forEach(p=>{
-    const match=(p.inquilino||"").toLowerCase().includes(ql)
-      ||(p.direccion||"").toLowerCase().includes(ql);
-    if(match) results.push({tipo:"pago",ic:"💰",titulo:p.inquilino+" · "+mesNombre(p.mes),sub:(p.direccion||"")+" · "+moneda(p.totalInquilino||p.total||0),id:p._id,badge:badge(p.estado)});
+    const match=(p.inquilino||"").toLowerCase().includes(ql)||(p.direccion||"").toLowerCase().includes(ql);
+    if(match)results.push({tipo:"pago",ic:"💰",titulo:(p.inquilino||"")+" · "+mesNombre(p.mes),sub:(p.direccion||"")+" · "+moneda(p.totalInquilino||p.total||0),id:p._id,badge:badge(p.estado)});
   });
-  if(!results.length) return '<div style="padding:20px;text-align:center;color:var(--gris3)">Sin resultados para "'+q+'"</div>';
-  const rows=results.slice(0,12).map(r=>'<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-radius:8px;transition:background .15s" onmouseover="this.style.background=\'var(--negro3)\'" onmouseout="this.style.background=\'transparent\'" onclick="'+( r.tipo==="contrato"?"S.busqGlobal='';S.sec='contratos';S.modal='contrato_detalle';S.contratoActivo=S.contratos.find(x=>x._id==='"+r.id+"');S.itemsCobro=(S.contratoActivo&&S.contratoActivo.extras||[]).map(e=>({tipo:'fijo',desc:e.desc,monto:+(e.monto||0)}));render()":"S.busqGlobal='';S.sec='cobranzas';render()" )+'">'
-    +'<span style="font-size:20px">'+r.ic+'</span>'
-    +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+r.titulo+'</div><div style="font-size:11px;color:var(--gris3)">'+r.sub+'</div></div>'
-    +r.badge+'</div>').join("");
-  const mas=results.length>12?'<div style="padding:8px 14px;font-size:11px;color:var(--gris3)">+'+(results.length-12)+' resultados más — refiná la búsqueda</div>':"";
+  if(!results.length)return '<div style="padding:20px;text-align:center;color:var(--gris3)">Sin resultados para "'+q+'"</div>';
+  S._busqResults=results;
+  const rows=results.slice(0,12).map((r,i)=>'<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-radius:8px" data-action="busqIr" data-idx="'+i+'" data-tipo="'+r.tipo+'" data-id="'+r.id+'">'
+    +'<span style="font-size:20px;pointer-events:none">'+r.ic+'</span>'
+    +'<div style="flex:1;pointer-events:none"><div style="font-size:13px;font-weight:500">'+r.titulo+'</div><div style="font-size:11px;color:var(--gris3)">'+r.sub+'</div></div>'
+    +r.badge
+    +'</div>').join("");
+  const mas=results.length>12?'<div style="padding:8px 14px;font-size:11px;color:var(--gris3)">+'+(results.length-12)+' más</div>':"";
   return rows+mas;
 }
 
-async function renovarContrato(cid){
-  const c=S.contratos.find(x=>x._id===cid);
-  if(!c)return;
-  const nuevoFin=prompt("Nueva fecha de fin del contrato (YYYY-MM-DD):\nActual: "+(c.fin||"sin fecha"),"");
-  if(!nuevoFin)return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(nuevoFin)){toast("Formato incorrecto. Usá YYYY-MM-DD",false);return;}
-  const upd={fin:nuevoFin,estado:"activo",fechaRenovacion:hoy(),renovaciones:(c.renovaciones||0)+1};
-  await fbUpd("contratos",cid,upd);
-  S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
-  // Guardar en historial de la propiedad
-  const pid=propId?propId(c):(c.propiedadId||c.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
-  if(pid) await fbAdd("historial_prop",{propiedadId:pid,fecha:hoy(),descripcion:"Contrato renovado hasta "+nuevoFin+" · "+c.inquilino,creadoEn:Date.now()});
-  toast("Contrato renovado hasta "+nuevoFin+" ✓");
-  render();
-}
-
-// ── GRILLA DE GASTOS FIJOS ───────────────────────────────────────────────────
 function abrirGrillaGastos(cid){
   S.modal="grilla_gastos";
   S.grillaContrato=cid;
@@ -1412,7 +1390,25 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){if(!S._extrasTemp)S._extrasTemp=[];S._extrasTemp.push({desc:"",monto:0});render();}else if(action==="extrasBorrar"){const idx=+t.dataset.idx;if(S._extrasTemp)S._extrasTemp.splice(idx,1);render();}else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){if(!S._extrasTemp)S._extrasTemp=[];S._extrasTemp.push({desc:"",monto:0});render();}else if(action==="extrasBorrar"){const idx=+t.dataset.idx;if(S._extrasTemp)S._extrasTemp.splice(idx,1);render();}else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
+  else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
+  else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
+  else if(action==="hinqEliminar"){eliminarHistorialInq(id,t.dataset.nombre);}
+  else if(action==="setAlertaTipo"){S.alertasTipo=t.dataset.key;render();}
+  else if(action==="setAlertaPlazo"){S.alertasPlazo=+t.dataset.key;render();}
+  else if(action==="sortCol"){const col=t.dataset.col;S.sortDir=S.sortCol===col?S.sortDir*-1:1;S.sortCol=col;render();}
+  else if(action==="eliminarPago"){eliminarPago(id);}
+  else if(action==="cobranzasLimpiar"){S.filtros.cobranzaMes="";S.filtros.cobranzaProp="";S.filtros.cobranzaBuscar="";S.filtros.cobranzaEstado="todos";render();}
+  else if(action==="finalizarContrato"){finalizarContrato(id);}
+  else if(action==="busqIr"){
+    S.busqGlobal="";
+    const tipo=t.dataset.tipo;const rid=t.dataset.id;
+    if(tipo==="contrato"){
+      const c=S.contratos.find(x=>x._id===rid);
+      if(c){S.sec="contratos";S.modal="contrato_detalle";S.contratoActivo=c;S.itemsCobro=(c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));render();}
+    }else{S.sec="cobranzas";render();}
+  }
+  else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
@@ -1673,9 +1669,9 @@ function renderDashboard(){
   const tipoOpts=[{k:"todas",l:"Todas",n:todas.length},{k:"ipc",l:"🔄 IPC",n:cnt.ipc||0},{k:"renovacion",l:"📋 Renovaciones",n:cnt.renovacion||0},{k:"pago",l:"💸 Pagos venc.",n:cnt.pago||0},{k:"deposito",l:"🏦 Depósitos",n:cnt.deposito||0},{k:"honorario",l:"💼 Honorarios",n:cnt.honorario||0}];
   const plazoOpts=[{k:0,l:"Todos"},{k:30,l:"30d"},{k:60,l:"60d"},{k:90,l:"90d"}];
   const filtrosH=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-    ${tipoOpts.map(o=>`<button class="btn sm" style="${tipoF===o.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" onclick="S.alertasTipo='${o.k}';render()">${o.l} (${o.n})</button>`).join("")}
+    ${tipoOpts.map(o=>`<button class="btn sm" style="${tipoF===o.k?"background:var(--celeste);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" data-action="setAlertaTipo" data-key="${o.k}">${o.l} (${o.n})</button>`).join("")}
     <span style="margin-left:8px;font-size:11px;color:var(--gris3)">Plazo:</span>
-    ${plazoOpts.map(o=>`<button class="btn sm" style="${plazoF===o.k?"background:var(--naranja);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" onclick="S.alertasPlazo=${o.k};render()">${o.l}</button>`).join("")}
+    ${plazoOpts.map(o=>`<button class="btn sm" style="${plazoF===o.k?"background:var(--naranja);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" data-action="setAlertaPlazo" data-key="${o.k}">${o.l}</button>`).join("")}
   </div>`;
   const ultP=S.pagos.filter(p=>p.estado==="cobrado").slice(0,6).map(p=>`<tr><td class="tdm">${p.inquilino||""}</td><td>${p.direccion||""}</td><td>${mesNombre(p.mes)}</td><td>${moneda(p.alquiler||0)}</td><td><strong>${moneda(p.totalInquilino||p.total||p.monto||0)}</strong></td><td>${badge(p.estado)}</td></tr>`).join("");
   return `<div class="kgrid" style="grid-template-columns:repeat(5,1fr)">
@@ -1714,7 +1710,7 @@ function renderContratos(){
     else{va=(a.inquilino||"").toLowerCase();vb=(b.inquilino||"").toLowerCase();}
     return va<vb?-dir:va>vb?dir:0;
   });
-  function th(c,label){const on=col===c;return `<th style="cursor:pointer;user-select:none" onclick="S.sortCol='${c}';S.sortDir=S.sortCol==='${c}'?S.sortDir*-1:1;render()">${label}${on?(dir===1?" ↑":" ↓"):" ↕"}</th>`;}
+  function th(c,label){const on=col===c;return `<th style="cursor:pointer;user-select:none" data-action="sortCol" data-col="${c}">${label}${on?(dir===1?" ↑":" ↓"):" ↕"}</th>`;}
   const rows=lista.map(c=>{
     const d=c.fin?diasPara(c.fin):999;
     const dc=d<0?"var(--rojo)":d<=60?"var(--naranja)":"var(--gris3)";
@@ -1783,7 +1779,7 @@ function renderCobranzas(){
       ?`<button class="btn sm" data-action="emitirINQ" data-id="${p._id}">📄 Inq</button>
         <button class="btn sm" data-action="emitirPROP" data-id="${p._id}">📄 Prop</button>`
       :"";
-    const btnElim=`<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" onclick="eliminarPago('${p._id}')">🗑️</button>`;
+    const btnElim=`<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" data-action="eliminarPago" data-id="${p._id}">🗑️</button>`;
     return `<tr>
       <td class="tdm">${p.inquilino||""}<br><span class="tds">${p.direccion||""}</span></td>
       <td style="font-size:11px;color:var(--gris3)">${p.propietarioNombre||"—"}</td>
@@ -1807,7 +1803,7 @@ function renderCobranzas(){
     <select class="inp" style="width:130px" onchange="S.filtros.cobranzaEstado=this.value;render()">${estOpts}</select>
     <input class="inp" placeholder="Buscar inquilino o dirección..." value="${S.filtros.cobranzaBuscar||""}"
       oninput="S.filtros.cobranzaBuscar=this.value;render()" style="min-width:200px">
-    <button class="btn" onclick="S.filtros.cobranzaMes='';S.filtros.cobranzaProp='';S.filtros.cobranzaBuscar='';S.filtros.cobranzaEstado='todos';render()"
+    <button class="btn" data-action="cobranzasLimpiar"
       style="background:var(--negro3);color:var(--gris3)">✕ Limpiar</button>
     <span style="font-size:11px;color:var(--gris3);align-self:center">${pagos.length} resultado(s)</span>
   </div>
@@ -2120,7 +2116,7 @@ function renderModalDetalle(){
     ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}${renderSeccionHistorialProp(c)}
     <div class="fa">
       <button class="btn" data-action="closeModal">Cancelar</button>
-      ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" onclick="finalizarContrato(''+S.contratoActivo._id+'')">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
+      ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
     </div>
   </div></div>`;
 }
