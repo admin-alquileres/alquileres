@@ -1181,8 +1181,7 @@ function renderDeudores(){
     +'<span style="font-size:13px">📅</span>'
     +'<div style="flex:1"><div style="font-size:12px;font-weight:600">Evaluar deudas desde</div>'
     +'<div style="font-size:11px;color:var(--gris3)">Meses anteriores se consideran saldados</div></div>'
-    +'<input type="month" class="inp" value="'+corteMes+'" style="width:160px" '
-    +'oninput="window.setFechaCorte(this.value)">'
+    +'<input type="month" class="inp" id="fecha-corte-input" value="'+corteMes+'" style="width:160px" data-action="setFechaCorte">'
     +'</div>';
 
   if(!deudores.length){
@@ -1455,6 +1454,9 @@ async function limpiarGastosPendientes(cid){
   }
   if(S_GPEND[cid]) S_GPEND[cid].items=[];
 }
+window.setFechaCorte=function(v){if(!v)return;S.fechaCorte=v;localStorage.setItem("fechaCorte",v);render();};
+window.setAlquilerCobro=function(v){S.form.alquiler=+(v||0);if(typeof updateResumen==="function")updateResumen();};
+document.addEventListener("change",e=>{if(e.target.id==="fecha-corte-input"){window.setFechaCorte(e.target.value);return;}});
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
