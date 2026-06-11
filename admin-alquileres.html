@@ -815,12 +815,12 @@ function renderSetup(){
     +'<div class="kcard"><div class="klbl">Con depósito</div><div class="kval" style="color:var(--verde)">'+activos.filter(c=>c.deposito&&c.deposito.total>0).length+'</div></div>'
     +'<div class="kcard"><div class="klbl">Sin depósito</div><div class="kval" style="color:var(--naranja)">'+activos.filter(c=>!c.deposito||!c.deposito.total).length+'</div></div>'
     +'</div>'
-    +'<div class="filters" style="margin-bottom:12px"><input class="inp" placeholder="Buscar..." value="'+(S.setupBuscar||"")+'" oninput="S.setupBuscar=this.value;render()" style="min-width:280px"><span style="font-size:11px;color:var(--gris3)">'+lista.length+' de '+activos.length+'</span></div>'
+    +'<div class="filters" style="margin-bottom:12px"><input class="inp" placeholder="Buscar..." value="'+(S.setupBuscar||"")+'" id="setup-buscar-inp" data-action="setupBuscar" style="min-width:280px"><span style="font-size:11px;color:var(--gris3)">'+lista.length+' de '+activos.length+'</span></div>'
     +'<div class="tw"><table><thead><tr><th>Inquilino / Dirección</th><th>Propietario</th><th>Alquiler real</th><th>Última actualiz.</th><th>Frec.</th><th>Depósito</th><th>Gastos fijos</th><th></th></tr></thead>'
     +'<tbody>'+(rows||'<tr><td colspan=8><div class="empty">Sin contratos activos</div></td></tr>')+'</tbody></table></div>'
     +'<div style="position:sticky;bottom:0;background:var(--negro2);border-top:1px solid var(--negro4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px">'
     +'<span style="font-size:12px;color:var(--gris3)">'+nC+' cambio(s)</span>'
-    +'<div style="display:flex;gap:8px"><button class="btn" onclick="S.setupCambios={};render()" style="background:var(--negro3);color:var(--gris3)">Descartar</button>'
+    +'<div style="display:flex;gap:8px"><button class="btn" data-action="setupDescartar" style="background:var(--negro3);color:var(--gris3)">Descartar</button>'
     +'<button class="btn naranja" onclick="setupGuardar()" '+(nC===0?"disabled":"")+'>💾 Guardar todo</button></div></div>';
 }
 
@@ -1456,7 +1456,25 @@ async function limpiarGastosPendientes(cid){
 }
 window.setFechaCorte=function(v){if(!v)return;S.fechaCorte=v;localStorage.setItem("fechaCorte",v);render();};
 window.setAlquilerCobro=function(v){S.form.alquiler=+(v||0);if(typeof updateResumen==="function")updateResumen();};
-document.addEventListener("change",e=>{if(e.target.id==="fecha-corte-input"){window.setFechaCorte(e.target.value);return;}});
+
+document.addEventListener("input",e=>{
+  const t=e.target;
+  const action=t.dataset&&t.dataset.action;
+  if(!action)return;
+  if(action==="setupBuscar"){S.setupBuscar=t.value;render();}
+  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;render();}
+  else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
+  else if(action==="busqInput"){S.busqGlobal=t.value;render();}
+});
+document.addEventListener("change",e=>{
+  const t=e.target;
+  const action=t.dataset&&t.dataset.action;
+  if(!action)return;
+  if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
+  else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
+});
+// legacy change listener
+document.addEventListener("change_DISABLED",e=>{if(e.target.id==="fecha-corte-input"){window.setFechaCorte(e.target.value);return;}});
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-action]");
   if(!t)return;
@@ -1489,7 +1507,17 @@ document.addEventListener("click",e=>{
     const idx=+t.dataset.idx;
     S._extrasTemp.splice(idx,1);
     render();
-  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
+  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
+  // ── handlers de inputs (change listener los maneja también) ──────────────
+  else if(action==="setupBuscar"){S.setupBuscar=t.value;render();}
+  else if(action==="setupDescartar"){S.setupCambios={};render();}
+  else if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
+  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;render();}
+  else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
+  else if(action==="busqInput"){S.busqGlobal=t.value;render();}
+  else if(action==="busqEscape"){S.busqGlobal="";render();}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}
+else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
   else if(action==="hinqEliminar"){eliminarHistorialInq(id,t.dataset.nombre);}
@@ -1898,11 +1926,11 @@ function renderCobranzas(){
     <div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Comisiones</div><div class="kval" style="font-size:17px;color:var(--naranja)">${moneda(totalCom)}</div></div>
   </div>
   <div class="filters" style="flex-wrap:wrap;gap:8px;margin-bottom:14px">
-    <select class="inp" style="width:160px" onchange="S.filtros.cobranzaMes=this.value;render()">${mesOpts}</select>
-    <select class="inp" style="width:180px" onchange="S.filtros.cobranzaProp=this.value;render()">${propOpts}</select>
-    <select class="inp" style="width:130px" onchange="S.filtros.cobranzaEstado=this.value;render()">${estOpts}</select>
+    <select class="inp" style="width:160px" id="cob-mes" data-action="cobranzaFiltro" data-field="cobranzaMes">${mesOpts}</select>
+    <select class="inp" style="width:180px" id="cob-prop" data-action="cobranzaFiltro" data-field="cobranzaProp">${propOpts}</select>
+    <select class="inp" style="width:130px" id="cob-estado" data-action="cobranzaFiltro" data-field="cobranzaEstado">${estOpts}</select>
     <input class="inp" placeholder="Buscar inquilino o dirección..." value="${S.filtros.cobranzaBuscar||""}"
-      oninput="S.filtros.cobranzaBuscar=this.value;render()" style="min-width:200px">
+      id="cob-buscar" data-action="cobranzaBuscar" style="min-width:200px">
     <button class="btn" data-action="cobranzasLimpiar"
       style="background:var(--negro3);color:var(--gris3)">✕ Limpiar</button>
     <span style="font-size:11px;color:var(--gris3);align-self:center">${pagos.length} resultado(s)</span>
@@ -2023,7 +2051,7 @@ function renderInquilinos(){
     </tr>`).join("");
 
     return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-      <button class="btn sm" onclick="S.inquilinoActivo=null;render()">← Volver a inquilinos</button>
+      <button class="btn sm" data-action="volverInquilinos">← Volver a inquilinos</button>
     </div>
     <div class="fg" style="margin-bottom:16px">
       <div class="lcard">
@@ -2167,7 +2195,7 @@ function renderModalDetalle(){
       <div class="fsec-t">Registrar pago del mes</div>
       <div class="fg">
         <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
-        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" oninput="S.form.alquiler=+this.value;updateResumen()"></div>
+        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" id="cobro-alquiler" data-action="setAlquilerCobro"></div>
         <div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="${f.fechaCobro||hoy()}" data-action="setForm" data-key="fechaCobro"></div>
         <div><label class="fl">N° Comprobante</label><input class="inp" style="width:100%" placeholder="Auto" data-action="setForm" data-key="comprobante"></div>
       </div>
@@ -2358,7 +2386,7 @@ function render(){
       <div class="sidebar-foot">© 2025 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
-      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><input id="busq-global" class="inp" placeholder="🔍 Buscar..." value="${S.busqGlobal||''}" oninput="S.busqGlobal=this.value;renderParcial?renderParcial():render()" style="width:200px;padding:6px 10px;font-size:12px" onkeydown="if(event.key==='Escape'){S.busqGlobal='';render();}"><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
+      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><input id="busq-global" class="inp" placeholder="🔍 Buscar..." value="${S.busqGlobal||''}" id="busq-global-inp" data-action="busqInput" style="width:200px;padding:6px 10px;font-size:12px" data-action="busqEscape"><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
       ${S.busqGlobal?'<div style="position:fixed;top:56px;left:0;right:0;z-index:999;background:var(--negro2);border-bottom:1px solid var(--negro4);padding:8px 16px;max-height:60vh;overflow-y:auto">'+renderBusquedaGlobal(S.busqGlobal)+'</div>':""}${body}
     </main>
   </div>${renderModal()}`;
