@@ -1241,10 +1241,14 @@ function renderModalGrillaGastos(){
   const extras=(c.extras||[]).filter(e=>e.desc&&+(e.monto||0)>0);
   if(!extras.length){
     return '<div class="overlay"><div class="modal" style="max-width:480px">'
-      +'<button class="mclose" onclick="closeModal()">✕</button>'
-      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos</div>'
-      +'<p style="color:var(--gris3);padding:20px 0">Este contrato no tiene gastos fijos configurados.</p>'
-      +'<div class="fa"><button class="btn" onclick="closeModal()">Cerrar</button></div>'
+      +'<button class="mclose" data-action="closeModal">✕</button>'
+      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+(c.inquilino||"")+'</div>'
+      +'<div style="padding:20px 0;text-align:center">'
+      +'<div style="font-size:32px;margin-bottom:12px">📋</div>'
+      +'<div style="color:var(--gris3);margin-bottom:16px">Este contrato no tiene gastos fijos configurados todavía.</div>'
+      +'<button class="btn naranja" data-action="irSetup">Ir a Puesta a punto para configurarlos →</button>'
+      +'</div>'
+      +'<div class="fa"><button class="btn" data-action="closeModal">Cerrar</button></div>'
       +'</div></div>';
   }
 
@@ -1474,7 +1478,7 @@ document.addEventListener("click",e=>{
     const idx=+t.dataset.idx;
     S._extrasTemp.splice(idx,1);
     render();
-  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
+  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="irSetup"){closeModal();S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
   else if(action==="hinqEliminar"){eliminarHistorialInq(id,t.dataset.nombre);}
@@ -2101,7 +2105,7 @@ function renderModalDetalle(){
   }).join("");
   return `<div class="overlay"><div class="modal">
     <button class="mclose" data-action="closeModal">✕</button>
-    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}${(c.extras||[]).filter(e=>+(e.monto||0)>0).length>0?'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="'+c._id+'">📊 Ver gastos</button>':""}</div>
+    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="'+c._id+'">📊 Ver gastos</button>'</div>
     <div class="fsec">
       <div class="fsec-t">Datos del contrato</div>
       <div class="fc-grid">
