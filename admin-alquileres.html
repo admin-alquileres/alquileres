@@ -184,7 +184,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -235,6 +235,7 @@ function iniciarPresencia(user){
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
+S.fechaCorte=localStorage.getItem('fechaCorte')||'2026-07';
 onAuthStateChanged(auth,user=>{
   if(user){S.usuario=user;iniciarPresencia(user);cargarTodo();}
   else{S.usuario=null;S.loading=false;S.presencia=[];renderLogin();}
@@ -1145,42 +1146,49 @@ function renderSeccionHistorialInq(nombre){
 
 function renderDeudores(){
   const hoyD=new Date();
-  const mesHoy=mesActual();
   const activos=S.contratos.filter(c=>c.estado==="activo");
+  // Fecha de corte: solo evaluar deudas desde esta fecha en adelante
+  const corte=new Date((S.fechaCorte||"2026-07")+"-01");
+  const corteStr=(S.fechaCorte||"2026-07")+"-01";
+  const corteMes=S.fechaCorte||"2026-07"; // "2026-07"
 
-  // Para cada contrato activo, calcular deuda acumulada
   const deudores=activos.map(c=>{
     const pagosC=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado);
-    // Pagos vencidos o pendientes
-    const pendientes=pagosC.filter(p=>p.estado==="pendiente"||p.estado==="vencido");
-    // Meses sin cobrar: desde inicio hasta hoy
     const mesesSinPago=[];
-    // Generar lista de meses desde inicio del contrato hasta mes actual
-    if(c.inicio){
-      let cur=new Date(c.inicio);
-      const limite=new Date(hoyD.getFullYear(),hoyD.getMonth(),1);
-      while(cur<=limite){
-        const m=cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0");
-        const tienePago=pagosC.some(p=>p.mes===m&&(p.estado==="cobrado"||p.estado==="pagado"));
-        if(!tienePago){
-          const diasAtraso=Math.round((hoyD-cur)/86400000);
-          if(diasAtraso>5) mesesSinPago.push({mes:m,diasAtraso});
-        }
-        cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+    // Generar meses desde el corte (o inicio del contrato si es posterior) hasta hoy
+    const inicioEval=c.inicio&&c.inicio>corteStr?new Date(c.inicio+"-01"):new Date(corte);
+    let cur=new Date(inicioEval);
+    const limite=new Date(hoyD.getFullYear(),hoyD.getMonth(),1);
+    while(cur<=limite){
+      const m=cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0");
+      const tienePago=pagosC.some(p=>p.mes===m&&(p.estado==="cobrado"||p.estado==="pagado"));
+      if(!tienePago){
+        const diasAtraso=Math.round((hoyD-cur)/86400000);
+        if(diasAtraso>5) mesesSinPago.push({mes:m,diasAtraso});
       }
+      cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
     }
-    const totalPendiente=pendientes.reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
-    const alqMensual=c.alquilerBase||0;
-    const deudaEstimada=mesesSinPago.length*alqMensual;
-    return {c,pendientes,mesesSinPago,totalPendiente,deudaEstimada,mesesAtraso:mesesSinPago.length};
-  }).filter(d=>d.mesesAtraso>0||d.pendientes.length>0)
+    const totalPendiente=pagosC.filter(p=>p.estado==="pendiente"||p.estado==="vencido").reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
+    const deudaEstimada=mesesSinPago.length*(c.alquilerBase||0);
+    return {c,mesesSinPago,totalPendiente,deudaEstimada,mesesAtraso:mesesSinPago.length};
+  }).filter(d=>d.mesesAtraso>0||d.totalPendiente>0)
     .sort((a,b)=>b.mesesAtraso-a.mesesAtraso||b.deudaEstimada-a.deudaEstimada);
 
+  const totalDeuda=deudores.reduce((s,d)=>s+d.deudaEstimada,0);
+
+  // Selector de fecha de corte
+  const corteSel='<div style="display:flex;align-items:center;gap:10px;background:var(--negro3);border:1px solid var(--negro4);border-radius:8px;padding:10px 14px;margin-bottom:16px">'
+    +'<span style="font-size:13px">📅</span>'
+    +'<div style="flex:1"><div style="font-size:12px;font-weight:600">Evaluar deudas desde</div>'
+    +'<div style="font-size:11px;color:var(--gris3)">Meses anteriores se consideran saldados</div></div>'
+    +'<input type="month" class="inp" value="'+corteMes+'" style="width:160px" '
+    +'oninput="window.setFechaCorte(this.value)">'
+    +'</div>';
+
   if(!deudores.length){
-    return '<div class="empty" style="padding:60px 0;font-size:16px">✅ Sin deudores — todos los contratos están al día</div>';
+    return corteSel+'<div class="empty" style="padding:60px 0;font-size:16px">✅ Sin deudores desde '+mesNombre(corteMes)+'</div>';
   }
 
-  const totalDeuda=deudores.reduce((s,d)=>s+d.deudaEstimada,0);
   const rows=deudores.map(d=>{
     const c=d.c;
     const color=d.mesesAtraso>=3?"var(--rojo)":d.mesesAtraso>=2?"var(--naranja)":"var(--amarillo)";
@@ -1195,9 +1203,10 @@ function renderDeudores(){
       +'</tr>';
   }).join("");
 
-  return '<div class="kgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">'
-    +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Contratos con atraso</div><div class="kval" style="color:var(--rojo)">'+deudores.length+'</div><div class="ksub">de '+activos.length+' activos</div></div>'
-    +'<div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Deuda estimada total</div><div class="kval" style="font-size:17px;color:var(--naranja)">'+moneda(totalDeuda)+'</div></div>'
+  return corteSel
+    +'<div class="kgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">'
+    +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Contratos con atraso</div><div class="kval" style="color:var(--rojo)">'+deudores.length+'</div><div class="ksub">desde '+mesNombre(corteMes)+'</div></div>'
+    +'<div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Deuda estimada</div><div class="kval" style="font-size:17px;color:var(--naranja)">'+moneda(totalDeuda)+'</div></div>'
     +'<div class="kcard" style="border-top-color:var(--amarillo)"><div class="klbl">Peor caso</div><div class="kval">'+deudores[0].mesesAtraso+' mes'+(deudores[0].mesesAtraso!==1?"es":"")+'</div><div class="ksub">'+deudores[0].c.inquilino+'</div></div>'
     +'</div>'
     +'<div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Meses atraso</th><th>Períodos</th><th>Deuda estimada</th><th></th></tr></thead>'
@@ -1228,7 +1237,7 @@ function renderBusquedaGlobal(q){
 }
 
 function abrirGrillaGastos(cid){
-  S.modal="grilla_gastos";
+  S.modalExtra="grilla_gastos";
   S.grillaContrato=cid;
   render();
 }
@@ -1241,14 +1250,14 @@ function renderModalGrillaGastos(){
   const extras=(c.extras||[]).filter(e=>e.desc&&+(e.monto||0)>0);
   if(!extras.length){
     return '<div class="overlay"><div class="modal" style="max-width:480px">'
-      +'<button class="mclose" data-action="closeModal">✕</button>'
+      +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
       +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+(c.inquilino||"")+'</div>'
       +'<div style="padding:20px 0;text-align:center">'
       +'<div style="font-size:32px;margin-bottom:12px">📋</div>'
       +'<div style="color:var(--gris3);margin-bottom:16px">Este contrato no tiene gastos fijos configurados todavía.</div>'
       +'<button class="btn naranja" data-action="irSetup">Ir a Puesta a punto para configurarlos →</button>'
       +'</div>'
-      +'<div class="fa"><button class="btn" data-action="closeModal">Cerrar</button></div>'
+      +'<div class="fa"><button class="btn" data-action="cerrarGrilla">Cerrar</button></div>'
       +'</div></div>';
   }
 
@@ -1259,10 +1268,10 @@ function renderModalGrillaGastos(){
 
   if(!pagosC.length){
     return '<div class="overlay"><div class="modal" style="max-width:600px">'
-      +'<button class="mclose" onclick="closeModal()">✕</button>'
+      +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
       +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos</div>'
       +'<p style="color:var(--gris3);padding:20px 0">Sin pagos cobrados registrados todavía.</p>'
-      +'<div class="fa"><button class="btn" onclick="closeModal()">Cerrar</button></div>'
+      +'<div class="fa"><button class="btn" data-action="cerrarGrilla">Cerrar</button></div>'
       +'</div></div>';
   }
 
@@ -1333,7 +1342,7 @@ function renderModalGrillaGastos(){
   }).join("");
 
   return '<div class="overlay"><div class="modal" style="max-width:min(700px,95vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
-    +'<button class="mclose" onclick="closeModal()">✕</button>'
+    +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
     +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+c.inquilino+'<span style="font-size:11px;font-weight:400;color:var(--gris3);margin-left:8px">'+c.direccion+'</span></div>'
     +'<div style="overflow:auto;flex:1;padding:0 4px">'
     +'<table style="border-collapse:collapse;width:100%;font-family:Inter,sans-serif">'
@@ -1350,7 +1359,7 @@ function renderModalGrillaGastos(){
     +'<div style="padding:10px 16px;border-top:1px solid var(--negro4);display:flex;gap:12px;font-size:11px;color:var(--gris3);align-items:center">'
     +'<span>✅ Cobrado</span><span>⬜ No cobrado</span><span>— Sin pago registrado</span>'
     +'<div style="flex:1"></div>'
-    +'<button class="btn" onclick="closeModal()" style="padding:6px 16px">Cerrar</button>'
+    +'<button class="btn" data-action="cerrarGrilla" style="padding:6px 16px">Cerrar</button>'
     +'</div>'
     +'</div></div>';
 }
@@ -1478,7 +1487,7 @@ document.addEventListener("click",e=>{
     const idx=+t.dataset.idx;
     S._extrasTemp.splice(idx,1);
     render();
-  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="irSetup"){closeModal();S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
+  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
   else if(action==="hinqEliminar"){eliminarHistorialInq(id,t.dataset.nombre);}
@@ -1555,7 +1564,7 @@ function renderResumen(){
 }
 
 // ── ACCIONES ──────────────────────────────────────────────────────────────────
-window.go=s=>{S.sec=s;S.modal=null;S.contratoActivo=null;S.inquilinoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos"};render();};
+window.go=s=>{S.sec=s;S.modal=null;S.modalExtra=null;S.contratoActivo=null;S.inquilinoActivo=null;S.filtros={buscar:"",buscarPor:"inquilino",estado:"todos",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos"};render();};
 function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
 function setLiqMes(v){S.liqMes=v;render();}
@@ -2214,8 +2223,12 @@ function renderModalDetalle(){
 }
 
 function renderModal(){
-  if(!S.modal)return"";
-  if(S.modal==="contrato_detalle")return renderModalDetalle();if(S.modal==="caja")return renderModalCaja();if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="editar_extras")return renderModalEditarExtras();
+  const extra=S.modalExtra==="grilla_gastos"?renderModalGrillaGastos():"";
+  if(!S.modal)return extra;
+  if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
+  if(S.modal==="caja")return renderModalCaja()+extra;
+  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();
+  if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
   const sel=(k,opts)=>`<select class="inp" style="width:100%" data-action="setForm" data-key="${k}">${opts.map(o=>`<option value="${o[0]}"${(f[k]||"")==o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>`;
