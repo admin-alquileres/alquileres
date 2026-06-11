@@ -2114,7 +2114,7 @@ function renderModalDetalle(){
   }).join("");
   return `<div class="overlay"><div class="modal">
     <button class="mclose" data-action="closeModal">✕</button>
-    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="'+c._id+'">📊 Ver gastos</button>'</div>
+    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="${c._id}">📊 Ver gastos</button></div>
     <div class="fsec">
       <div class="fsec-t">Datos del contrato</div>
       <div class="fc-grid">
