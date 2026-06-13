@@ -1715,10 +1715,10 @@ document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
   if(!action)return;
-  if(action==="setupBuscar"){S.setupBuscar=t.value;render();}
-  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;render();}
+  if(action==="setupBuscar"){S.setupBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
+  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="busqInput"){S.busqGlobal=t.value;render();}
+  else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
 });
 document.addEventListener("change",e=>{
   const t=e.target;
@@ -1763,12 +1763,12 @@ document.addEventListener("click",e=>{
     render();
   }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
   // ── handlers de inputs (change listener los maneja también) ──────────────
-  else if(action==="setupBuscar"){S.setupBuscar=t.value;render();}
+  else if(action==="setupBuscar"){S.setupBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setupDescartar"){S.setupCambios={};render();}
   else if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
-  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;render();}
+  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="busqInput"){S.busqGlobal=t.value;render();}
+  else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="busqEscape"){S.busqGlobal="";render();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};cargarSaldoProp(t.dataset.nombre).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
 else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
@@ -2789,6 +2789,19 @@ window.toggleTema=function(){
 const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
 const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
+function renderParcial(){
+  const ae=document.activeElement;
+  const fid=ae&&ae.id?ae.id:null;
+  const fstart=ae&&ae.tagName==="INPUT"?ae.selectionStart:null;
+  const fend=ae&&ae.tagName==="INPUT"?ae.selectionEnd:null;
+  render();
+  if(fid){
+    setTimeout(()=>{
+      const el=document.getElementById(fid);
+      if(el){el.focus();try{if(fstart!==null)el.setSelectionRange(fstart,fend);}catch(e){}}
+    },0);
+  }
+}
 function render(){
   if(!S.usuario){renderLogin();return;}
   const[pt,ps]=TITLES[S.sec];
