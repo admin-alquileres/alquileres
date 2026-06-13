@@ -1475,6 +1475,12 @@ async function generarLiquidacionProp(nombre){
   const pagosSel=pagos.filter(p=>mesesSel.includes(p.mes));
   if(!pagosSel.length){toast("Sin pagos para liquidar",false);return;}
 
+  // Leer saldo anterior y monto recibido
+  await cargarSaldoProp(nombre);
+  const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
+  const inputPago=document.getElementById("pago-prop-input");
+  const montoRecibido=inputPago&&inputPago.value?+(inputPago.value||0):null;
+
   // Referencia única para esta liquidación
   const ref="LIQ-"+Date.now();
   const fechaHoy=hoy();
@@ -1574,6 +1580,13 @@ async function generarLiquidacionProp(nombre){
   doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(40,40,40);
   doc.text("Total alquileres",12,y);
   doc.text(moneda(totalAlquileres),198,y,{align:"right"});y+=6;
+  // Saldo anterior si existe
+  if(saldoAnterior!==0){
+    doc.setTextColor(saldoAnterior>0?27:180,saldoAnterior>0?142:50,saldoAnterior>0?60:50);
+    doc.text("Saldo anterior ("+(saldoAnterior>0?"a favor":"deuda")+")",12,y);
+    doc.text((saldoAnterior>0?"+":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
+    doc.setTextColor(40,40,40);
+  }
 
   if(totalDepositoActual>0){
     doc.text("Total actualizacion depositos",12,y);
@@ -1602,6 +1615,29 @@ async function generarLiquidacionProp(nombre){
   doc.text("Eckerdt Negocios Inmobiliarios",198,y+4,{align:"right"});
 
   doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+fechaHoy+".pdf");
+
+  // ── CALCULAR Y GUARDAR NUEVO SALDO ────────────────────────────────────────
+  const netoCalculado=totalAlquileres+totalDepositoActual-comision+saldoAnterior;
+  let nuevoSaldo=0;
+  if(montoRecibido!==null&&montoRecibido!==netoCalculado){
+    nuevoSaldo=montoRecibido-netoCalculado; // positivo=a favor prop, negativo=debe prop
+    await guardarSaldoProp(nombre, nuevoSaldo);
+    // Agregar línea de saldo al PDF
+    if(saldoAnterior!==0){
+      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(40,40,40);
+      doc.text("Saldo anterior "+(saldoAnterior>0?"(a favor)":"(deuda)"),12,y);
+      doc.text((saldoAnterior>0?"+":"-")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
+    }
+    if(nuevoSaldo!==0){
+      doc.setFont("helvetica","italic");doc.setFontSize(8.5);
+      doc.setTextColor(nuevoSaldo>0?27:200,nuevoSaldo>0?142:50,nuevoSaldo>0?60:50);
+      doc.text("Saldo para proxima liquidacion: "+(nuevoSaldo>0?"a favor del propietario":"deuda del propietario"),12,y);
+      doc.text((nuevoSaldo>0?"+":"")+moneda(nuevoSaldo),198,y,{align:"right"});y+=6;
+    }
+  } else {
+    // Sin saldo pendiente
+    await guardarSaldoProp(nombre, 0);
+  }
 
   // ── MARCAR PAGOS COMO LIQUIDADOS EN FIREBASE ──────────────────────────────
   const updates=pagosSel.map(p=>fbUpd("pagos",p._id,{
@@ -1644,6 +1680,36 @@ async function reimprimirLiquidacion(ref, nombre){
     return b?{...p,liquidadoProp:true,liquidacionRef:b.ref,fechaLiquidacion:b.fecha}:p;
   });
   render();
+}
+
+// ── SALDO PROPIETARIO (persiste entre liquidaciones) ──────────────────────
+const S_SALDO_PROP = {};  // cache: { nombre: { docId, monto, updatedAt } }
+
+async function cargarSaldoProp(nombre){
+  if(S_SALDO_PROP[nombre]!==undefined) return;
+  try{
+    const snap=await getDocs(query(collection(db,"saldos_prop"),where("propietario","==",nombre)));
+    if(!snap.empty){
+      const d=snap.docs[0];
+      S_SALDO_PROP[nombre]={docId:d.id,...d.data()};
+    } else {
+      S_SALDO_PROP[nombre]={docId:null,propietario:nombre,monto:0};
+    }
+  }catch(e){ S_SALDO_PROP[nombre]={docId:null,propietario:nombre,monto:0}; }
+}
+
+async function guardarSaldoProp(nombre, monto){
+  const data={propietario:nombre,monto,updatedAt:Date.now()};
+  try{
+    if(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].docId){
+      await updateDoc(doc(db,"saldos_prop",S_SALDO_PROP[nombre].docId),data);
+    } else {
+      const ref=await fbAdd("saldos_prop",data);
+      if(!S_SALDO_PROP[nombre])S_SALDO_PROP[nombre]={};
+      S_SALDO_PROP[nombre].docId=ref;
+    }
+    S_SALDO_PROP[nombre]={...S_SALDO_PROP[nombre],...data};
+  }catch(e){ toast("Error guardando saldo",false); }
 }
 document.addEventListener("input",e=>{
   const t=e.target;
@@ -1704,7 +1770,7 @@ document.addEventListener("click",e=>{
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="busqInput"){S.busqGlobal=t.value;render();}
   else if(action==="busqEscape"){S.busqGlobal="";render();}
-  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};cargarSaldoProp(t.dataset.nombre).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
 else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
@@ -2449,8 +2515,34 @@ function renderFichaPropietario(nombre, prop){
       <div style="font-size:22px;font-weight:700;color:#5ddb8a">${moneda(netoSel)}</div>
     </div>
   </div>
+  ${(()=>{
+    const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
+    const netoConSaldo=netoSel+saldoAnterior;
+    let saldoInfo="";
+    if(saldoAnterior!==0){
+      const col=saldoAnterior>0?"#5ddb8a":"#ff7b6b";
+      saldoInfo=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:${col}">
+        <span>Saldo anterior (${saldoAnterior>0?"a favor del prop.":"deuda del prop."})</span>
+        <span style="font-weight:600">${saldoAnterior>0?"+":""}${moneda(saldoAnterior)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;font-weight:700;border-top:1px solid var(--negro4);margin-top:4px">
+        <span>Total a entregar</span><span style="color:#5ddb8a">${moneda(netoConSaldo)}</span>
+      </div>`;
+    }
+    return `<div style="background:var(--negro3);border:1px solid var(--negro4);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;color:var(--gris3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Ajuste de saldo</div>
+      ${saldoInfo}
+      <div style="margin-top:10px">
+        <label class="fl">Monto que entrega el propietario (dejar vacio si es exacto)</label>
+        <input type="number" id="pago-prop-input" class="inp" style="width:100%;max-width:280px" placeholder="${moneda(netoConSaldo)}">
+      </div>
+      <div style="font-size:11px;color:var(--gris3);margin-top:6px">
+        Neto calculado: <strong>${moneda(netoSel)}</strong>${saldoAnterior!==0?` + saldo anterior: <strong>${moneda(saldoAnterior)}</strong>`:""}. La diferencia queda registrada para la proxima liquidacion.
+      </div>
+    </div>`;
+  })()}
   <button class="btn naranja" style="width:100%;padding:12px;font-size:14px;margin-bottom:20px" data-action="generarLiquidacion" data-nombre="${nombre}">
-    📄 Generar liquidación y PDF
+    Generar liquidacion y PDF
   </button>
   `:`<div class="empty" style="padding:30px 0;margin-bottom:20px">✅ No hay meses pendientes de liquidar</div>`}
 
