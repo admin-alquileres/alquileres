@@ -1715,17 +1715,35 @@ document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
   if(!action)return;
-  if(action==="setupBuscar"){S.setupBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
-  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
+  // Buscadores — usar renderParcial para no perder foco
+  if(action==="setupBuscar"){S.setupBuscar=t.value;renderParcial();}
+  else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;renderParcial();}
+  else if(action==="busqInput"){S.busqGlobal=t.value;renderParcial();}
+  else if(action==="setBuscar"){setFiltro("buscar",t.value);}
+  // Alquiler cobro — actualizar resumen en tiempo real
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
+  // Campos de form modal
+  else if(action==="setForm"){const k=t.dataset.key;if(k)S.form[k]=t.value;}
+  // Extras del contrato
+  else if(action==="setExtraDesc"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].desc=t.value;}
+  else if(action==="setExtraMonto"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].monto=+(t.value||0);}
 });
 document.addEventListener("change",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
-  if(!action)return;
+  if(!action&&t.id!=="fecha-corte-input")return;
+  // Filtros cobranzas
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
+  // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
+  // Selects del form modal (depósito, honorarios, período, estado)
+  else if(action==="setForm"){const k=t.dataset.key;if(k){S.form[k]=t.value;render();}}
+  // Filtros de contratos
+  else if(action==="setFiltroEstadoSel"){setFiltro("estado",t.value);}
+  else if(action==="setFiltroTipoSel"){setFiltro("buscarPor",t.value);}
+  else if(action==="setLiqMesSel"){S.liqMes=t.value;render();}
+  // Liquidaciones
+  // setLiqMesSel ya en click
 });
 // legacy change listener
 document.addEventListener("change_DISABLED",e=>{if(e.target.id==="fecha-corte-input"){window.setFechaCorte(e.target.value);return;}});
