@@ -184,7 +184,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},contratoRenovar:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -514,6 +514,8 @@ function renderIPC(){
         <td class="nuevo-alq" style="font-weight:700;color:var(--celeste)">—</td>
         <td class="dif-alq" style="font-size:11px;color:#5ddb8a">—</td>
         <td class="dif-dep" style="font-size:11px;color:var(--rojo)">${depPend>0?`⚠️ dep. ${moneda(depPend)}`:"—"}</td>
+        <td>${c.telefono?`<button class="btn sm" style="background:rgba(37,211,102,.12);color:#25d366;padding:4px 8px;font-size:11px"
+          onclick="abrirWhatsAppIPC('${c._id}', +document.getElementById('ipc-pct-${fr}')?.value)">📱</button>`:'<span style="color:var(--gris4);font-size:10px">Sin tel.</span>'}</td>
       </tr>`;
     }).join("");
     html+=`<div class="lcard" style="border-left:3px solid ${color};margin-bottom:20px">
@@ -529,10 +531,12 @@ function renderIPC(){
             style="width:90px">
           <button class="btn" style="background:rgba(39,174,96,.15);color:#5ddb8a"
             onclick="aplicarIPCGrupo(${fr})">✓ Aplicar a todos</button>
+          <button class="btn" style="background:rgba(37,211,102,.15);color:#25d366;font-size:12px"
+            onclick="abrirWhatsAppIPCMasivo(${fr}, document.getElementById('ipc-pct-${fr}')?.value)">📱 WhatsApp a todos</button>
         </div>
       </div>
       <div class="tw"><table>
-        <thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. depósito</th></tr></thead>
+        <thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. depósito</th><th>WA</th></tr></thead>
         <tbody>${filas}</tbody>
       </table></div>
     </div>`;
@@ -1711,6 +1715,215 @@ async function guardarSaldoProp(nombre, monto){
     S_SALDO_PROP[nombre]={...S_SALDO_PROP[nombre],...data};
   }catch(e){ toast("Error guardando saldo",false); }
 }
+
+// ── WHATSAPP IPC ─────────────────────────────────────────────────────────────
+function generarMensajeIPC(c, pct, alqNuevo){
+  const alqViejo = c.alquilerBase || 0;
+  const dep = c.deposito || {};
+  const depAnterior = dep.pagado || 0;
+  const difDep = alqNuevo - depAnterior;
+  const nombreInq = (c.inquilino || "").split(",")[0].trim(); // solo primer apellido o nombre
+
+  let msg = `Estimado/a ${nombreInq},%0A%0A`;
+  msg += `Le informamos que a partir del proximo mes se aplica la actualizacion de alquiler correspondiente:%0A%0A`;
+  msg += `🏠 *Propiedad:* ${c.direccion || ""}%0A`;
+  msg += `📋 *Alquiler anterior:* $${Math.round(alqViejo).toLocaleString("es-AR")}%0A`;
+  msg += `📈 *Nuevo alquiler:* $${Math.round(alqNuevo).toLocaleString("es-AR")} (${pct}% de aumento)%0A`;
+
+  if(difDep > 0){
+    msg += `%0A💰 *Actualizacion deposito en garantia:*%0A`;
+    msg += `   Deposito anterior: $${Math.round(depAnterior).toLocaleString("es-AR")}%0A`;
+    msg += `   Nuevo deposito: $${Math.round(alqNuevo).toLocaleString("es-AR")}%0A`;
+    msg += `   Diferencia a abonar: $${Math.round(difDep).toLocaleString("es-AR")}%0A`;
+  }
+
+  msg += `%0ACualquier consulta estamos a su disposicion.%0A`;
+  msg += `%0AEckerdt Negocios Inmobiliarios%0A`;
+  msg += `Urdinarrain, Entre Rios`;
+
+  return msg;
+}
+
+function abrirWhatsAppIPC(cid, pct){
+  const c = S.contratos.find(x => x._id === cid);
+  if(!c){ toast("Contrato no encontrado", false); return; }
+
+  // Obtener el nuevo alquiler desde el input del IPC
+  const inp = document.getElementById(`ipc-pct-${c.frecActualizacion||6}`);
+  const pctVal = pct || (inp ? parseFloat(inp.value) : 0);
+  if(!pctVal){ toast("Ingresa el % de aumento primero", false); return; }
+
+  const alqNuevo = Math.round((c.alquilerBase||0) * (1 + pctVal/100));
+  const tel = (c.telefono||"").replace(/\D/g,""); // solo números
+
+  if(!tel){
+    toast("Este inquilino no tiene teléfono registrado", false);
+    return;
+  }
+
+  // Número argentino: si empieza con 0 quitar el 0, agregar 549
+  let telWA = tel;
+  if(telWA.startsWith("0")){ telWA = telWA.substring(1); }
+  if(!telWA.startsWith("54")){ telWA = "549" + telWA; }
+
+  const msg = generarMensajeIPC(c, pctVal, alqNuevo);
+  const url = `https://wa.me/${telWA}?text=${msg}`;
+  window.open(url, "_blank");
+}
+
+function abrirWhatsAppIPCMasivo(fr, pct){
+  // Abrir todos los WhatsApp del grupo de una vez (abre múltiples tabs)
+  if(!pct || isNaN(+pct)){ toast("Ingresá el % primero", false); return; }
+  const activos = S.contratos.filter(c => c.estado==="activo" && +(c.frecActualizacion||6)===+fr);
+  const conTel = activos.filter(c => c.telefono);
+  const sinTel = activos.filter(c => !c.telefono);
+
+  if(!conTel.length){ toast("Ningún inquilino de este grupo tiene teléfono", false); return; }
+
+  if(!confirm(`¿Abrir WhatsApp para ${conTel.length} inquilino(s) de c/${fr}m?\n${sinTel.length>0?`(${sinTel.length} sin teléfono registrado, se omiten)`:""}`)){ return; }
+
+  conTel.forEach((c, i) => {
+    setTimeout(() => {
+      abrirWhatsAppIPC(c._id, +pct);
+    }, i * 800); // 800ms entre cada uno para no saturar
+  });
+
+  if(sinTel.length > 0){
+    toast(`✅ ${conTel.length} abiertos · ${sinTel.length} sin teléfono`, false);
+  } else {
+    toast(`✅ ${conTel.length} WhatsApp abiertos`);
+  }
+}
+
+// ── RENOVAR CONTRATO ─────────────────────────────────────────────────────────
+function abrirRenovacion(cid){
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return;
+  // Pre-cargar con datos actuales
+  S.modal="renovar_contrato";
+  S.contratoRenovar=cid;
+  S.form={
+    inicio:hoy(),
+    fin:"",
+    alquilerBase:c.alquilerBase||0,
+    comisionAgencia:c.comisionAgencia||5,
+    frecActualizacion:c.frecActualizacion||6,
+    indiceActualizacion:c.indiceActualizacion||"IPC",
+    depCuotas:1,
+    honMonto:"medio",
+    honCuotas:1,
+    notasActualizacion:c.notasActualizacion||""
+  };
+  render();
+}
+
+function renderModalRenovar(){
+  const cid=S.contratoRenovar;
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return"";
+  const f=S.form;
+  const inp=(k,type)=>`<input class="inp" style="width:100%" type="${type||"text"}" data-action="setForm" data-key="${k}" value="${f[k]||""}">`;
+  return `<div class="overlay"><div class="modal" style="max-width:560px">
+    <button class="mclose" data-action="closeModal">✕</button>
+    <div class="mth"><div class="mth-ic">🔄</div>Renovar contrato — ${c.inquilino||""}</div>
+    <div style="background:rgba(75,200,232,.06);border:1px solid rgba(75,200,232,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--gris3)">
+      📋 Propiedad: <strong style="color:var(--blanco)">${c.direccion||""}</strong> · 
+      Propietario: <strong style="color:var(--blanco)">${c.propietarioNombre||""}</strong><br>
+      Contrato anterior: ${c.inicio||""} → ${c.fin||"S/F"} · Alquiler anterior: <strong style="color:var(--celeste)">${moneda(c.alquilerBase)}</strong>
+    </div>
+    <div class="fg">
+      <div><label class="fl">Nueva fecha inicio *</label>${inp("inicio","date")}</div>
+      <div><label class="fl">Nueva fecha fin</label>${inp("fin","date")}</div>
+      <div><label class="fl">Nuevo alquiler ($) *</label>${inp("alquilerBase","number")}</div>
+      <div><label class="fl">Comisión agencia (%)</label>${inp("comisionAgencia","number")}</div>
+      <div><label class="fl">Frecuencia actualización</label>
+        <select class="inp" style="width:100%" data-action="setForm" data-key="frecActualizacion">
+          ${[3,4,6,12].map(v=>`<option value="${v}"${+(f.frecActualizacion||6)===v?" selected":""}>Cada ${v} meses</option>`).join("")}
+        </select>
+      </div>
+      <div><label class="fl">Índice</label>
+        <select class="inp" style="width:100%" data-action="setForm" data-key="indiceActualizacion">
+          ${["IPC","ICL","CVS","Acuerdo"].map(v=>`<option value="${v}"${(f.indiceActualizacion||"IPC")===v?" selected":""}>  ${v}</option>`).join("")}
+        </select>
+      </div>
+      <div><label class="fl">Depósito</label>
+        <select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">
+          <option value="1"${+(f.depCuotas||1)===1?" selected":""}>1 cuota (completo al ingreso)</option>
+          <option value="2"${+(f.depCuotas||1)===2?" selected":""}>2 cuotas (mitad + mitad)</option>
+        </select>
+      </div>
+      <div><label class="fl">Honorarios</label>
+        <select class="inp" style="width:100%" data-action="setForm" data-key="honMonto">
+          <option value="medio"${(f.honMonto||"medio")==="medio"?" selected":""}>Medio mes</option>
+          <option value="mes"${f.honMonto==="mes"?" selected":""}>Un mes completo</option>
+        </select>
+      </div>
+      <div style="grid-column:1/-1"><label class="fl">Notas</label>
+        <textarea class="inp" style="width:100%;height:50px;resize:vertical" data-action="setForm" data-key="notasActualizacion">${f.notasActualizacion||""}</textarea>
+      </div>
+    </div>
+    <div class="fa">
+      <button class="btn" data-action="closeModal">Cancelar</button>
+      <button class="btn naranja" data-action="confirmarRenovacion">🔄 Confirmar renovación</button>
+    </div>
+  </div></div>`;
+}
+
+async function confirmarRenovacion(){
+  const cid=S.contratoRenovar;
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return;
+  const f=S.form;
+  if(!f.inicio||!f.alquilerBase){toast("Completá fecha inicio y alquiler",false);return;}
+
+  const alqBase=+(f.alquilerBase||0);
+  const depCuotas=+(f.depCuotas||1);
+  const honMonto=f.honMonto||"medio";
+  const honCuotas=+(f.honCuotas||1);
+  const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
+  const deposito={total:alqBase,cuotas:depCuotas,pagadas:1,pagado:depCuotas===1?alqBase:Math.round(alqBase/2),pendiente:depCuotas===2?Math.round(alqBase/2):0,completo:depCuotas===1};
+  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
+
+  const upd={
+    inicio:f.inicio,
+    fin:f.fin||"",
+    alquilerBase:alqBase,
+    comisionAgencia:+(f.comisionAgencia||5),
+    frecActualizacion:+(f.frecActualizacion||6),
+    indiceActualizacion:f.indiceActualizacion||"IPC",
+    notasActualizacion:f.notasActualizacion||"",
+    estado:"activo",
+    deposito,
+    honorarios,
+    ultimaActualizacion:f.inicio,
+    renovaciones:(c.renovaciones||0)+1,
+    fechaRenovacion:hoy(),
+    // Guardar historial del contrato anterior
+    historialRenovaciones:[...(c.historialRenovaciones||[]),{
+      inicio:c.inicio,fin:c.fin,alquilerBase:c.alquilerBase,
+      fechaRenovacion:hoy(),renovacionN:(c.renovaciones||0)+1
+    }]
+  };
+
+  await fbUpd("contratos",cid,upd);
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
+
+  // Registrar en historial de propiedad
+  const pid=propId(c);
+  if(pid) await fbAdd("historial_prop",{
+    propiedadId:pid,
+    fecha:hoy(),
+    descripcion:`Contrato renovado · Nuevo alquiler: ${moneda(alqBase)} · Período: ${f.inicio} → ${f.fin||"S/F"}`,
+    creadoEn:Date.now()
+  });
+
+  toast("✅ Contrato renovado");
+  S.modal=null;
+  S.contratoRenovar=null;
+  S.contratoActivo={...c,...upd};
+  S.modal="contrato_detalle";
+  render();
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -1756,7 +1969,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato")renovarContrato(id);else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato"){abrirRenovacion(id);}else if(action==="confirmarRenovacion"){confirmarRenovacion();}else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){
     // Sincronizar valores actuales del DOM antes de re-render
     const rows2=document.querySelectorAll(".extra-row");
     if(!S._extrasTemp)S._extrasTemp=[];
@@ -2508,10 +2721,13 @@ function renderFichaPropietario(nombre, prop){
     </tr>`;
   }).join("");
 
-  return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+  return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
     <button class="btn sm" data-action="volverPropietarios">← Volver</button>
     <div style="font-size:18px;font-weight:700">${nombre}</div>
-    ${prop.telefono?`<a href="tel:${prop.telefono}" style="color:var(--celeste);font-size:13px">📞 ${prop.telefono}</a>`:""}
+    ${prop.telefono?`<a href="tel:${prop.telefono}" style="color:var(--celeste);font-size:13px;margin-left:8px">📞 ${prop.telefono}</a>`:""}
+    ${prop.telefonoAlt?`<a href="tel:${prop.telefonoAlt}" style="color:var(--celeste);font-size:13px">📞 ${prop.telefonoAlt}</a>`:""}
+    ${prop.email?`<a href="mailto:${prop.email}" style="color:var(--celeste);font-size:13px">✉️ ${prop.email}</a>`:""}
+    ${prop.cbu?`<span style="font-size:12px;color:var(--gris3)">CBU: ${prop.cbu}${prop.banco?" ("+prop.banco+")":""}</span>`:""}
   </div>
 
   <div class="kgrid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
@@ -2692,7 +2908,7 @@ function renderModalDetalle(){
     ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}${renderSeccionHistorialProp(c)}
     <div class="fa">
       <button class="btn" data-action="closeModal">Cancelar</button>
-      ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar contrato</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
+      ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
     </div>
   </div></div>`;
 }
@@ -2702,7 +2918,7 @@ function renderModal(){
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
-  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();
+  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
@@ -2774,18 +2990,32 @@ function renderModal(){
   }
   if(S.modal==="propietario"){
     content=`<div class="mth"><div class="mth-ic">👤</div>Nuevo Propietario</div><div class="fg">
-      <div class="fgf"><label class="fl">Nombre *</label>${inp("nombre")}</div>
-      <div><label class="fl">Teléfono</label>${inp("telefono")}</div>
-      <div><label class="fl">Email</label>${inp("email","email")}</div>
+      <div class="fgf"><label class="fl">Nombre completo *</label>${inp("nombre")}</div>
       <div><label class="fl">DNI / CUIT</label>${inp("dni")}</div>
+      <div><label class="fl">Celular</label>${inp("telefono","tel")}</div>
+      <div><label class="fl">Teléfono alternativo</label>${inp("telefonoAlt","tel")}</div>
+      <div><label class="fl">Email</label>${inp("email","email")}</div>
+      <div><label class="fl">Dirección particular</label>${inp("direccionPart")}</div>
+      <div><label class="fl">Localidad</label>${inp("localidad")}</div>
+      <div><label class="fl">CBU / Alias (para transferencia)</label>${inp("cbu")}</div>
+      <div><label class="fl">Banco</label>${inp("banco")}</div>
+      <div><label class="fl">% Comisión</label>${inp("comisionAgencia","number")}</div>
+      <div style="grid-column:1/-1"><label class="fl">Observaciones</label><textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="obs">${f.obs||""}</textarea></div>
     </div><div class="fa"><button class="btn" data-action="closeModal">Cancelar</button><button class="btn naranja" data-action="guardarPropietario">Guardar</button></div>`;
   }
   if(S.modal==="inquilino"){
     content=`<div class="mth"><div class="mth-ic">🏠</div>Nuevo Inquilino</div><div class="fg">
-      <div class="fgf"><label class="fl">Nombre *</label>${inp("nombre")}</div>
-      <div><label class="fl">DNI</label>${inp("dni")}</div>
-      <div><label class="fl">Teléfono</label>${inp("telefono")}</div>
+      <div class="fgf"><label class="fl">Nombre completo *</label>${inp("nombre")}</div>
+      <div><label class="fl">DNI / CUIL</label>${inp("dni")}</div>
+      <div><label class="fl">Celular</label>${inp("telefono","tel")}</div>
+      <div><label class="fl">Teléfono alternativo</label>${inp("telefonoAlt","tel")}</div>
       <div><label class="fl">Email</label>${inp("email","email")}</div>
+      <div><label class="fl">Dirección particular</label>${inp("direccionPart")}</div>
+      <div><label class="fl">Localidad</label>${inp("localidad")}</div>
+      <div><label class="fl">Ocupación / Trabajo</label>${inp("ocupacion")}</div>
+      <div><label class="fl">Garante</label>${inp("garante")}</div>
+      <div><label class="fl">Tel. garante</label>${inp("telGarante","tel")}</div>
+      <div style="grid-column:1/-1"><label class="fl">Observaciones</label><textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="obs">${f.obs||""}</textarea></div>
     </div><div class="fa"><button class="btn" data-action="closeModal">Cancelar</button><button class="btn naranja" data-action="guardarInquilino">Guardar</button></div>`;
   }
   return `<div class="overlay"><div class="modal"><button class="mclose" data-action="closeModal">✕</button>${content}</div></div>`;
