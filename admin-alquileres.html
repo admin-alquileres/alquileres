@@ -406,14 +406,30 @@ function generarPDFInquilino(p){
   doc.setFontSize(7.5);doc.setTextColor(120,120,120);
   doc.text("-- Cortar aqui - Talon para la inmobiliaria --",105,y-2,{align:"center"});y+=5;
 
-  // Talón
+  // Talon — espejo del recibo con detalle de items
   doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(60,60,60);
   doc.text("RECIBO N "+nro,12,y+4);doc.text(fecha+" "+hora,198,y+4,{align:"right"});y+=8;
-  doc.setFont("helvetica","normal");
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);
   doc.text("Inquilino: "+(p.inquilino||""),12,y);
-  doc.text("Propiedad: "+(p.direccion||""),105,y);y+=5;
-  doc.setFont("helvetica","bold");
-  doc.text("PAGO ALQUILER "+mesNombreMay(p.mes)+" — "+moneda(totalInq),12,y);y+=5;
+  doc.text("Prop.: "+(p.direccion||""),105,y);y+=5;
+  doc.setFont("helvetica","bold");doc.setFontSize(8);
+  doc.text("Alquiler "+mesNombreMay(p.mes),12,y);
+  doc.text(moneda(alq),198,y,{align:"right"});y+=5;
+  // Items del cobro en el talon
+  items.forEach(function(it){
+    if(!it.desc&&!it.monto) return;
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);
+    const neg=(it.monto||0)<0;
+    doc.setTextColor(neg?180:60,60,60);
+    const lbl=(it.desc||it.tipo).substring(0,40);
+    doc.text(lbl+":",14,y);
+    doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=4;
+  });
+  doc.setTextColor(60,60,60);
+  doc.setDrawColor(150,150,150);doc.setLineWidth(0.2);doc.line(12,y,198,y);y+=4;
+  doc.setFont("helvetica","bold");doc.setFontSize(8);
+  doc.text("TOTAL: "+moneda(totalInq),12,y);
+  doc.text("Prop.: "+(cont.propietarioNombre||p.propietarioNombre||""),105,y);y+=5;
 
 
   doc.save("Recibo-Inquilino-"+(p.inquilino||"").replace(/ /g,"_")+"-"+mesNombreMay(p.mes)+".pdf");
