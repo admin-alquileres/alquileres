@@ -2136,13 +2136,21 @@ async function migrarPropiedadesDesdeContratos(){
 }
 
 function propiedadesDelPropietario(nombre){
-  return (S.propiedadesInmuebles||[]).filter(p=>p.propietarioNombre===nombre&&!p._eliminado);
+  const n=normStr(nombre);
+  return (S.propiedadesInmuebles||[]).filter(p=>normStr(p.propietarioNombre)===n&&!p._eliminado);
 }
 
+function normStr(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 function propiedadLibre(pid){
   const prop=S.propiedadesInmuebles.find(p=>p._id===pid);
-  if(!prop)return true;
-  return !S.contratos.some(c=>c.propietarioNombre===prop.propietarioNombre&&c.direccion===prop.direccion&&c.estado==="activo");
+  if(!prop) return true;
+  const nDir=normStr(prop.direccion);
+  const nProp=normStr(prop.propietarioNombre);
+  return !S.contratos.some(c=>
+    (normStr(c.propietarioNombre)===nProp || nProp==="") &&
+    normStr(c.direccion)===nDir &&
+    c.estado==="activo"
+  );
 }
 
 async function guardarPropiedadInmueble(data,id){
@@ -2985,7 +2993,7 @@ function renderFichaPropietario(nombre, prop){
     const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     if(!S_HIST[pid]){cargarHistorialProp(pid).then(function(){renderHistPropInline(pid);});}
     const entradas=(S_HIST[pid]||[]).filter(function(e){return !e._eliminado;});
-    const cActivo=S.contratos.find(function(c){return c.propietarioNombre===nombre&&c.direccion===p.direccion&&c.estado==="activo";});
+    const cActivo=S.contratos.find(function(c){return normStr(c.propietarioNombre)===normStr(nombre)&&normStr(c.direccion)===normStr(p.direccion)&&c.estado==="activo";});
     const chip=cActivo
       ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:2px 8px;border-radius:10px">Ocupada: '+(cActivo.inquilino||"")+'</span>'
       :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>';
