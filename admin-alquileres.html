@@ -1924,6 +1924,163 @@ async function confirmarRenovacion(){
   S.modal="contrato_detalle";
   render();
 }
+
+function abrirEditarInquilino(nombre){
+  // Buscar datos existentes del inquilino
+  const inq=S.inquilinos.find(x=>x.nombre===nombre)||{nombre};
+  const contrato=S.contratos.find(c=>c.inquilino===nombre)||{};
+  S.modal="editar_inquilino";
+  S.form={
+    nombre:inq.nombre||nombre,
+    dni:inq.dni||contrato.dni||"",
+    telefono:inq.telefono||contrato.telefono||"",
+    telefonoAlt:inq.telefonoAlt||"",
+    email:inq.email||contrato.email||"",
+    direccionPart:inq.direccionPart||"",
+    localidad:inq.localidad||"",
+    ocupacion:inq.ocupacion||"",
+    garante:inq.garante||contrato.garante||"",
+    telGarante:inq.telGarante||"",
+    obs:inq.obs||""
+  };
+  render();
+}
+
+function renderModalEditarInquilino(){
+  const f=S.form||{};
+  const inp=(k,type)=>`<input class="inp" style="width:100%" type="${type||"text"}" data-action="setForm" data-key="${k}" value="${(f[k]||"").toString().replace(/"/g,"&quot;")}">`;
+  return `<div class="overlay"><div class="modal" style="max-width:560px">
+    <button class="mclose" data-action="closeModal">✕</button>
+    <div class="mth"><div class="mth-ic">👤</div>Datos del inquilino — ${f.nombre||""}</div>
+    <div class="fg">
+      <div class="fgf"><label class="fl">Nombre completo *</label>${inp("nombre")}</div>
+      <div><label class="fl">DNI / CUIL</label>${inp("dni")}</div>
+      <div><label class="fl">Celular</label>${inp("telefono","tel")}</div>
+      <div><label class="fl">Teléfono alternativo</label>${inp("telefonoAlt","tel")}</div>
+      <div><label class="fl">Email</label>${inp("email","email")}</div>
+      <div><label class="fl">Dirección particular</label>${inp("direccionPart")}</div>
+      <div><label class="fl">Localidad</label>${inp("localidad")}</div>
+      <div><label class="fl">Ocupación / Trabajo</label>${inp("ocupacion")}</div>
+      <div><label class="fl">Garante</label>${inp("garante")}</div>
+      <div><label class="fl">Tel. garante</label>${inp("telGarante","tel")}</div>
+      <div style="grid-column:1/-1"><label class="fl">Observaciones</label>
+        <textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="obs">${f.obs||""}</textarea>
+      </div>
+    </div>
+    <div class="fa">
+      <button class="btn" data-action="closeModal">Cancelar</button>
+      <button class="btn naranja" data-action="guardarInquilino">💾 Guardar</button>
+    </div>
+  </div></div>`;
+}
+
+async function guardarInquilino(){
+  const f=S.form||{};
+  if(!f.nombre){toast("El nombre es obligatorio",false);return;}
+  const data={
+    nombre:f.nombre,dni:f.dni||"",telefono:f.telefono||"",
+    telefonoAlt:f.telefonoAlt||"",email:f.email||"",
+    direccionPart:f.direccionPart||"",localidad:f.localidad||"",
+    ocupacion:f.ocupacion||"",garante:f.garante||"",
+    telGarante:f.telGarante||"",obs:f.obs||""
+  };
+  // Buscar si ya existe en colección inquilinos
+  const existente=S.inquilinos.find(x=>x.nombre===f.nombre);
+  if(existente&&existente._id){
+    await fbUpd("inquilinos",existente._id,data);
+    S.inquilinos=S.inquilinos.map(x=>x._id===existente._id?{...x,...data}:x);
+  } else {
+    const id=await fbAdd("inquilinos",data);
+    if(id) S.inquilinos.push({...data,_id:id});
+  }
+  // También actualizar teléfono/email en todos sus contratos activos
+  if(f.telefono||f.email){
+    const contratos=S.contratos.filter(c=>c.inquilino===f.nombre);
+    await Promise.all(contratos.map(c=>fbUpd("contratos",c._id,{
+      telefono:f.telefono||c.telefono||"",
+      email:f.email||c.email||""
+    })));
+    S.contratos=S.contratos.map(c=>c.inquilino===f.nombre?{...c,telefono:f.telefono||c.telefono,email:f.email||c.email}:c);
+  }
+  toast("✅ Datos guardados");
+  S.modal=null;
+  // Actualizar inquilinoActivo si está abierto
+  if(S.inquilinoActivo&&S.inquilinoActivo.nombre===f.nombre){
+    S.inquilinoActivo={...S.inquilinoActivo,...data};
+  }
+  render();
+}
+
+// ── EDITAR DATOS PROPIETARIO ──────────────────────────────────────────────────
+function abrirEditarPropietario(nombre){
+  const prop=S.propietarios.find(x=>x.nombre===nombre)||{nombre};
+  S.modal="editar_propietario";
+  S.form={
+    nombre:prop.nombre||nombre,
+    dni:prop.dni||"",
+    telefono:prop.telefono||"",
+    telefonoAlt:prop.telefonoAlt||"",
+    email:prop.email||"",
+    direccionPart:prop.direccionPart||"",
+    localidad:prop.localidad||"",
+    cbu:prop.cbu||"",
+    banco:prop.banco||"",
+    comisionAgencia:prop.comisionAgencia||5,
+    obs:prop.obs||""
+  };
+  render();
+}
+
+function renderModalEditarPropietario(){
+  const f=S.form||{};
+  const inp=(k,type)=>`<input class="inp" style="width:100%" type="${type||"text"}" data-action="setForm" data-key="${k}" value="${(f[k]||"").toString().replace(/"/g,"&quot;")}">`;
+  return `<div class="overlay"><div class="modal" style="max-width:560px">
+    <button class="mclose" data-action="closeModal">✕</button>
+    <div class="mth"><div class="mth-ic">🏢</div>Datos del propietario — ${f.nombre||""}</div>
+    <div class="fg">
+      <div class="fgf"><label class="fl">Nombre completo *</label>${inp("nombre")}</div>
+      <div><label class="fl">DNI / CUIT</label>${inp("dni")}</div>
+      <div><label class="fl">Celular</label>${inp("telefono","tel")}</div>
+      <div><label class="fl">Teléfono alternativo</label>${inp("telefonoAlt","tel")}</div>
+      <div><label class="fl">Email</label>${inp("email","email")}</div>
+      <div><label class="fl">Dirección particular</label>${inp("direccionPart")}</div>
+      <div><label class="fl">Localidad</label>${inp("localidad")}</div>
+      <div><label class="fl">CBU / Alias transferencia</label>${inp("cbu")}</div>
+      <div><label class="fl">Banco</label>${inp("banco")}</div>
+      <div><label class="fl">% Comisión agencia</label>${inp("comisionAgencia","number")}</div>
+      <div style="grid-column:1/-1"><label class="fl">Observaciones</label>
+        <textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="obs">${f.obs||""}</textarea>
+      </div>
+    </div>
+    <div class="fa">
+      <button class="btn" data-action="closeModal">Cancelar</button>
+      <button class="btn naranja" data-action="guardarPropietario">💾 Guardar</button>
+    </div>
+  </div></div>`;
+}
+
+async function guardarPropietario(){
+  const f=S.form||{};
+  if(!f.nombre){toast("El nombre es obligatorio",false);return;}
+  const data={
+    nombre:f.nombre,dni:f.dni||"",telefono:f.telefono||"",
+    telefonoAlt:f.telefonoAlt||"",email:f.email||"",
+    direccionPart:f.direccionPart||"",localidad:f.localidad||"",
+    cbu:f.cbu||"",banco:f.banco||"",
+    comisionAgencia:+(f.comisionAgencia||5),obs:f.obs||""
+  };
+  const existente=S.propietarios.find(x=>x.nombre===f.nombre);
+  if(existente&&existente._id){
+    await fbUpd("propietarios",existente._id,data);
+    S.propietarios=S.propietarios.map(x=>x._id===existente._id?{...x,...data}:x);
+  } else {
+    const id=await fbAdd("propietarios",data);
+    if(id) S.propietarios.push({...data,_id:id});
+  }
+  toast("✅ Datos guardados");
+  S.modal=null;
+  render();
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2001,7 +2158,7 @@ document.addEventListener("click",e=>{
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="busqEscape"){S.busqGlobal="";render();}
-  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};cargarSaldoProp(t.dataset.nombre).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};cargarSaldoProp(t.dataset.nombre).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
 else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
@@ -2201,17 +2358,9 @@ async function guardarContrato(){
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
 }
 
-async function guardarPropietario(){
-  const f=S.form;if(!f.nombre)return toast("Ingresá el nombre",false);
-  const id=await fbAdd("propietarios",f);
-  if(id){S.propietarios.push({...f,_id:id});closeModal();}
-}
 
-async function guardarInquilino(){
-  const f=S.form;if(!f.nombre)return toast("Ingresá el nombre",false);
-  const id=await fbAdd("inquilinos",f);
-  if(id){S.inquilinos.push({...f,_id:id});closeModal();}
-}
+
+
 
 // ── HELPER PROX ACTUALIZACIÓN ─────────────────────────────────────────────────
 function getProxActualizacion(c){
@@ -2535,15 +2684,21 @@ function renderInquilinos(){
       <td>${p.fechaCobro||"—"}</td>
     </tr>`).join("");
 
-    return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-      <button class="btn sm" data-action="volverInquilinos">← Volver a inquilinos</button>
+    return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn sm" data-action="volverInquilinos">← Volver</button>
+      <button class="btn sm" data-action="editarInquilino" data-nombre="${inq.nombre}" style="background:rgba(75,200,232,.12);color:var(--celeste)">✏️ Editar datos</button>
     </div>
     <div class="fg" style="margin-bottom:16px">
       <div class="lcard">
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">${inq.nombre||""}</div>
-        ${inq.telefono?`<div style="font-size:12px;margin-bottom:5px">📞 <a href="tel:${inq.telefono}" style="color:var(--celeste)">${inq.telefono}</a></div>`:""}
-        ${inq.email?`<div style="font-size:12px;margin-bottom:5px">✉️ <a href="mailto:${inq.email}" style="color:var(--celeste)">${inq.email}</a></div>`:""}
-        ${inq.dni?`<div style="font-size:12px">📋 DNI: <strong>${inq.dni}</strong></div>`:""}
+        ${inq.telefono?`<div style="font-size:12px;margin-bottom:4px">📞 <a href="tel:${inq.telefono}" style="color:var(--celeste)">${inq.telefono}</a>${inq.telefonoAlt?` · <a href="tel:${inq.telefonoAlt}" style="color:var(--celeste)">${inq.telefonoAlt}</a>`:""}</div>`:""}
+        ${inq.email?`<div style="font-size:12px;margin-bottom:4px">✉️ <a href="mailto:${inq.email}" style="color:var(--celeste)">${inq.email}</a></div>`:""}
+        ${inq.dni?`<div style="font-size:12px;margin-bottom:4px">📋 DNI/CUIL: <strong>${inq.dni}</strong></div>`:""}
+        ${inq.direccionPart?`<div style="font-size:12px;margin-bottom:4px">🏠 ${inq.direccionPart}${inq.localidad?" · "+inq.localidad:""}</div>`:""}
+        ${inq.ocupacion?`<div style="font-size:12px;margin-bottom:4px">💼 ${inq.ocupacion}</div>`:""}
+        ${inq.garante?`<div style="font-size:12px;margin-bottom:4px">🛡️ Garante: <strong>${inq.garante}</strong>${inq.telGarante?" · "+inq.telGarante:""}</div>`:""}
+        ${inq.obs?`<div style="font-size:11px;color:var(--gris3);margin-top:6px;font-style:italic">${inq.obs}</div>`:""}
+        ${!inq.telefono&&!inq.email&&!inq.dni?`<div style="font-size:12px;color:var(--gris3)">Sin datos de contacto · <button class="btn sm" data-action="editarInquilino" data-nombre="${inq.nombre}" style="margin-left:4px">✏️ Cargar datos</button></div>`:""}
       </div>
       <div class="kgrid" style="margin:0;gap:8px;grid-template-columns:1fr 1fr">
         <div class="kcard" style="border-top-color:var(--verde)"><div class="klbl">Total cobrado</div><div class="kval" style="font-size:17px">${moneda(totalCob)}</div></div>
@@ -2724,6 +2879,7 @@ function renderFichaPropietario(nombre, prop){
   return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
     <button class="btn sm" data-action="volverPropietarios">← Volver</button>
     <div style="font-size:18px;font-weight:700">${nombre}</div>
+    <button class="btn sm" data-action="editarPropietario" data-nombre="${nombre}" style="background:rgba(75,200,232,.12);color:var(--celeste)">✏️ Editar datos</button>
     ${prop.telefono?`<a href="tel:${prop.telefono}" style="color:var(--celeste);font-size:13px;margin-left:8px">📞 ${prop.telefono}</a>`:""}
     ${prop.telefonoAlt?`<a href="tel:${prop.telefonoAlt}" style="color:var(--celeste);font-size:13px">📞 ${prop.telefonoAlt}</a>`:""}
     ${prop.email?`<a href="mailto:${prop.email}" style="color:var(--celeste);font-size:13px">✉️ ${prop.email}</a>`:""}
@@ -2918,7 +3074,7 @@ function renderModal(){
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
-  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();
+  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
