@@ -1162,7 +1162,7 @@ function renderSeccionHistorialInq(nombre){
       <div style="flex:1;min-width:220px"><label class="fl">Anotación</label>
         <input id="hi-nota-${k}" class="inp" style="width:100%"
           placeholder="Ej: Llamó para avisar desperfecto en baño, acordamos..."
-          onkeydown="if(event.key==='Enter')agregarHistorialInq('${nombre}')">
+          data-action="hinqEnter" data-nombre="${nombre}">
       </div>
       <button class="btn naranja" style="padding:8px 14px;height:36px"
         data-action="hinqAgregar" data-nombre="${nombre}">+ Agregar</button>
@@ -2124,6 +2124,13 @@ document.addEventListener("input",e=>{
   else if(action==="setExtraDesc"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].desc=t.value;}
   else if(action==="setExtraMonto"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].monto=+(t.value||0);}
 });
+document.addEventListener("keydown",e=>{
+  const t=e.target;
+  const action=t.dataset&&t.dataset.action;
+  if(!action)return;
+  if(e.key==="Enter"&&action==="hpropEnter"){e.preventDefault();agregarHistorialProp(t.dataset.pid);}
+  else if(e.key==="Enter"&&action==="hinqEnter"){e.preventDefault();agregarHistorialInq(t.dataset.nombre);}
+});
 document.addEventListener("change",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2935,6 +2942,50 @@ function renderFichaPropietario(nombre, prop){
     <div class="kcard" style="border-top-color:#5ddb8a"><div class="klbl">Neto estimado</div><div class="kval" style="font-size:17px;color:#5ddb8a">${moneda(neto)}</div></div>
   </div>
 
+  <div class="stitle">Propiedades</div>
+  ${activos.map(c=>{
+    const pid=propId(c);
+    if(!S_HIST[pid]){ cargarHistorialProp(pid).then(()=>renderHistPropInline(pid)); }
+    const entradas=(S_HIST[pid]||[]).filter(e=>!e._eliminado);
+    const inqActual=S.pagos.filter(p=>p.contratoId===c._id&&p.estado==="cobrado").length;
+    return `<div class="lcard" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-weight:600;font-size:13px">${c.direccion||""}</div>
+          <div style="font-size:11px;color:var(--gris3);margin-top:2px">
+            Inquilino: ${c.inquilino||"—"} · ${moneda(c.alquilerBase)}/mes · desde ${c.inicio||""}
+          </div>
+        </div>
+        <span style="font-size:11px;color:#5ddb8a">${entradas.length} registro${entradas.length!==1?"s":""}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
+        <div><label class="fl">Fecha</label>
+          <input id="hp-fecha-${pid}" class="inp" type="date" value="${hoy()}" style="width:150px">
+        </div>
+        <div style="flex:1;min-width:200px"><label class="fl">Descripción del evento</label>
+          <input id="hp-desc-${pid}" class="inp" style="width:100%"
+            placeholder="Ej: Visita gasista, arreglo canilla, pintura..."
+            onkeydown="if(event.key==='Enter')agregarHistorialProp('${pid}')">
+        </div>
+        <button class="btn sm naranja" style="height:36px;padding:8px 12px"
+          data-action="hpropAgregar" data-pid="${pid}">+ Agregar</button>
+      </div>
+      <div id="hp-tabla-${pid}">
+        ${entradas.length
+          ? `<div class="tw"><table>
+              <thead><tr><th style="width:110px">Fecha</th><th>Descripción</th><th style="width:40px"></th></tr></thead>
+              <tbody>${entradas.slice(0,10).map(e=>`<tr>
+                <td style="white-space:nowrap;font-size:11px;color:var(--gris3)">${e.fecha||"—"}</td>
+                <td style="font-size:12px">${e.descripcion||""}</td>
+                <td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px"
+                  data-action="hpropEliminar" data-id="${e._id}" data-pid="${pid}">✕</button></td>
+              </tr>`).join("")}
+              </tbody></table></div>`
+          : `<p style="font-size:11px;color:var(--gris4);padding:4px 0">Sin registros todavía.</p>`}
+      </div>
+    </div>`;
+  }).join("")}
+
   ${mesesPend.length?`
   <div class="stitle">Seleccioná los meses a liquidar</div>
   <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">${mesesCards}</div>
@@ -3103,8 +3154,7 @@ function renderModalDetalle(){
       <div class="tw"><table><thead><tr><th>Período</th><th>Monto</th><th>Estado</th><th>Fecha cobro</th><th>Comprobantes</th></tr></thead>
       <tbody>${pagosHtml}</tbody></table></div>
     </div>`:""}
-    ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}${renderSeccionHistorialProp(c)}
-    <div class="fa">
+    ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}<div class="fa">
       <button class="btn" data-action="closeModal">Cancelar</button>
       ${(()=>{const dc=S.contratoActivo.fin?diasPara(S.contratoActivo.fin):null;const proximoVenc=dc!==null&&dc<=60;return proximoVenc?`<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button>`:"";})()}<button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button><button class="btn naranja" data-action="registrarPago">💰 Registrar pago y emitir comprobantes</button>
     </div>
