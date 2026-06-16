@@ -1220,7 +1220,7 @@ function renderDeudores(){
     const color=d.mesesAtraso>=3?"var(--rojo)":d.mesesAtraso>=2?"var(--naranja)":"var(--amarillo)";
     const mesesStr=d.mesesSinPago.slice(0,3).map(m=>mesNombre(m.mes)).join(", ")+(d.mesesSinPago.length>3?" y "+(d.mesesSinPago.length-3)+" más":"");
     return '<tr>'
-      +'<td class="tdm">'+c.inquilino+'<br><span class="tds">'+(c.telefono?'<a href="tel:'+c.telefono+'" style="color:var(--celeste)">'+c.telefono+'</a>':"Sin tel.")+'</span></td>'
+      +'<td class="tdm">'+c.inquilino+'<br><span class="tds">'+(c.telefono?telLink(c.telefono):"Sin tel.")+'</span></td>'
       +'<td>'+c.direccion+'<br><span class="tds">Prop: '+c.propietarioNombre+'</span></td>'
       +'<td style="font-weight:700;color:'+color+';font-size:16px">'+d.mesesAtraso+' mes'+(d.mesesAtraso!==1?"es":"")+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+'</td>'
@@ -2098,6 +2098,15 @@ async function guardarPropietario(){
   S.modal=null;
   render();
 }
+
+// ── LINK TELEFONO → WhatsApp ─────────────────────────────────────────────
+function telLink(tel,label){
+  if(!tel)return label||"—";
+  const num=(tel||"").replace(/\D/g,"").replace(/^0/,"");
+  const wa="549"+num;
+  const txt=label||tel;
+  return '<a href="https://wa.me/'+wa+'" target="_blank" style="color:var(--celeste);text-decoration:none;display:inline-flex;align-items:center;gap:4px"><span style="font-size:13px">📱</span>'+txt+'</a>';
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2416,6 +2425,10 @@ function renderDashboard(){
   const propTotal=new Set(activos.map(c=>c.propietarioNombre).filter(Boolean)).size;
   const comMes=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
   const comObj=activos.reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia||5)/100),0);
+  // Propietarios con cobros registrados pero sin liquidar
+  const pagosNoLiq=S.pagos.filter(p=>p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
+  const propSinLiq=new Set(pagosNoLiq.map(p=>p.propietarioNombre).filter(Boolean));
+  const montoPendLiq=pagosNoLiq.reduce((s,p)=>s+(p.alquiler||0),0);
   const pct=comObj>0?Math.round(comMes/comObj*100):0;
   const todas=[];
   activos.forEach(c=>{
@@ -2453,12 +2466,24 @@ function renderDashboard(){
     ${plazoOpts.map(o=>`<button class="btn sm" style="${plazoF===o.k?"background:var(--naranja);color:var(--negro)":"background:var(--negro3);color:var(--gris3)"}" data-action="setAlertaPlazo" data-key="${o.k}">${o.l}</button>`).join("")}
   </div>`;
   const ultP=S.pagos.filter(p=>p.estado==="cobrado").slice(0,6).map(p=>`<tr><td class="tdm">${p.inquilino||""}</td><td>${p.direccion||""}</td><td>${mesNombre(p.mes)}</td><td>${moneda(p.alquiler||0)}</td><td><strong>${moneda(p.totalInquilino||p.total||p.monto||0)}</strong></td><td>${badge(p.estado)}</td></tr>`).join("");
-  return `<div class="kgrid" style="grid-template-columns:repeat(5,1fr)">
+  return `<div class="kgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px">
     <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Contratos activos</div><div class="kval">${activos.length}</div><div class="ksub">de ${S.contratos.length} totales</div></div>
     <div class="kcard" style="border-top-color:var(--verde)"><div class="klbl">Inquilinos pagaron</div><div class="kval">${inqPag.size} <span style="font-size:13px;color:var(--gris3)">/ ${activos.length}</span></div><div class="ksub" style="color:${inqPag.size===activos.length?"var(--verde)":"var(--naranja)"}">${mesNombre(mesHoy)}</div></div>
     <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Propietarios cobrados</div><div class="kval">${propCob.size} <span style="font-size:13px;color:var(--gris3)">/ ${propTotal}</span></div><div class="ksub" style="color:${propCob.size===propTotal?"var(--verde)":"var(--naranja)"}">${mesNombre(mesHoy)}</div></div>
+  </div>
+  <div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
     <div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Comisiones cobradas</div><div class="kval" style="font-size:17px">${moneda(comMes)}</div><div class="ksub">${pct}% del objetivo</div></div>
     <div class="kcard" style="border-top-color:var(--gris4)"><div class="klbl">Objetivo comisiones</div><div class="kval" style="font-size:17px">${moneda(comObj)}</div><div class="ksub">si cobran todos</div></div>
+    ${(()=>{
+      const hayPend=propSinLiq.size>0;
+      const color=hayPend?"var(--rojo)":"#5ddb8a";
+      const borderColor=hayPend?"var(--rojo)":"var(--verde)";
+      return "<div class=\"kcard\" style=\"border-top-color:"+borderColor+";"+( hayPend?"cursor:pointer":"")+"\""+(hayPend?" data-action=\"nav\" data-sec=\"propietarios\"":" ")+">"
+        +"<div class=\"klbl\">Prop. sin liquidar</div>"
+        +"<div class=\"kval\" style=\"color:"+color+"\">"+propSinLiq.size+"</div>"
+        +"<div class=\"ksub\" style=\"color:"+(hayPend?"var(--naranja)":"var(--gris3)")+"\">"+(hayPend?moneda(montoPendLiq)+" pendiente":"Al dia")+"</div>"
+        +"</div>";
+    })()}
   </div>
   <div class="stitle" style="margin-top:20px">Alertas</div>${filtrosH}
   <div class="alerts">${fil.map(a=>`<div class="alert" style="border-left-color:${a.col}"><span style="font-size:16px">${a.ic}</span><div><strong>${a.t}</strong><span>${a.s}</span></div></div>`).join("")||`<div class="empty">Sin alertas para este filtro</div>`}</div>
@@ -2708,7 +2733,7 @@ function renderInquilinos(){
     <div class="fg" style="margin-bottom:16px">
       <div class="lcard">
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">${inq.nombre||""}</div>
-        ${inq.telefono?`<div style="font-size:12px;margin-bottom:4px">📞 <a href="tel:${inq.telefono}" style="color:var(--celeste)">${inq.telefono}</a>${inq.telefonoAlt?` · <a href="tel:${inq.telefonoAlt}" style="color:var(--celeste)">${inq.telefonoAlt}</a>`:""}</div>`:""}
+        ${inq.telefono?`<div style="font-size:12px;margin-bottom:4px">${telLink(inq.telefono)}${inq.telefonoAlt?" · "+telLink(inq.telefonoAlt):""}</div>`:""}
         ${inq.email?`<div style="font-size:12px;margin-bottom:4px">✉️ <a href="mailto:${inq.email}" style="color:var(--celeste)">${inq.email}</a></div>`:""}
         ${inq.dni?`<div style="font-size:12px;margin-bottom:4px">📋 DNI/CUIL: <strong>${inq.dni}</strong></div>`:""}
         ${inq.direccionPart?`<div style="font-size:12px;margin-bottom:4px">🏠 ${inq.direccionPart}${inq.localidad?" · "+inq.localidad:""}</div>`:""}
@@ -2804,7 +2829,7 @@ function renderPropietarios(){
       ?`<span style="background:rgba(245,166,35,.15);color:var(--naranja);font-size:10px;padding:3px 8px;border-radius:10px">💰 ${moneda(neto)} pendiente</span>`
       :`<span style="background:rgba(39,174,96,.1);color:#5ddb8a;font-size:10px;padding:3px 8px;border-radius:10px">✓ Al día</span>`;
     return `<tr class="cl" data-action="abrirPropietario" data-nombre="${prop.nombre}">
-      <td class="tdm">${prop.nombre}${prop.telefono?`<br><span class="tds"><a href="tel:${prop.telefono}" onclick="event.stopPropagation()" style="color:var(--celeste)">${prop.telefono}</a></span>`:""}</td>
+      <td class="tdm">${prop.nombre}${prop.telefono?`<br><span class="tds">${telLink(prop.telefono)}</span>`:""}</td>
       <td>${activos.length} propiedad${activos.length!==1?"es":""} activa${activos.length!==1?"s":""}</td>
       <td>${estadoChip}</td>
       <td><button class="btn sm primary" data-action="abrirPropietario" data-nombre="${prop.nombre}">Ver ficha →</button></td>
@@ -2897,8 +2922,8 @@ function renderFichaPropietario(nombre, prop){
     <button class="btn sm" data-action="volverPropietarios">← Volver</button>
     <div style="font-size:18px;font-weight:700">${nombre}</div>
     <button class="btn sm" data-action="editarPropietario" data-nombre="${nombre}" style="background:rgba(75,200,232,.12);color:var(--celeste)">✏️ Editar datos</button>
-    ${prop.telefono?`<a href="tel:${prop.telefono}" style="color:var(--celeste);font-size:13px;margin-left:8px">📞 ${prop.telefono}</a>`:""}
-    ${prop.telefonoAlt?`<a href="tel:${prop.telefonoAlt}" style="color:var(--celeste);font-size:13px">📞 ${prop.telefonoAlt}</a>`:""}
+    ${prop.telefono?telLink(prop.telefono):""}
+    ${prop.telefonoAlt?telLink(prop.telefonoAlt):""}
     ${prop.email?`<a href="mailto:${prop.email}" style="color:var(--celeste);font-size:13px">✉️ ${prop.email}</a>`:""}
     ${prop.cbu?`<span style="font-size:12px;color:var(--gris3)">CBU: ${prop.cbu}${prop.banco?" ("+prop.banco+")":""}</span>`:""}
   </div>
