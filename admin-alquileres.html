@@ -2215,6 +2215,99 @@ function renderModalEditarPropiedad(){
     +'<button class="btn naranja" data-action="confirmarGuardarPropiedad">Guardar propiedad</button>'
     +'</div></div></div>';
 }
+
+// ── SISTEMA DE MORA ──────────────────────────────────────────────────────────
+// Feriados cargados manualmente (YYYY-MM-DD). Se persisten en localStorage.
+function cargarFeriados(){
+  try{ return JSON.parse(localStorage.getItem("feriados")||"[]"); }catch(e){ return []; }
+}
+function guardarFeriados(lista){
+  localStorage.setItem("feriados", JSON.stringify(lista));
+}
+
+function calcularFechaLimitePago(mes){
+  // mes = "2026-06" → calcula el día 10 hábil de ese mes
+  // Si el 10 cae sábado (6) → lunes 12
+  // Si el 10 cae domingo (0) → lunes 11
+  // Por cada feriado que caiga en 1-10, se corre 1 día extra
+  const feriados=cargarFeriados();
+  let limite=new Date(mes+"-10");
+  // Correr por fin de semana
+  const dow=limite.getDay();
+  if(dow===6) limite=new Date(mes+"-12");      // sábado → lunes
+  else if(dow===0) limite=new Date(mes+"-11"); // domingo → lunes
+  // Contar feriados entre el 1 y el 10 del mes
+  const feriadosDelMes=feriados.filter(f=>{
+    return f.startsWith(mes) && +f.split("-")[2]>=1 && +f.split("-")[2]<=10;
+  });
+  // Correr un día por cada feriado hábil
+  feriadosDelMes.forEach(()=>{
+    limite=new Date(limite.getTime()+86400000);
+    // Si el nuevo límite cae en fin de semana, seguir corriendo
+    while(limite.getDay()===0||limite.getDay()===6){
+      limite=new Date(limite.getTime()+86400000);
+    }
+  });
+  return limite;
+}
+
+function calcularMora(alquiler, mes, fechaCobro){
+  // Retorna {dias, monto, limite} o null si no hay mora
+  if(!alquiler||!mes||!fechaCobro) return null;
+  const limite=calcularFechaLimitePago(mes);
+  const cobro=new Date(fechaCobro);
+  if(cobro<=limite) return null; // pagó a tiempo
+  // Días de mora: desde el día 1 del mes hasta la fecha de cobro
+  const inicio=new Date(mes+"-01");
+  const diasMora=Math.round((cobro-inicio)/86400000);
+  const monto=Math.round(alquiler*(diasMora*0.01)); // 1% por día
+  return {dias:diasMora, monto, limite:limite.toISOString().split("T")[0]};
+}
+
+function agregarMora(){
+  syncItemsFromDOM();
+  const alq=+(S.form.alquiler||S.contratoActivo?.alquilerBase||0);
+  const mes=S.form.mes||mesActual();
+  const fecha=S.form.fechaCobro||hoy();
+  const mora=calcularMora(alq, mes, fecha);
+  if(!mora){
+    toast("No hay mora — el pago está dentro del plazo ("
+      +new Date(calcularFechaLimitePago(mes).getTime()).toLocaleDateString("es-AR")+")");
+    return;
+  }
+  S.itemsCobro.push({
+    tipo:"variable",
+    desc:"Mora "+mora.dias+" dias (desde el 1/"+mes.split("-")[1]+")",
+    monto:mora.monto
+  });
+  toast("Mora "+mora.dias+" dias = "+moneda(mora.monto)+" (1% diario s/alquiler)");
+  render();
+}
+
+// Modal para administrar feriados
+function abrirModalFeriados(){
+  S.modal="feriados";
+  render();
+}
+
+function renderModalFeriados(){
+  const feriados=cargarFeriados().sort();
+  const filas=feriados.map(f=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--negro4)">'
+    +'<span style="font-size:13px">'+new Date(f+"T12:00:00").toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+'</span>'
+    +'<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b" data-action="borrarFeriado" data-fecha="'+f+'">✕</button>'
+    +'</div>').join("");
+  return '<div class="overlay"><div class="modal" style="max-width:480px">'
+    +'<button class="mclose" data-action="closeModal">✕</button>'
+    +'<div class="mth"><div class="mth-ic">📅</div>Feriados configurados</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:14px">Los feriados entre el 1 y el 10 de cada mes corren la fecha límite de pago un día hábil.</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:14px">'
+    +'<input id="nuevo-feriado" class="inp" type="date" style="flex:1">'
+    +'<button class="btn naranja" data-action="agregarFeriado">+ Agregar feriado</button>'
+    +'</div>'
+    +(filas||'<div style="color:var(--gris3);font-size:12px;padding:12px 0">Sin feriados cargados</div>')
+    +'<div class="fa"><button class="btn" data-action="closeModal">Cerrar</button></div>'
+    +'</div></div>';
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2329,7 +2422,7 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
-  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
@@ -3166,7 +3259,7 @@ function renderModalDetalle(){
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn sm" data-action="addItem" data-tipo="fijo" style="background:rgba(75,200,232,.12);color:var(--celeste)">+ Fijo</button>
               <button class="btn sm" data-action="addItem" data-tipo="variable" style="background:rgba(245,166,35,.12);color:var(--naranja)">+ Variable</button>
-              <button class="btn sm" data-action="addItem" data-tipo="saldo" style="background:rgba(231,76,60,.12);color:#ff7b6b">± Saldo</button>
+              <button class="btn sm" data-action="addItem" data-tipo="saldo" style="background:rgba(231,76,60,.12);color:#ff7b6b">± Saldo</button><button class="btn sm" data-action="addMora" style="background:rgba(245,166,35,.15);color:var(--naranja)">⏰ Mora</button>
             </div>
           </div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -3215,7 +3308,7 @@ function renderModal(){
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
-  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
+  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="feriados")return renderModalFeriados();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
