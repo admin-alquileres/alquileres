@@ -819,52 +819,100 @@ function renderSetup(){
   const lista=q?activos.filter(c=>(c.inquilino||"").toLowerCase().includes(q)||(c.direccion||"").toLowerCase().includes(q)):activos;
   const nC=Object.keys(S.setupCambios).length;
   const iS="width:100%;padding:5px 7px;font-size:11px;border:1px solid var(--negro4);border-radius:5px;background:var(--negro3);color:var(--blanco);font-family:Inter,sans-serif";
+
   const rows=lista.map(c=>{
     const cam=S.setupCambios[c._id]||{};
-    const alqV=cam.alquilerBase!==undefined?cam.alquilerBase:(c.alquilerBase||"");
-    const ultV=cam.ultimaActualizacion!==undefined?cam.ultimaActualizacion:(c.ultimaActualizacion||"");
-    const frV=cam.frecActualizacion!==undefined?cam.frecActualizacion:(+(c.frecActualizacion||6));
-    const dep=cam.deposito!==undefined?cam.deposito:(c.deposito||null);
-    const tieneDep=dep&&dep.total>0;
-    const depPag=dep?(dep.pagado||0):0;
-    const depComp=dep&&dep.completo;
+    const get=(k,def)=>cam[k]!==undefined?cam[k]:(c[k]!==undefined?c[k]:def);
+    const alqV=get("alquilerBase","");
+    const ultV=get("ultimaActualizacion","");
+    const frV=+(get("frecActualizacion",6));
+    const inicioV=get("inicio","");
+    const finV=get("fin","");
+    const comV=get("comisionAgencia",5);
+    const telV=get("telefono","");
+    const garanteV=get("garante","");
+    const dep=cam.deposito!==undefined?cam.deposito:(c.deposito||{});
+    const depTotal=+(dep.total||0);
+    const depPagado=+(dep.pagado||0);
+    const depComp=dep.completo||depPagado>=depTotal;
     const extras=cam.extras!==undefined?cam.extras:(c.extras||[]);
     const extrasFijos=extras.filter(e=>+(e.monto||0)>0);
     const mod=Object.keys(cam).length>0;
+
+    const inp=(val,key,type)=>'<input type="'+(type||"text")+'" value="'+(val||"")+'" oninput="setupMarcar(\''+c._id+'\',\''+key+'\',this.type===\'number\'?+this.value:this.value,this)" style="'+iS+'">';
     const extrasHtml=extrasFijos.length
-      ? extrasFijos.map(e=>'<div style="font-size:10px;display:flex;justify-content:space-between;gap:6px"><span>'+e.desc+'</span><span style="color:var(--celeste)">$'+Math.round(+(e.monto||0)).toLocaleString("es-AR")+'</span></div>').join("")
-      : '<span style="color:var(--gris4);font-size:10px">Sin gastos</span>';
+      ?extrasFijos.map(e=>'<div style="font-size:10px;display:flex;justify-content:space-between;gap:4px"><span>'+e.desc+'</span><span style="color:var(--celeste)">$'+Math.round(+(e.monto||0)).toLocaleString("es-AR")+'</span></div>').join("")
+      :'<span style="color:var(--gris4);font-size:10px">Sin gastos</span>';
+
     return '<tr style="'+(mod?"background:rgba(245,166,35,.03)":"")+'">'
-      +'<td><div style="font-weight:500;font-size:12px">'+(c.inquilino||"")+'</div><div style="font-size:10px;color:var(--gris3)">'+(c.direccion||"")+'</div></td>'
-      +'<td style="font-size:10px;color:var(--gris3)">'+(c.propietarioNombre||"")+'</td>'
-      +'<td><input type="number" value="'+alqV+'" oninput="setupMarcar(\''+c._id+'\',\'alquilerBase\',+this.value,this)" style="'+iS+'">'+(c.alquilerBase?'<div style="font-size:10px;color:var(--gris3);text-decoration:line-through">$'+Math.round(c.alquilerBase).toLocaleString("es-AR")+'</div>':'')+'</td>'
-      +'<td><input type="date" value="'+ultV+'" oninput="setupMarcar(\''+c._id+'\',\'ultimaActualizacion\',this.value,this)" style="'+iS+'">'+(!c.ultimaActualizacion?'<div style="font-size:10px;color:var(--rojo)">Sin fecha</div>':"")+'</td>'
-      +'<td><select onchange="setupMarcar(\''+c._id+'\',\'frecActualizacion\',+this.value,this)" style="'+iS+'">'
-        +[3,4,6,12].map(v=>'<option value="'+v+'"'+(+frV===v?" selected":"")+'>c/'+v+'m</option>').join("")
-      +'</select></td>'
-      +'<td><select onchange="setupMarcarDep(\''+c._id+'\',this.value)" style="'+iS+'">'
-        +'<option value="no"'+(tieneDep?"":" selected")+'>Sin depósito</option>'
-        +'<option value="si"'+(tieneDep?" selected":"")+'>Con depósito</option>'
-      +'</select>'+(tieneDep?'<div style="font-size:10px;color:'+(depComp?"var(--verde)":"var(--naranja)")+'">$'+Math.round(depPag).toLocaleString("es-AR")+' '+(depComp?"completo":"parcial")+'</div>':"")+'</td>'
-      +'<td style="min-width:120px">'+extrasHtml
-        +'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:4px;width:100%" data-action="setupEditarExtras" data-id="'+c._id+'">✏️ Editar gastos</button>'
+      // Inquilino + datos contacto
+      +'<td><div style="font-weight:500;font-size:12px">'+(c.inquilino||"")+'</div>'
+      +'<div style="font-size:10px;color:var(--gris3)">'+(c.direccion||"")+'</div>'
+      +'<div style="margin-top:4px"><input placeholder="Teléfono" value="'+(telV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'telefono\',this.value,this)" style="'+iS+';margin-bottom:3px"></div>'
+      +'<div><input placeholder="Garante" value="'+(garanteV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'garante\',this.value,this)" style="'+iS+'"></div>'
       +'</td>'
+      // Propietario + comisión
+      +'<td><div style="font-size:11px;color:var(--gris3);margin-bottom:4px">'+(c.propietarioNombre||"")+'</div>'
+      +'<div style="font-size:10px;color:var(--gris4)">Comisión %</div>'
+      +'<input type="number" value="'+(comV||5)+'" oninput="setupMarcar(\''+c._id+'\',\'comisionAgencia\',+this.value,this)" style="'+iS+';width:60px">'
+      +'</td>'
+      // Alquiler
+      +'<td><input type="number" value="'+(alqV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'alquilerBase\',+this.value,this)" style="'+iS+'">'
+      +(c.alquilerBase?'<div style="font-size:10px;color:var(--gris3);text-decoration:line-through">$'+Math.round(c.alquilerBase).toLocaleString("es-AR")+'</div>':"")
+      +'</td>'
+      // Vigencia inicio - fin
+      +'<td>'
+      +'<div style="font-size:10px;color:var(--gris4);margin-bottom:2px">Inicio</div>'
+      +'<input type="date" value="'+(inicioV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'inicio\',this.value,this)" style="'+iS+';margin-bottom:4px">'
+      +'<div style="font-size:10px;color:var(--gris4);margin-bottom:2px">Vto.</div>'
+      +'<input type="date" value="'+(finV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'fin\',this.value,this)" style="'+iS+'">'
+      +'</td>'
+      // Última actualiz + frecuencia
+      +'<td>'
+      +'<input type="date" value="'+(ultV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'ultimaActualizacion\',this.value,this)" style="'+iS+';margin-bottom:4px">'
+      +(!c.ultimaActualizacion?'<div style="font-size:10px;color:var(--rojo)">Sin fecha</div>':"")
+      +'<select onchange="setupMarcar(\''+c._id+'\',\'frecActualizacion\',+this.value,this)" style="'+iS+'">'
+      +[3,4,6,12].map(v=>'<option value="'+v+'"'+(frV===v?" selected":"")+'>c/'+v+'m</option>').join("")
+      +'</select>'
+      +'</td>'
+      // Depósito
+      +'<td>'
+      +'<div style="font-size:10px;color:var(--gris4);margin-bottom:2px">Total dep.</div>'
+      +'<input type="number" placeholder="$" value="'+(depTotal||"")+'" oninput="setupMarcarDep(\''+c._id+'\',\'total\',+this.value)" style="'+iS+';margin-bottom:4px">'
+      +'<div style="font-size:10px;color:var(--gris4);margin-bottom:2px">Pagado</div>'
+      +'<input type="number" placeholder="$" value="'+(depPagado||"")+'" oninput="setupMarcarDep(\''+c._id+'\',\'pagado\',+this.value)" style="'+iS+'">'
+      +(depTotal>0?'<div style="font-size:10px;color:'+(depComp?"var(--verde)":"var(--naranja)")+'">'+( depComp?"Completo":"Parcial: debe $"+(depTotal-depPagado).toLocaleString("es-AR"))+'</div>':"")
+      +'</td>'
+      // Gastos fijos
+      +'<td style="min-width:120px">'+extrasHtml
+      +'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:4px;width:100%" data-action="setupEditarExtras" data-id="'+c._id+'">Editar gastos</button>'
+      +'</td>'
+      // Modificado
       +'<td style="text-align:center">'+(mod?'<span style="color:var(--naranja)">●</span>':"")+'</td>'
       +'</tr>';
   }).join("");
+
   return '<div class="kgrid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
     +'<div class="kcard"><div class="klbl">Contratos activos</div><div class="kval" style="color:var(--celeste)">'+activos.length+'</div></div>'
     +'<div class="kcard"><div class="klbl">Sin fecha actualiz.</div><div class="kval" style="color:var(--rojo)">'+activos.filter(c=>!c.ultimaActualizacion).length+'</div></div>'
-    +'<div class="kcard"><div class="klbl">Con depósito</div><div class="kval" style="color:var(--verde)">'+activos.filter(c=>c.deposito&&c.deposito.total>0).length+'</div></div>'
+    +'<div class="kcard"><div class="klbl">Sin teléfono</div><div class="kval" style="color:var(--naranja)">'+activos.filter(c=>!c.telefono).length+'</div></div>'
     +'<div class="kcard"><div class="klbl">Sin depósito</div><div class="kval" style="color:var(--naranja)">'+activos.filter(c=>!c.deposito||!c.deposito.total).length+'</div></div>'
     +'</div>'
-    +'<div class="filters" style="margin-bottom:12px"><input class="inp" placeholder="Buscar..." value="'+(S.setupBuscar||"")+'" id="setup-buscar-inp" data-action="setupBuscar" style="min-width:280px"><span style="font-size:11px;color:var(--gris3)">'+lista.length+' de '+activos.length+'</span></div>'
-    +'<div class="tw"><table><thead><tr><th>Inquilino / Dirección</th><th>Propietario</th><th>Alquiler real</th><th>Última actualiz.</th><th>Frec.</th><th>Depósito</th><th>Gastos fijos</th><th></th></tr></thead>'
-    +'<tbody>'+(rows||'<tr><td colspan=8><div class="empty">Sin contratos activos</div></td></tr>')+'</tbody></table></div>'
-    +'<div style="position:sticky;bottom:0;background:var(--negro2);border-top:1px solid var(--negro4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px">'
-    +'<span style="font-size:12px;color:var(--gris3)">'+nC+' cambio(s)</span>'
-    +'<div style="display:flex;gap:8px"><button class="btn" data-action="setupDescartar" style="background:var(--negro3);color:var(--gris3)">Descartar</button>'
-    +'<button class="btn naranja" onclick="setupGuardar()" '+(nC===0?"disabled":"")+'>💾 Guardar todo</button></div></div>';
+    +'<div class="filters" style="margin-bottom:12px">'
+    +'<input class="inp" id="setup-buscar-inp" placeholder="Buscar inquilino o dirección..." value="'+(S.setupBuscar||"")+'" data-action="setupBuscar" style="min-width:280px">'
+    +'<span style="font-size:11px;color:var(--gris3)">'+lista.length+' de '+activos.length+'</span>'
+    +'</div>'
+    +'<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:900px">'
+    +'<thead><tr><th>Inquilino / Tel / Garante</th><th>Propietario / Com.</th><th>Alquiler</th><th>Vigencia</th><th>Actualiz.</th><th>Depósito</th><th>Gastos fijos</th><th></th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan=8><div class="empty">Sin contratos activos</div></td></tr>')+'</tbody>'
+    +'</table></div>'
+    +'<div style="margin-top:24px">'+'<div class="stitle">Saldo inicial de propietarios</div>'+'<div style="font-size:11px;color:var(--gris3);margin-bottom:12px">Si hay propietarios con saldo pendiente del sistema anterior, cargalo acá como punto de partida.</div>'+'<div style="display:flex;flex-wrap:wrap;gap:10px">'+([...new Set(activos.map(c=>c.propietarioNombre).filter(Boolean))].sort().map(nombre=>{  const saldoAct=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;  return '<div style="background:var(--negro3);border:1px solid var(--negro4);border-radius:8px;padding:10px 14px;min-width:220px">'    +'<div style="font-size:12px;font-weight:600;margin-bottom:6px">'+nombre+'</div>'    +'<div style="font-size:10px;color:var(--gris3);margin-bottom:4px">Saldo actual: <strong style="color:'+(saldoAct>0?"#5ddb8a":saldoAct<0?"#ff7b6b":"var(--gris3)")+'">'+moneda(saldoAct)+'</strong></div>'    +'<div style="display:flex;gap:6px;align-items:center">'    +'<input type="number" id="saldo-init-'+nombre+'" class="inp" style="flex:1" placeholder="$0" value="'+(saldoAct||'')+'">'    +'<button class="btn sm naranja" data-action="guardarSaldoInit" data-nombre="'+nombre+'">Guardar</button>'    +'</div></div>';}).join(''))+'</div></div>'+'<div style="position:sticky;bottom:0;background:var(--negro2);border-top:1px solid var(--negro4);padding:14px 0;display:flex;align-items:center;justify-content:space-between;margin-top:16px">'
+    +'<span style="font-size:12px;color:var(--gris3)">'+nC+' cambio(s) pendiente(s)</span>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn sm" data-action="abrirFeriados" style="background:rgba(245,166,35,.12);color:var(--naranja)">📅 Feriados</button>'
+    +'<button class="btn" data-action="setupDescartar" style="background:var(--negro3);color:var(--gris3)">Descartar</button>'
+    +'<button class="btn naranja" onclick="setupGuardar()" '+(nC===0?"disabled":"")+'>Guardar todo</button>'
+    +'</div></div>';
 }
 
 function setupMarcar(id,field,val,el){
@@ -875,14 +923,14 @@ function setupMarcar(id,field,val,el){
   if(n)n.textContent=Object.keys(S.setupCambios).length;
 }
 
-function setupMarcarDep(id,val){
-  const c=S.contratos.find(x=>x._id===id);
-  const alq=(S.setupCambios[id]&&S.setupCambios[id].alquilerBase)||(c&&c.alquilerBase)||0;
+function setupMarcarDep(id,campo,valor){
+  const c=S.contratos.find(x=>x._id===id)||{};
   if(!S.setupCambios[id])S.setupCambios[id]={};
-  S.setupCambios[id].deposito=val==="si"
-    ?{total:alq,cuotas:1,pagadas:1,pagado:alq,pendiente:0,completo:true}
-    :{total:0,pagado:0,pendiente:0,completo:false};
-  render();
+  const dep={...(c.deposito||{}),...(S.setupCambios[id].deposito||{})};
+  if(campo==="total"){dep.total=+valor;dep.pendiente=Math.max(0,dep.total-(dep.pagado||0));}
+  else if(campo==="pagado"){dep.pagado=+valor;dep.completo=(+valor)>=(dep.total||0);dep.pendiente=Math.max(0,(dep.total||0)-(+valor));}
+  S.setupCambios[id].deposito=dep;
+  // No re-render para no perder foco del input
 }
 
 async function setupGuardar(){
@@ -895,6 +943,10 @@ async function setupGuardar(){
       const data={...S.setupCambios[id],_ts:Date.now()};
       await fbUpd("contratos",id,data);
       S.contratos=S.contratos.map(x=>x._id===id?{...x,...data}:x);
+      if(data.telefono){
+        const inqExist=S.inquilinos.find(i=>i.nombre===S.contratos.find(x=>x._id===id)?.inquilino);
+        if(inqExist&&inqExist._id) fbUpd('inquilinos',inqExist._id,{telefono:data.telefono}).catch(()=>{});
+      }
       ok++;
     }catch(e){toast("Error en "+id,false);}
   }
@@ -2422,7 +2474,7 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
-  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="guardarSaldoInit"){const nombre=t.dataset.nombre;const inp=document.getElementById("saldo-init-"+nombre);if(!inp)return;const monto=+(inp.value||0);guardarSaldoProp(nombre,monto).then(()=>toast("Saldo de "+nombre+" guardado ✓"));}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
