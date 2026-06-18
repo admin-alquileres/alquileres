@@ -201,7 +201,7 @@ let S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"todos"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -885,7 +885,7 @@ function renderSetup(){
       +'</td>'
       // Gastos fijos
       +'<td style="min-width:120px">'+extrasHtml
-      +'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:4px;width:100%" data-action="setupEditarExtras" data-id="'+c._id+'">Editar gastos</button>'
+      +'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:2px;width:100%" data-action="setupEditarExtras" data-id="'+c._id+'">Extras simples</button>'+'<button class="btn sm" style="font-size:9px;padding:2px 6px;margin-top:2px;width:100%;background:rgba(75,200,232,.1);color:var(--celeste)" data-action="matrizGastos" data-id="'+c._id+'">Matriz gastos</button>'
       +'</td>'
       // Modificado
       +'<td style="text-align:center">'+(mod?'<span style="color:var(--naranja)">●</span>':"")+'</td>'
@@ -2360,6 +2360,164 @@ function renderModalFeriados(){
     +'<div class="fa"><button class="btn" data-action="closeModal">Cerrar</button></div>'
     +'</div></div>';
 }
+
+// ── GASTOS FIJOS CON FRECUENCIA ──────────────────────────────────────────────
+// Estructura de cada gasto:
+// { id, nombre, monto, frecuencia (1/2/3/6/12), mesInicio ("2026-07"), activo }
+
+const GASTOS_DEFAULT = [
+  {id:"internet", nombre:"Internet",    monto:0, frecuencia:1, mesInicio:"", activo:false},
+  {id:"tgi",      nombre:"TGI",         monto:0, frecuencia:2, mesInicio:"", activo:false},
+  {id:"agua",     nombre:"Agua",        monto:0, frecuencia:2, mesInicio:"", activo:false},
+  {id:"gas",      nombre:"Gas",         monto:0, frecuencia:1, mesInicio:"", activo:false},
+  {id:"expensas", nombre:"Expensas",    monto:0, frecuencia:1, mesInicio:"", activo:false},
+  {id:"luz",      nombre:"Luz",         monto:0, frecuencia:1, mesInicio:"", activo:false},
+];
+
+function gastosDelContrato(c){
+  // Devuelve los gastos configurados, con defaults para los que faltan
+  const guardados=c.gastosConfig||[];
+  return guardados;
+}
+
+function correspondeEsteMes(gasto, mes){
+  // Determina si un gasto corresponde ser cobrado en el mes dado
+  if(!gasto.activo||!gasto.mesInicio) return false;
+  const [ay,am]=gasto.mesInicio.split("-").map(Number);
+  const [by,bm]=mes.split("-").map(Number);
+  const diffMeses=(by-ay)*12+(bm-am);
+  if(diffMeses<0) return false; // antes del inicio
+  return diffMeses%gasto.frecuencia===0;
+}
+
+function gastosQueCorresponden(c, mes){
+  const gastos=gastosDelContrato(c);
+  return gastos.filter(g=>correspondeEsteMes(g,mes));
+}
+
+// Modal para editar la matriz de gastos del contrato
+function abrirMatrizGastos(cid){
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return;
+  S.modal="matriz_gastos";
+  S.matrizGastosId=cid;
+  // Inicializar con los guardados o con defaults vacíos
+  const guardados=c.gastosConfig||[];
+  // Combinar defaults con guardados
+  S.matrizTemp=GASTOS_DEFAULT.map(def=>{
+    const exist=guardados.find(g=>g.id===def.id);
+    return exist?{...def,...exist}:{...def};
+  });
+  // Agregar gastos custom que no están en defaults
+  guardados.filter(g=>!GASTOS_DEFAULT.find(d=>d.id===g.id)).forEach(g=>{
+    S.matrizTemp.push(g);
+  });
+  render();
+}
+
+function renderModalMatrizGastos(){
+  const cid=S.matrizGastosId;
+  const c=S.contratos.find(x=>x._id===cid);
+  if(!c)return"";
+  const gastos=S.matrizTemp||[];
+  const mesHoy=mesActual();
+  const iS="padding:4px 6px;font-size:11px;border:1px solid var(--negro4);border-radius:4px;background:var(--negro3);color:var(--blanco);width:100%";
+
+  // Generar columnas de meses (3 anteriores + actual + 3 próximos)
+  const meses=[];
+  for(let i=-3;i<=3;i++){
+    const d=new Date(mesHoy+"-01");
+    d.setMonth(d.getMonth()+i);
+    meses.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
+  }
+
+  // Pagos del contrato para determinar qué se cobró
+  const pagosC=S.pagos.filter(p=>p.contratoId===cid&&p.estado==="cobrado");
+
+  const filas=gastos.map((g,i)=>{
+    const celdas=meses.map(mes=>{
+      const corr=correspondeEsteMes(g,mes);
+      const pago=pagosC.find(p=>p.mes===mes);
+      const items=pago?(pago.itemsCobro||(pago.extras||[]).map(e=>({desc:e.desc,monto:e.monto}))):[];
+      const cobrado=corr&&items.some(it=>(it.desc||"").toLowerCase().includes((g.nombre||"").toLowerCase()));
+      let celda,color,title;
+      if(!corr){celda="·";color="var(--gris4)";title="No corresponde";}
+      else if(cobrado){celda="✓";color="#5ddb8a";title="Cobrado";}
+      else if(mes<=mesHoy){celda="!";color="var(--naranja)";title="Correspondia y no se cobro";}
+      else{celda="▷";color="var(--celeste)";title="Corresponde cobrar";}
+      return '<td style="text-align:center;font-size:14px;color:'+color+';padding:4px" title="'+title+'">'+celda+'</td>';
+    }).join("");
+
+    const freqOpts=[1,2,3,6,12].map(v=>'<option value="'+v+'"'+(+g.frecuencia===v?" selected":"")+'>c/'+v+'m</option>').join("");
+    return '<tr style="border-bottom:1px solid var(--negro4)">'
+      +'<td style="padding:6px 4px;white-space:nowrap">'
+      +'<input type="checkbox" '+(g.activo?"checked ":"")+'style="margin-right:6px" onchange="S.matrizTemp['+i+'].activo=this.checked;render()">'
+      +'<input value="'+(g.nombre||"")+'" style="'+iS+';width:90px" oninput="S.matrizTemp['+i+'].nombre=this.value">'
+      +'</td>'
+      +'<td style="padding:4px;white-space:nowrap">'
+      +'<input type="number" placeholder="Variable" value="'+(g.monto||"")+'" style="'+iS+';width:80px" oninput="S.matrizTemp['+i+'].monto=+(this.value||0)">'
+      +'</td>'
+      +'<td style="padding:4px">'
+      +'<select style="'+iS+';width:60px" onchange="S.matrizTemp['+i+'].frecuencia=+this.value">'+freqOpts+'</select>'
+      +'</td>'
+      +'<td style="padding:4px">'
+      +'<input type="month" value="'+(g.mesInicio||"")+'" style="'+iS+';width:120px" onchange="S.matrizTemp['+i+'].mesInicio=this.value">'
+      +'</td>'
+      +celdas
+      +'</tr>';
+  }).join("");
+
+  const thMeses=meses.map(m=>'<th style="text-align:center;font-size:10px;padding:4px;min-width:28px">'+mesNombre(m).substring(0,3)+'<br>'+m.substring(2,4)+'</th>').join("");
+
+  return '<div class="overlay"><div class="modal" style="max-width:min(900px,95vw);max-height:90vh;display:flex;flex-direction:column">'
+    +'<button class="mclose" data-action="closeModal">✕</button>'
+    +'<div class="mth"><div class="mth-ic">📊</div>Gastos fijos — '+(c.inquilino||"")+'<span style="font-size:11px;font-weight:400;color:var(--gris3);margin-left:8px">'+(c.direccion||"")+'</span></div>'
+    +'<div style="overflow:auto;flex:1">'
+    +'<table style="border-collapse:collapse;width:100%;font-size:12px">'
+    +'<thead><tr style="background:var(--negro3)">'
+    +'<th style="text-align:left;padding:6px 4px;white-space:nowrap">Gasto</th>'
+    +'<th style="padding:6px 4px">Monto</th>'
+    +'<th style="padding:6px 4px">Frec.</th>'
+    +'<th style="padding:6px 4px;white-space:nowrap">Desde</th>'
+    +thMeses
+    +'</tr></thead>'
+    +'<tbody>'+filas+'</tbody>'
+    +'</table></div>'
+    +'<div style="padding:8px 0;font-size:11px;color:var(--gris3);display:flex;gap:16px">'
+    +'<span style="color:#5ddb8a">✓ Cobrado</span>'
+    +'<span style="color:var(--naranja)">! Pendiente cobrar</span>'
+    +'<span style="color:var(--celeste)">▷ Próximo</span>'
+    +'<span style="color:var(--gris4)">· No corresponde</span>'
+    +'</div>'
+    +'<div class="fa">'
+    +'<button class="btn" data-action="closeModal">Cancelar</button>'
+    +'<button class="btn sm" data-action="agregarGastoCustom" style="background:rgba(75,200,232,.1);color:var(--celeste)">+ Agregar gasto</button>'
+    +'<button class="btn naranja" data-action="guardarMatrizGastos">💾 Guardar</button>'
+    +'</div>'
+    +'</div></div>';
+}
+
+async function guardarMatrizGastos(){
+  const cid=S.matrizGastosId;
+  // Sincronizar valores del DOM antes de guardar
+  document.querySelectorAll("#matriz-gastos-tabla input[type=number]").forEach((inp,i)=>{
+    if(S.matrizTemp[i]) S.matrizTemp[i].monto=+(inp.value||0);
+  });
+  const gastosConfig=S.matrizTemp.map(g=>({
+    id:g.id||("custom_"+Date.now()),
+    nombre:g.nombre||"",
+    monto:+(g.monto||0),
+    frecuencia:+(g.frecuencia||1),
+    mesInicio:g.mesInicio||"",
+    activo:!!g.activo
+  }));
+  await fbUpd("contratos",cid,{gastosConfig});
+  S.contratos=S.contratos.map(c=>c._id===cid?{...c,gastosConfig}:c);
+  S.modal=null;
+  S.matrizTemp=null;
+  toast("Gastos fijos guardados ✓");
+  render();
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2442,7 +2600,7 @@ document.addEventListener("click",e=>{
     const idx=+t.dataset.idx;
     S._extrasTemp.splice(idx,1);
     render();
-  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
+  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="matrizGastos"){abrirMatrizGastos(id);}else if(action==="guardarMatrizGastos"){guardarMatrizGastos();}else if(action==="agregarGastoCustom"){if(!S.matrizTemp)S.matrizTemp=[];S.matrizTemp.push({id:"custom_"+Date.now(),nombre:"",monto:0,frecuencia:1,mesInicio:mesActual(),activo:true});render();}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
   // ── handlers de inputs (change listener los maneja también) ──────────────
   else if(action==="setupBuscar"){S.setupBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setupDescartar"){S.setupCambios={};render();}
@@ -2546,7 +2704,12 @@ function abrirContrato(cid){
   S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
   // Cargar gastos pendientes de Firebase (cargados durante el mes)
   S.itemsCobro=[];  // limpiar mientras carga
-  const itemsFijos=(c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+  // Gastos que corresponden este mes según frecuencia configurada
+  const mesACobrar=S.form.mes||mesActual();
+  const gastosFrec=gastosQueCorresponden(c,mesACobrar);
+  const itemsFijos=gastosFrec.length>0
+    ? gastosFrec.map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}))
+    : (c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
   // Calcular saldo del mes anterior automáticamente
   const mesPrev=mesPrevio(mesActual());
   const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
@@ -2646,6 +2809,7 @@ async function guardarContrato(){
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
   const deposito={total:depTotal,cuotas:depCuotas,pagadas:1,pagado:depCuotas===1?depTotal:Math.round(depTotal/2),pendiente:depCuotas===2?Math.round(depTotal/2):0,completo:depCuotas===1};
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
+  const gastosConfig=GASTOS_DEFAULT.map(g=>({...g,mesInicio:f.inicio||mesActual()}));
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios};
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
@@ -3248,7 +3412,7 @@ function renderModalDetalle(){
   }).join("");
   return `<div class="overlay"><div class="modal">
     <button class="mclose" data-action="closeModal">✕</button>
-    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="grillaGastos" data-id="${c._id}">📊 Ver gastos</button></div>
+    <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="matrizGastos" data-id="${c._id}">📊 Gastos fijos</button></div>
     <div class="fsec">
       <div class="fsec-t">Datos del contrato</div>
       <div class="fc-grid">
@@ -3360,7 +3524,7 @@ function renderModal(){
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
-  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="feriados")return renderModalFeriados();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
+  if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="feriados")return renderModalFeriados();if(S.modal==="matriz_gastos")return renderModalMatrizGastos();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
