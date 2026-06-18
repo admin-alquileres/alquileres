@@ -2554,7 +2554,24 @@ document.addEventListener("change",e=>{
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
   // Selects del form modal (depósito, honorarios, período, estado)
-  else if(action==="setForm"){const k=t.dataset.key;if(k){S.form[k]=t.value;render();}}
+  else if(action==="setForm"){
+    const k=t.dataset.key;
+    if(k){
+      S.form[k]=t.value;
+      // Si cambió el período y hay contrato activo, recalcular gastos que corresponden
+      if(k==="mes"&&S.contratoActivo){
+        const c=S.contratoActivo;
+        const gastosFrec=gastosQueCorresponden(c,t.value);
+        if(gastosFrec.length>0){
+          // Mantener items manuales (variables/saldo) pero actualizar los fijos
+          const itemsManuales=S.itemsCobro.filter(it=>it.tipo!=="fijo");
+          const itemsFijosNuevos=gastosFrec.map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
+          S.itemsCobro=[...itemsFijosNuevos,...itemsManuales];
+        }
+      }
+      render();
+    }
+  }
   // Filtros de contratos
   else if(action==="setFiltroEstadoSel"){setFiltro("estado",t.value);}
   else if(action==="setFiltroTipoSel"){setFiltro("buscarPor",t.value);}
