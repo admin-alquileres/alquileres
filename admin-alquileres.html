@@ -579,7 +579,7 @@ function renderIPC(){
   return html||`<div class="empty">No hay contratos a actualizar en los próximos 60 días</div>`;
 }
 
-function calcularNuevosMontos(fr){
+window.calcularNuevosMontos=function(fr){
   const inp=document.getElementById(`ipc-pct-${fr}`);
   if(!inp) return;
   const pct=parseFloat(inp.value);
@@ -600,9 +600,9 @@ function calcularNuevosMontos(fr){
     tdD.style.color="#5ddb8a";
     if(tdDep) tdDep.innerHTML=difDep>0?`<span style="color:var(--rojo)">+${moneda(difDep)} dep.</span>`:`<span style="color:#5ddb8a">✓</span>`;
   });
-}
+};
 
-async function aplicarIPCGrupo(fr){
+window.aplicarIPCGrupo=async function(fr){
   const inp=document.getElementById(`ipc-pct-${fr}`);
   if(!inp) return;
   const pct=parseFloat(inp.value);
@@ -629,7 +629,7 @@ async function aplicarIPCGrupo(fr){
   await Promise.all(promises);
   toast(`✅ ${promises.length} contrato(s) actualizados`);
   render();
-}
+};
 
 async function cobrarCuotaDep(cid){
   const c=S.contratos.find(x=>x._id===cid);if(!c)return;
@@ -735,7 +735,7 @@ function renderModalCaja(){
   </div></div>`;
 }
 
-async function guardarMovCaja(){
+window.guardarMovCaja=async function(){
   const concepto=(document.getElementById("cj-concepto")||{}).value||"";
   const monto=+((document.getElementById("cj-monto")||{}).value||0);
   const fecha=(document.getElementById("cj-fecha")||{}).value||hoy();
@@ -749,7 +749,7 @@ async function guardarMovCaja(){
   if(f.tipo==="honorario"){data.inquilino=inquilino;data.cuotas=cuotas;}
   const id=await fbAdd("caja",data);
   if(id){S_CAJA.movimientos.unshift({...data,_id:id});S.modal=null;render();toast("Registrado ✓");}
-}
+};
 
 function renderCaja(){
   if(!S_CAJA.cargado){cargarCaja().then(()=>render());return '<div class="loading"><div class="spinner"></div>Cargando caja...</div>';}
@@ -917,15 +917,15 @@ function renderSetup(){
     +'</div></div>';
 }
 
-function setupMarcar(id,field,val,el){
+window.setupMarcar=function(id,field,val,el){
   if(!S.setupCambios[id])S.setupCambios[id]={};
   S.setupCambios[id][field]=val;
   if(el)el.style.borderColor="var(--naranja)";
   const n=document.querySelector("[data-setup-n]");
   if(n)n.textContent=Object.keys(S.setupCambios).length;
-}
+};
 
-function setupMarcarDep(id,campo,valor){
+window.setupMarcarDep=function(id,campo,valor){
   const c=S.contratos.find(x=>x._id===id)||{};
   if(!S.setupCambios[id])S.setupCambios[id]={};
   const dep={...(c.deposito||{}),...(S.setupCambios[id].deposito||{})};
@@ -933,9 +933,9 @@ function setupMarcarDep(id,campo,valor){
   else if(campo==="pagado"){dep.pagado=+valor;dep.completo=(+valor)>=(dep.total||0);dep.pendiente=Math.max(0,(dep.total||0)-(+valor));}
   S.setupCambios[id].deposito=dep;
   // No re-render para no perder foco del input
-}
+};
 
-async function setupGuardar(){
+window.setupGuardar=async function(){
   const ids=Object.keys(S.setupCambios);
   if(!ids.length)return;
   if(!confirm("Guardar "+ids.length+" cambio(s) en Firebase?"))return;
@@ -955,7 +955,7 @@ async function setupGuardar(){
   S.setupCambios={};
   toast(`✅ ${ok} actualizado(s)`);
   render();
-}
+};
 
 // ── HISTORIAL DE PROPIEDAD ──────────────────────────────────────────────────
 const S_HIST = {};  // cache: { propId: [{_id, fecha, desc, creadoEn}] }
@@ -1832,7 +1832,7 @@ function generarMensajeIPC(c, pct, alqNuevo){
   return msg;
 }
 
-function abrirWhatsAppIPC(cid, pct){
+window.abrirWhatsAppIPC=function(cid, pct){
   const c = S.contratos.find(x => x._id === cid);
   if(!c){ toast("Contrato no encontrado", false); return; }
 
@@ -1857,9 +1857,9 @@ function abrirWhatsAppIPC(cid, pct){
   const msg = generarMensajeIPC(c, pctVal, alqNuevo);
   const url = `https://wa.me/${telWA}?text=${msg}`;
   window.open(url, "_blank");
-}
+};
 
-function abrirWhatsAppIPCMasivo(fr, pct){
+window.abrirWhatsAppIPCMasivo=function(fr, pct){
   // Abrir todos los WhatsApp del grupo de una vez (abre múltiples tabs)
   if(!pct || isNaN(+pct)){ toast("Ingresá el % primero", false); return; }
   const activos = S.contratos.filter(c => c.estado==="activo" && +(c.frecActualizacion||6)===+fr);
@@ -1881,7 +1881,7 @@ function abrirWhatsAppIPCMasivo(fr, pct){
   } else {
     toast(`✅ ${conTel.length} WhatsApp abiertos`);
   }
-}
+};
 
 // ── RENOVAR CONTRATO ─────────────────────────────────────────────────────────
 function abrirRenovacion(cid){
@@ -2718,7 +2718,7 @@ function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;render();}
 function setLiqMes(v){S.liqMes=v;render();}
 function openModal(t){S.modal=t;S.form={comisionAgencia:5,estado:"activo",tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC",depCuotas:1,honMonto:"medio",honCuotas:1};S.formExtras=[];render();}
-function closeModal(){S.modal=null;S.contratoActivo=null;render();}
+window.closeModal=function(){S.modal=null;S.contratoActivo=null;render();};
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
 
