@@ -196,7 +196,7 @@ const db=getFirestore(fireApp);
 const auth=getAuth(fireApp);
 const rtdb=getDatabase(fireApp);
 
-let S={
+let S=window.S={
   sec:"dashboard",usuario:null,
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
@@ -1549,6 +1549,7 @@ async function limpiarGastosPendientes(cid){
   }
   if(S_GPEND[cid]) S_GPEND[cid].items=[];
 }
+window.render=render;
 window.setFechaCorte=function(v){if(!v)return;S.fechaCorte=v;localStorage.setItem("fechaCorte",v);render();};
 window.setAlquilerCobro=function(v){S.form.alquiler=+(v||0);if(typeof updateResumen==="function")updateResumen();};
 
@@ -2382,8 +2383,9 @@ function gastosDelContrato(c){
 
 function correspondeEsteMes(gasto, mes){
   // Determina si un gasto corresponde ser cobrado en el mes dado
-  if(!gasto.activo||!gasto.mesInicio) return false;
-  const [ay,am]=gasto.mesInicio.split("-").map(Number);
+  if(!gasto.activo) return false;
+  const inicio=gasto.mesInicio||mes; // si no tiene inicio, asume desde el mes actual
+  const [ay,am]=inicio.split("-").map(Number);
   const [by,bm]=mes.split("-").map(Number);
   const diffMeses=(by-ay)*12+(bm-am);
   if(diffMeses<0) return false; // antes del inicio
@@ -2499,11 +2501,8 @@ function renderModalMatrizGastos(){
 
 async function guardarMatrizGastos(){
   const cid=S.matrizGastosId;
-  // Sincronizar valores del DOM antes de guardar
-  document.querySelectorAll("#matriz-gastos-tabla input[type=number]").forEach((inp,i)=>{
-    if(S.matrizTemp[i]) S.matrizTemp[i].monto=+(inp.value||0);
-  });
-  const gastosConfig=S.matrizTemp.map(g=>({
+  // S.matrizTemp ya tiene los valores actualizados por los handlers
+  const gastosConfig=(S.matrizTemp||[]).map(g=>({
     id:g.id||("custom_"+Date.now()),
     nombre:g.nombre||"",
     monto:+(g.monto||0),
@@ -2532,6 +2531,10 @@ document.addEventListener("input",e=>{
   // Campos de form modal
   else if(action==="setForm"){const k=t.dataset.key;if(k)S.form[k]=t.value;}
   // Extras del contrato
+  else if(action==="matrizNombre"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].nombre=t.value;}}
+  else if(action==="matrizMonto"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].monto=+(t.value||0);}}
+  else if(action==="matrizNombre"){if(S.matrizTemp){S.matrizTemp[+t.dataset.idx].nombre=t.value;}}
+  else if(action==="matrizMonto"){if(S.matrizTemp){S.matrizTemp[+t.dataset.idx].monto=+(t.value||0);}}
   else if(action==="setExtraDesc"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].desc=t.value;}
   else if(action==="setExtraMonto"){const i=+t.dataset.idx;if(S.formExtras[i])S.formExtras[i].monto=+(t.value||0);}
 });
@@ -2556,6 +2559,10 @@ document.addEventListener("change",e=>{
   else if(action==="setFiltroEstadoSel"){setFiltro("estado",t.value);}
   else if(action==="setFiltroTipoSel"){setFiltro("buscarPor",t.value);}
   else if(action==="setLiqMesSel"){S.liqMes=t.value;render();}
+  else if(action==="matrizFreq"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].frecuencia=+t.value;}}
+  else if(action==="matrizDesde"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].mesInicio=t.value;}}
+  else if(action==="matrizFreq"){if(S.matrizTemp){S.matrizTemp[+t.dataset.idx].frecuencia=+t.value;}}
+  else if(action==="matrizDesde"){if(S.matrizTemp){S.matrizTemp[+t.dataset.idx].mesInicio=t.value;}}
   else if(action==="setPropietario"){
     S.form.propietarioNombre=t.value;S.form.propiedadId="";S.form.direccion="";S.form.tipo="Casa";render();
   }
@@ -2600,7 +2607,7 @@ document.addEventListener("click",e=>{
     const idx=+t.dataset.idx;
     S._extrasTemp.splice(idx,1);
     render();
-  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="matrizGastos"){abrirMatrizGastos(id);}else if(action==="guardarMatrizGastos"){guardarMatrizGastos();}else if(action==="agregarGastoCustom"){if(!S.matrizTemp)S.matrizTemp=[];S.matrizTemp.push({id:"custom_"+Date.now(),nombre:"",monto:0,frecuencia:1,mesInicio:mesActual(),activo:true});render();}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
+  }else if(action==="extrasGuardar"){guardarExtrasSetup(S.editarExtrasId);}else if(action==="grillaGastos"){abrirGrillaGastos(id);}else if(action==="matrizGastos"){abrirMatrizGastos(id);}else if(action==="matrizCheck"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp[i].activo=t.checked;if(t.checked&&!S.matrizTemp[i].mesInicio)S.matrizTemp[i].mesInicio=mesActual();render();}else if(action==="matrizNombre"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp[i].nombre=t.value;}else if(action==="matrizMonto"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp[i].monto=+(t.value||0);}else if(action==="matrizFreq"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp[i].frecuencia=+t.value;}else if(action==="matrizDesde"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp[i].mesInicio=t.value;}else if(action==="matrizBorrar"){if(!S.matrizTemp)return;const i=+t.dataset.idx;S.matrizTemp.splice(i,1);render();}else if(action==="agregarGastoNuevoContrato"){if(!S.matrizTemp)S.matrizTemp=[];S.matrizTemp.push({id:"custom_"+Date.now(),nombre:"",monto:0,frecuencia:1,mesInicio:S.form.inicio||mesActual(),activo:true});render();}else if(action==="guardarMatrizGastos"){guardarMatrizGastos();}else if(action==="agregarGastoCustom"){if(!S.matrizTemp)S.matrizTemp=[];S.matrizTemp.push({id:"custom_"+Date.now(),nombre:"",monto:0,frecuencia:1,mesInicio:mesActual(),activo:true});render();}else if(action==="cerrarGrilla"){S.modalExtra=null;render();}else if(action==="irSetup"){S.modalExtra=null;S.sec="setup";render();}else if(action==="grillaGastos")abrirGrillaGastos(id);
   // ── handlers de inputs (change listener los maneja también) ──────────────
   else if(action==="setupBuscar"){S.setupBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setupDescartar"){S.setupCambios={};render();}
@@ -2809,7 +2816,8 @@ async function guardarContrato(){
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
   const deposito={total:depTotal,cuotas:depCuotas,pagadas:1,pagado:depCuotas===1?depTotal:Math.round(depTotal/2),pendiente:depCuotas===2?Math.round(depTotal/2):0,completo:depCuotas===1};
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
-  const gastosConfig=GASTOS_DEFAULT.map(g=>({...g,mesInicio:f.inicio||mesActual()}));
+  const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
+S.matrizTemp=null;  // limpiar después de guardar
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios};
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
@@ -3603,6 +3611,30 @@ function renderModal(){
       <div><label class="fl">Índice</label>${sel("indiceActualizacion",[["IPC","IPC"],["ICL","ICL"],["Libre","Libre"]])}</div>
       <div><label class="fl">Notas</label>${inp("notasActualizacion","text","","Ej: según contrato...")}</div>
     </div></div>
+    <div class="fsec">
+      <div class="fsec-t" style="display:flex;justify-content:space-between;align-items:center">
+        <span>4. Gastos fijos</span>
+        <button class="btn sm" data-action="agregarGastoNuevoContrato" style="background:rgba(75,200,232,.1);color:var(--celeste);font-size:11px">+ Agregar</button>
+      </div>
+      <div style="font-size:11px;color:var(--gris3);margin-bottom:10px">Configurá qué gastos se cobran, con qué frecuencia y si tienen monto fijo o variable.</div>
+      ${(()=>{
+        if(!S.matrizTemp){
+          S.matrizTemp=GASTOS_DEFAULT.map(g=>({...g,mesInicio:f.inicio||mesActual()}));
+        }
+        const iS="padding:4px 6px;font-size:11px;border:1px solid var(--negro4);border-radius:4px;background:var(--negro3);color:var(--blanco)";
+        return S.matrizTemp.map((g,i)=>'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">'
+          +'<input type="checkbox" '+(g.activo?"checked ":"")+'data-action="matrizCheck" data-idx="'+i+'" style="width:16px;height:16px">'
+          +'<input value="'+(g.nombre||"")+'" placeholder="Nombre" data-action="matrizNombre" data-idx="'+i+'" style="'+iS+';width:90px;'+(g.activo?"":"opacity:.5")+'">'
+          +'<input type="number" value="'+(g.monto||"")+'" placeholder="$ (vacío=variable)" data-action="matrizMonto" data-idx="'+i+'" style="'+iS+';width:120px;'+(g.activo?"":"opacity:.5")+'">'
+          +'<select data-action="matrizFreq" data-idx="'+i+'" style="'+iS+';'+(g.activo?"":"opacity:.5")+'">'
+          +[1,2,3,6,12].map(v=>'<option value="'+v+'"'+(+g.frecuencia===v?" selected":"")+'>c/'+v+'m</option>').join("")
+          +'</select>'
+          +'<input type="month" value="'+(g.mesInicio||"")+'" data-action="matrizDesde" data-idx="'+i+'" style="'+iS+';width:130px;'+(g.activo?"":"opacity:.5")+'">'
+          +'<button data-action="matrizBorrar" data-idx="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px">✕</button>'
+          +'</div>'
+        ).join("");
+      })()}
+    </div>
     <div class="fa"><button class="btn" data-action="closeModal">Cancelar</button><button class="btn naranja" data-action="guardarContrato">Guardar contrato</button></div>`;
   }
   if(S.modal==="propietario"){
