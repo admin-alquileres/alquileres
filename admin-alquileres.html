@@ -408,7 +408,7 @@ function generarPDFInquilino(p){
 
   // Talon — espejo del recibo con detalle de items
   doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(60,60,60);
-  doc.text("RECIBO N "+nro,12,y+4);doc.text(fecha+" "+hora,198,y+4,{align:"right"});y+=8;
+  doc.text("RECIBO N. "+nro,12,y+4);doc.text(fecha+" "+hora,198,y+4,{align:"right"});y+=8;
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);
   doc.text("Inquilino: "+(p.inquilino||""),12,y);
   doc.text("Prop.: "+(p.direccion||""),105,y);y+=5;
@@ -936,7 +936,7 @@ function setupMarcarDep(id,campo,valor){
 async function setupGuardar(){
   const ids=Object.keys(S.setupCambios);
   if(!ids.length)return;
-  if(!confirm(`¿Guardar ${ids.length} cambio(s)?`))return;
+  if(!confirm("Guardar "+ids.length+" cambio(s) en Firebase?"))return;
   let ok=0;
   for(const id of ids){
     try{
@@ -3524,7 +3524,7 @@ function render(){
       <ul class="nav">${NAVS.map(n=>`<li class="${S.sec===n.id?"on":""}" data-action="nav" data-sec="${n.id}"><span>${n.ic}</span>${n.lbl}</li>`).join("")}</ul>
       <div class="nav-user"><div><div style="font-size:10px;color:var(--gris4)">Usuario</div><strong>${userLabel}</strong></div><button class="logout-btn" data-action="doLogout">Salir</button></div>
       ${presenciaHtml}
-      <div class="sidebar-foot">© 2025 Eckerdt Negocios Inmobiliarios</div>
+      <div class="sidebar-foot">© 2026 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
       <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><input id="busq-global" class="inp" placeholder="🔍 Buscar..." value="${S.busqGlobal||''}" id="busq-global-inp" data-action="busqInput" style="width:200px;padding:6px 10px;font-size:12px" data-action="busqEscape"><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
