@@ -215,6 +215,8 @@ const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","
 const mesNombre=m=>{if(!m)return"";const p=m.split("-");if(p.length===2)return MESES[+p[1]-1]+" "+p[0];return m;};
 const mesNombreMay=m=>mesNombre(m).toUpperCase();
 const diasPara=fin=>Math.round((new Date(fin)-new Date())/86400000);
+const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
+const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
 function toast(msg,ok=true){
   $("tmsg").textContent=msg;
@@ -3465,9 +3467,6 @@ window.toggleTema=function(){
     el.textContent=esLight?"☀️":"🌙";
   });
 };
-
-const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
-const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
 function renderParcial(){
   const ae=document.activeElement;
