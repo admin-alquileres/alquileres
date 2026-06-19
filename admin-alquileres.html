@@ -1339,551 +1339,79 @@ function abrirGrillaGastos(cid){
 }
 
 function renderModalGrillaGastos(){
-  const c=S.contratos.find(x=>x._id===S.grillaContrato);
+  const c=S.contratos.find(function(x){return x._id===S.grillaContrato;});
   if(!c) return "";
-
-  // Items fijos definidos en el contrato
-  const extras=(c.extras||[]).filter(e=>e.desc&&+(e.monto||0)>0);
+  const extras=(c.extras||[]).filter(function(e){return e.desc&&+(e.monto||0)>0;});
   if(!extras.length){
     return '<div class="overlay"><div class="modal" style="max-width:480px">'
-      +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
-      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+(c.inquilino||"")+'</div>'
+      +'<button class="mclose" data-action="cerrarGrilla">x</button>'
+      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos — '+(c.inquilino||"")+'</div>'
       +'<div style="padding:20px 0;text-align:center">'
       +'<div style="font-size:32px;margin-bottom:12px">📋</div>'
-      +'<div style="color:var(--gris3);margin-bottom:16px">Este contrato no tiene gastos fijos configurados todavía.</div>'
-      +'<button class="btn naranja" data-action="irSetup">Ir a Puesta a punto para configurarlos →</button>'
-      +'</div>'
-      +'<div class="fa"><button class="btn" data-action="cerrarGrilla">Cerrar</button></div>'
+      +'<div style="color:var(--gris3);margin-bottom:16px">Este contrato no tiene gastos fijos configurados.</div>'
+      +'<button class="btn naranja" data-action="irSetup">Ir a Puesta a punto →</button>'
+      +'</div><div class="fa"><button class="btn" data-action="cerrarGrilla">Cerrar</button></div>'
       +'</div></div>';
   }
-
-  // Pagos del contrato ordenados por mes
-  const pagosC=S.pagos
-    .filter(p=>p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado")
-    .sort((a,b)=>(a.mes||"").localeCompare(b.mes||""));
-
-  if(!pagosC.length){
-    return '<div class="overlay"><div class="modal" style="max-width:600px">'
-      +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
-      +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos</div>'
-      +'<p style="color:var(--gris3);padding:20px 0">Sin pagos cobrados registrados todavía.</p>'
-      +'<div class="fa"><button class="btn" data-action="cerrarGrilla">Cerrar</button></div>'
-      +'</div></div>';
-  }
-
-  // Generar lista de meses desde el primer pago hasta hoy
-  const primerMes=pagosC[0].mes;
-  const ultimoMes=mesActual();
+  const pagosC=S.pagos.filter(function(p){return p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado";}).sort(function(a,b){return(a.mes||"").localeCompare(b.mes||"");});
+  const mesActualS=mesActual();
+  // Generar rango de meses: desde 6 meses atrás hasta 2 meses adelante
+  const base=new Date(mesActualS+"-01");
   const meses=[];
-  let cur=new Date(primerMes+"-01");
-  const fin=new Date(ultimoMes+"-01");
-  while(cur<=fin){
-    meses.push(cur.getFullYear()+"-"+String(cur.getMonth()+1).padStart(2,"0"));
-    cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+  for(let i=-8;i<=2;i++){
+    const d=new Date(base.getFullYear(),base.getMonth()+i,1);
+    meses.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
   }
-  // Máximo 18 meses hacia atrás para no agrandar demasiado
-  const mesesVis=meses.slice(-18);
-
-  // Para cada mes y cada ítem, ver si fue cobrado
-  // Normalizar nombre para comparación flexible
-  function norm(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
-
-  function fueCobrado(mes, itemDesc){
-    const pago=pagosC.find(p=>p.mes===mes);
+  function norm(s){return(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+  function fueCobrado(mes,itemDesc){
+    const pago=pagosC.find(function(p){return p.mes===mes;});
     if(!pago) return false;
-    const items=pago.itemsCobro||(pago.extras||[]).map(e=>({desc:e.desc,monto:e.monto}));
+    const items=pago.itemsCobro||(pago.extras||[]).map(function(e){return{desc:e.desc,monto:e.monto};});
     const nd=norm(itemDesc);
-    return items.some(it=>{
-      const ni=norm(it.desc||"");
-      // Match si el nombre del ítem contiene o está contenido en el desc del pago
-      return ni.includes(nd)||nd.includes(ni)||ni===nd;
-    });
+    return items.some(function(it){const ni=norm(it.desc||"");return ni.includes(nd)||nd.includes(ni)||ni===nd;});
   }
-
-  // CSS de la grilla
-  const colAncho=Math.max(60, Math.floor(360/extras.length));
-  
-  // Encabezado de columnas (ítems)
-  const thItems=extras.map(e=>'<th style="text-align:center;padding:6px 4px;font-size:11px;white-space:nowrap;max-width:'+colAncho+'px;overflow:hidden;text-overflow:ellipsis" title="'+e.desc+'">'+e.desc+'</th>').join("");
-
-  // Filas (meses)
-  const filas=mesesVis.map(mes=>{
-    const tienePago=pagosC.some(p=>p.mes===mes);
-    const celdas=extras.map(e=>{
+  const filas=meses.map(function(mes){
+    const tienePago=pagosC.some(function(p){return p.mes===mes;});
+    const esFuturo=mes>mesActualS;
+    const celdas=extras.map(function(e){
+      const corresponde=gastoCorrespondeEnMes(e,mes);
       const cobrado=fueCobrado(mes,e.desc);
       let celda;
-      if(!tienePago){
-        // Mes sin pago registrado
-        celda='<td style="text-align:center;padding:8px 4px"><span style="color:var(--gris4);font-size:14px">—</span></td>';
+      if(!corresponde){
+        celda='<td style="text-align:center;padding:7px 4px"><span title="No corresponde este mes" style="color:var(--gris4);font-size:12px">·</span></td>';
       } else if(cobrado){
-        celda='<td style="text-align:center;padding:8px 4px;background:rgba(39,174,96,.08)"><span title="Cobrado" style="font-size:16px">✅</span></td>';
+        celda='<td style="text-align:center;padding:7px 4px;background:rgba(39,174,96,.08)"><span title="Cobrado" style="font-size:15px">✅</span></td>';
+      } else if(esFuturo){
+        celda='<td style="text-align:center;padding:7px 4px;background:rgba(75,200,232,.05)"><span title="Corresponde cobrar" style="font-size:13px;color:var(--celeste)">📋</span></td>';
+      } else if(tienePago){
+        celda='<td style="text-align:center;padding:7px 4px;background:rgba(231,76,60,.05)"><span title="Correspondia y no se cobro" style="font-size:13px;color:var(--rojo)">⬜</span></td>';
       } else {
-        celda='<td style="text-align:center;padding:8px 4px;background:rgba(231,76,60,.05)"><span title="No cobrado este mes" style="font-size:14px;color:var(--gris4)">⬜</span></td>';
+        celda='<td style="text-align:center;padding:7px 4px"><span style="color:var(--gris4);font-size:13px">—</span></td>';
       }
       return celda;
     }).join("");
-
     const mesLabel=mesNombre(mes).substring(0,3)+" "+mes.substring(2,4);
-    const rowBg=mes===ultimoMes?"background:rgba(75,200,232,.05)":"";
-    return '<tr style="'+rowBg+'"><td style="white-space:nowrap;font-size:11px;color:var(--gris3);padding:6px 10px;font-weight:'+(mes===ultimoMes?"600":"400")+'">'+mesLabel+'</td>'+celdas+'</tr>';
+    const esActual=mes===mesActualS;
+    return '<tr style="'+(esActual?"background:rgba(75,200,232,.05)":"")+'"><td style="white-space:nowrap;font-size:11px;color:var(--gris3);padding:6px 10px;font-weight:'+(esActual?"600":"400")+'">'+mesLabel+(esActual?" ←":"")+'</td>'+celdas+'</tr>';
   }).join("");
-
-  // Leyenda de totales por ítem
-  const totales=extras.map(e=>{
-    const n=mesesVis.filter(mes=>fueCobrado(mes,e.desc)).length;
-    const pct=mesesVis.length>0?Math.round(n/mesesVis.length*100):0;
-    return '<div style="text-align:center;font-size:10px;color:var(--gris3);padding:4px 2px">'
-      +'<div style="font-weight:600;color:'+(pct>80?"#5ddb8a":pct>50?"var(--naranja)":"var(--rojo)")+'">'+n+'/'+mesesVis.length+'</div>'
-      +'<div>'+pct+'%</div></div>';
+  const thItems=extras.map(function(e){
+    return '<th style="text-align:center;padding:6px 4px;font-size:10px;white-space:nowrap;position:sticky;top:0;background:var(--negro2);min-width:65px" title="'+e.desc+' — '+labelFrecuencia(e.frecuencia)+'">'+e.desc+'<div style="font-size:8px;color:var(--gris4);font-weight:400">'+labelFrecuencia(e.frecuencia)+'</div></th>';
   }).join("");
-
-  return '<div class="overlay"><div class="modal" style="max-width:min(700px,95vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
-    +'<button class="mclose" data-action="cerrarGrilla">✕</button>'
-    +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos fijos — '+c.inquilino+'<span style="font-size:11px;font-weight:400;color:var(--gris3);margin-left:8px">'+c.direccion+'</span></div>'
+  return '<div class="overlay"><div class="modal" style="max-width:min(720px,95vw);max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
+    +'<button class="mclose" data-action="cerrarGrilla">x</button>'
+    +'<div class="mth"><div class="mth-ic">📊</div>Seguimiento de gastos — '+c.inquilino+'<span style="font-size:11px;font-weight:400;color:var(--gris3);margin-left:8px">'+c.direccion+'</span></div>'
     +'<div style="overflow:auto;flex:1;padding:0 4px">'
     +'<table style="border-collapse:collapse;width:100%;font-family:Inter,sans-serif">'
-    +'<thead><tr>'
-    +'<th style="text-align:left;padding:6px 10px;font-size:11px;color:var(--gris3);white-space:nowrap;position:sticky;top:0;background:var(--negro2)">Mes</th>'
-    +extras.map(e=>'<th style="text-align:center;padding:6px 4px;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--negro2);min-width:70px" title="'+e.desc+'">'+e.desc+'</th>').join("")
-    +'</tr></thead>'
+    +'<thead><tr><th style="text-align:left;padding:6px 10px;font-size:11px;color:var(--gris3);white-space:nowrap;position:sticky;top:0;background:var(--negro2)">Mes</th>'+thItems+'</tr></thead>'
     +'<tbody>'+filas+'</tbody>'
-    +'<tfoot><tr>'
-    +'<td style="font-size:10px;color:var(--gris3);padding:6px 10px">Total</td>'
-    +totales.split('</div><div').map(t=>'<td>'+t+(t.endsWith('</div>')?'':'</div>')+'</td>').join('')
-    +'</tr></tfoot>'
     +'</table></div>'
-    +'<div style="padding:10px 16px;border-top:1px solid var(--negro4);display:flex;gap:12px;font-size:11px;color:var(--gris3);align-items:center">'
-    +'<span>✅ Cobrado</span><span>⬜ No cobrado</span><span>— Sin pago registrado</span>'
+    +'<div style="padding:10px 16px;border-top:1px solid var(--negro4);display:flex;gap:10px;font-size:10px;color:var(--gris3);align-items:center;flex-wrap:wrap">'
+    +'<span>✅ Cobrado</span><span>📋 Corresponde (futuro)</span><span>⬜ Correspondia y no se cobro</span><span>· No corresponde este mes</span>'
     +'<div style="flex:1"></div>'
     +'<button class="btn" data-action="cerrarGrilla" style="padding:6px 16px">Cerrar</button>'
-    +'</div>'
-    +'</div></div>';
-}
-
-function renderModalEditarExtras(){
-  const cid=S.editarExtrasId;
-  const c=S.contratos.find(x=>x._id===cid);
-  if(!c)return"";
-  const cam=S.setupCambios[cid]||{};
-  const extras=cam.extras!==undefined?[...cam.extras]:[...(c.extras||[])];
-  if(!S._extrasTemp||S._extrasTempId!==cid){
-    S._extrasTemp=[...extras];
-    S._extrasTempId=cid;
-  }
-  const filas=S._extrasTemp.map((e,i)=>
-    '<div class="extra-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'
-    +'<input class="inp extras-desc" style="flex:1" placeholder="Descripción (TGI, Agua...)" value="'+(e.desc||"")+'">'
-    +'<input class="inp extras-monto" style="width:110px" type="number" placeholder="$" value="'+(+(e.monto||0)||"")+'">'
-    +'<button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:4px 8px" data-action="extrasBorrar" data-idx="'+i+'">✕</button>'
-    +'</div>'
-  ).join("");
-  return '<div class="overlay"><div class="modal" style="max-width:480px">'
-    +'<button class="mclose" data-action="closeModal">✕</button>'
-    +'<div class="mth"><div class="mth-ic">📝</div>Gastos fijos — '+(c.inquilino||"")+'</div>'
-    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:14px">'+(c.direccion||"")
-    +'<br>Estos gastos aparecen pre-cargados cada mes al cobrar.</div>'
-    +'<div id="extras-lista">'+filas+'</div>'
-    +'<button class="btn sm" data-action="extrasAgregar" '
-    +'style="margin-top:8px;width:100%;background:rgba(75,200,232,.08);color:var(--celeste)">+ Agregar gasto</button>'
-    +'<div class="fa" style="margin-top:16px">'
-    +'<button class="btn" data-action="closeModal">Cancelar</button>'
-    +'<button class="btn naranja" data-action="extrasGuardar">💾 Guardar</button>'
     +'</div></div></div>';
 }
 
-async function guardarExtrasSetup(cid){
-  // Leer los valores directamente del DOM — no depende de oninput
-  const rows=document.querySelectorAll(".extra-row");
-  const extras=[];
-  rows.forEach(row=>{
-    const desc=(row.querySelector(".extras-desc")||{}).value||"";
-    const monto=+((row.querySelector(".extras-monto")||{}).value||0);
-    if(desc.trim()&&monto!==0) extras.push({desc:desc.trim(),monto});
-  });
-  if(!S.setupCambios[cid])S.setupCambios[cid]={};
-  S.setupCambios[cid].extras=extras;
-  await fbUpd("contratos",cid,{extras});
-  S.contratos=S.contratos.map(x=>x._id===cid?{...x,extras}:x);
-  toast("Gastos fijos guardados ✓");
-  S.modal=null;
-  S._extrasTemp=null;
-  S._extrasTempId=null;
-  render();
-}
-
-
-
-// ── GASTOS PENDIENTES (persisten entre sesiones) ───────────────────────────
-const S_GPEND = {};  // cache: { contratoId: [{tipo,desc,monto}] }
-
-async function cargarGastosPendientes(cid){
-  if(S_GPEND[cid]!==undefined) return;
-  try{
-    const snap=await getDocs(query(collection(db,"gastos_pendientes"),where("contratoId","==",cid)));
-    if(!snap.empty){
-      const data=snap.docs[0].data();
-      S_GPEND[cid]={docId:snap.docs[0].id,items:data.items||[]};
-    } else {
-      S_GPEND[cid]={docId:null,items:[]};
-    }
-  }catch(e){ S_GPEND[cid]={docId:null,items:[]}; }
-}
-
-async function guardarGastosPendientes(cid, items){
-  const limpio=items.filter(it=>(it.desc||"").trim()||(it.monto||0)!==0);
-  const data={contratoId:cid,items:limpio,updatedAt:Date.now()};
-  try{
-    if(S_GPEND[cid]&&S_GPEND[cid].docId){
-      await updateDoc(doc(db,"gastos_pendientes",S_GPEND[cid].docId),data);
-    } else {
-      const ref=await fbAdd("gastos_pendientes",data);
-      if(!S_GPEND[cid]) S_GPEND[cid]={};
-      S_GPEND[cid].docId=ref;
-    }
-    S_GPEND[cid].items=limpio;
-    toast("Gastos guardados ✓");
-  }catch(e){ toast("Error guardando gastos",false); }
-}
-
-async function limpiarGastosPendientes(cid){
-  if(S_GPEND[cid]&&S_GPEND[cid].docId){
-    try{ await updateDoc(doc(db,"gastos_pendientes",S_GPEND[cid].docId),{items:[],updatedAt:Date.now()}); }catch(e){}
-  }
-  if(S_GPEND[cid]) S_GPEND[cid].items=[];
-}
-window.render=render;
-window.setFechaCorte=function(v){if(!v)return;S.fechaCorte=v;localStorage.setItem("fechaCorte",v);render();};
-window.setAlquilerCobro=function(v){S.form.alquiler=+(v||0);if(typeof updateResumen==="function")updateResumen();};
-
-
-async function generarLiquidacionProp(nombre){
-  const prop=S.contratos.filter(c=>c.propietarioNombre===nombre&&c.estado==="activo");
-  const seleccion=S.liqSeleccion[nombre]||{};
-  const pagos=S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
-  // Filtrar por meses seleccionados
-  const mesesPendientes=[...new Set(pagos.map(p=>p.mes))].sort().reverse();
-  const mesesSel=mesesPendientes.filter(m=>seleccion[m]!==false);
-  if(!mesesSel.length){toast("No hay meses seleccionados",false);return;}
-  const pagosSel=pagos.filter(p=>mesesSel.includes(p.mes));
-  if(!pagosSel.length){toast("Sin pagos para liquidar",false);return;}
-
-  // Leer saldo anterior y monto recibido
-  await cargarSaldoProp(nombre);
-  const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
-  const inputPago=document.getElementById("pago-prop-input");
-  const montoRecibido=inputPago&&inputPago.value?+(inputPago.value||0):null;
-
-  // Referencia única para esta liquidación
-  const ref="LIQ-"+Date.now();
-  const fechaHoy=hoy();
-  const comPct=prop[0]?.comisionAgencia||5;
-
-  // Generar PDF
-  const{jsPDF}=window.jspdf;
-  const doc=new jsPDF({unit:"mm",format:"a4"});
-  let y=18;
-
-  // ── ENCABEZADO — solo LIQUIDACIÓN ─────────────────────────────────────────
-  doc.setFillColor(255,255,255);doc.rect(0,0,210,297,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(22);doc.setTextColor(20,20,20);
-  doc.text("LIQUIDACION",14,16);
-  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(80,80,80);
-  doc.text("DOCUMENTO NO VALIDO COMO FACTURA",198,10,{align:"right"});
-  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(40,40,40);
-  doc.text("Fecha: "+fechaHoy,198,17,{align:"right"});
-  doc.setDrawColor(180,180,180);doc.setLineWidth(0.4);doc.line(12,24,198,24);
-  y=30;
-
-  // Propietario
-  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
-  doc.text("Propietario: "+nombre.toUpperCase(),12,y);y+=6;
-  const periodos=mesesSel.map(m=>mesNombre(m)).join(", ");
-  doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
-  doc.text("Periodo(s): "+periodos,12,y);y+=10;
-
-  // ── DETALLE POR PROPIEDAD ──────────────────────────────────────────────────
-  let totalAlquileres=0;
-  let totalExtras=0;
-  let totalDepositoActual=0;
-
-  // Agrupar pagos por contrato
-  const porContrato={};
-  pagosSel.forEach(p=>{
-    if(!porContrato[p.contratoId])porContrato[p.contratoId]=[];
-    porContrato[p.contratoId].push(p);
-  });
-
-  Object.entries(porContrato).forEach(([cid,pagosC])=>{
-    const contrato=S.contratos.find(x=>x._id===cid);
-    const dir=contrato?.direccion||pagosC[0]?.direccion||"Propiedad";
-    const inquilino=pagosC[0]?.inquilino||"";
-
-    // Cabecera de propiedad
-    doc.setFillColor(245,247,250);doc.rect(12,y-4,186,8,"F");
-    doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(20,20,20);
-    doc.text("PROPIEDAD: "+dir,14,y);y+=7;
-    doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(80,80,80);
-    doc.text("Inquilino: "+inquilino,16,y);y+=7;
-
-    pagosC.sort((a,b)=>(a.mes||"").localeCompare(b.mes||""));
-    let subtotalAlq=0;
-
-    pagosC.forEach(p=>{
-      const alq=p.alquiler||0;
-      subtotalAlq+=alq;
-      totalAlquileres+=alq;
-      doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
-      doc.text("Alquiler "+mesNombre(p.mes),18,y);
-      doc.text(moneda(alq),198,y,{align:"right"});y+=6;
-
-      // Items extras del pago (gastos fijos cobrados al inquilino que son del prop)
-      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.filter(it=>it.tipo==="fijo"&&(it.monto||0)>0).forEach(it=>{
-        totalExtras+=(it.monto||0);
-        doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(60,60,60);
-        doc.text("  "+it.desc,18,y);
-        doc.text(moneda(it.monto||0),198,y,{align:"right"});y+=5;
-      });
-    });
-
-    // Diferencia de depósito pendiente
-    const dep=contrato?.deposito||{};
-    const difDep=dep.pendiente||0;
-    if(difDep>0){
-      totalDepositoActual+=difDep;
-      doc.setFont("helvetica","italic");doc.setFontSize(9);doc.setTextColor(245,166,35);
-      doc.text("  Actualizacion deposito en garantia",18,y);
-      doc.text(moneda(difDep),198,y,{align:"right"});y+=5;
-    }
-
-    // Subtotal propiedad
-    doc.setDrawColor(200,200,200);doc.line(16,y,198,y);y+=4;
-    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
-    const subtotProp=subtotalAlq+difDep;
-    doc.text("Subtotal "+dir,18,y);
-    doc.text(moneda(subtotProp),198,y,{align:"right"});y+=10;
-
-    if(y>260){doc.addPage();y=20;}
-  });
-
-  // ── TOTALES FINALES ────────────────────────────────────────────────────────
-  doc.setDrawColor(40,40,40);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
-
-  doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(40,40,40);
-  doc.text("Total alquileres",12,y);
-  doc.text(moneda(totalAlquileres),198,y,{align:"right"});y+=6;
-  // Saldo anterior si existe
-  if(saldoAnterior!==0){
-    doc.setTextColor(saldoAnterior>0?27:180,saldoAnterior>0?142:50,saldoAnterior>0?60:50);
-    doc.text("Saldo anterior ("+(saldoAnterior>0?"a favor":"deuda")+")",12,y);
-    doc.text((saldoAnterior>0?"+":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
-    doc.setTextColor(40,40,40);
-  }
-
-  if(totalDepositoActual>0){
-    doc.text("Total actualizacion depositos",12,y);
-    doc.text(moneda(totalDepositoActual),198,y,{align:"right"});y+=6;
-  }
-
-  // Comisión solo sobre alquileres
-  const comision=Math.round(totalAlquileres*comPct/100);
-  doc.setTextColor(200,50,50);
-  doc.text("Comision administracion ("+comPct+"% s/ alquileres)",12,y);
-  doc.text("- "+moneda(comision),198,y,{align:"right"});y+=8;
-
-  // Neto
-  const neto=totalAlquileres+totalDepositoActual-comision;
-  doc.setDrawColor(40,40,40);doc.setLineWidth(0.8);doc.line(12,y,198,y);y+=7;
-  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(20,20,20);
-  doc.text("NETO A TRANSFERIR",12,y);
-  doc.setTextColor(27,142,60);doc.text(moneda(neto),198,y,{align:"right"});y+=6;
-  doc.setFont("helvetica","italic");doc.setFontSize(8.5);doc.setTextColor(80,80,80);
-  doc.text("("+numeroALetras(neto)+" pesos)",12,y);y+=12;
-
-  // Firma
-  doc.setDrawColor(100,100,100);doc.setLineWidth(0.3);doc.line(12,y,70,y);
-  doc.text("Firma",38,y+4,{align:"center"});
-  doc.setFont("helvetica","normal");
-  doc.text("Eckerdt Negocios Inmobiliarios",198,y+4,{align:"right"});
-
-  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+fechaHoy+".pdf");
-
-  // ── CALCULAR Y GUARDAR NUEVO SALDO ────────────────────────────────────────
-  const netoCalculado=totalAlquileres+totalDepositoActual-comision+saldoAnterior;
-  let nuevoSaldo=0;
-  if(montoRecibido!==null&&montoRecibido!==netoCalculado){
-    nuevoSaldo=montoRecibido-netoCalculado; // positivo=a favor prop, negativo=debe prop
-    await guardarSaldoProp(nombre, nuevoSaldo);
-    // Agregar línea de saldo al PDF
-    if(saldoAnterior!==0){
-      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(40,40,40);
-      doc.text("Saldo anterior "+(saldoAnterior>0?"(a favor)":"(deuda)"),12,y);
-      doc.text((saldoAnterior>0?"+":"-")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
-    }
-    if(nuevoSaldo!==0){
-      doc.setFont("helvetica","italic");doc.setFontSize(8.5);
-      doc.setTextColor(nuevoSaldo>0?27:200,nuevoSaldo>0?142:50,nuevoSaldo>0?60:50);
-      doc.text("Saldo para proxima liquidacion: "+(nuevoSaldo>0?"a favor del propietario":"deuda del propietario"),12,y);
-      doc.text((nuevoSaldo>0?"+":"")+moneda(nuevoSaldo),198,y,{align:"right"});y+=6;
-    }
-  } else {
-    // Sin saldo pendiente
-    await guardarSaldoProp(nombre, 0);
-  }
-
-  // ── MARCAR PAGOS COMO LIQUIDADOS EN FIREBASE ──────────────────────────────
-  const updates=pagosSel.map(p=>fbUpd("pagos",p._id,{
-    liquidadoProp:true,
-    liquidacionRef:ref,
-    fechaLiquidacion:fechaHoy
-  }));
-  await Promise.all(updates);
-
-  // Actualizar estado local
-  S.pagos=S.pagos.map(p=>{
-    if(pagosSel.some(ps=>ps._id===p._id)){
-      return{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaHoy};
-    }
-    return p;
-  });
-
-  // Limpiar selección
-  if(S.liqSeleccion[nombre])delete S.liqSeleccion[nombre];
-
-  toast("✅ Liquidación generada y registrada");
-  render();
-}
-
-async function reimprimirLiquidacion(ref, nombre){
-  // Reunir los pagos de esa liquidación y regenerar el PDF
-  const pagosDeLiq=S.pagos.filter(p=>p.liquidacionRef===ref&&p.propietarioNombre===nombre);
-  if(!pagosDeLiq.length){toast("No se encontró la liquidación",false);return;}
-  // Temporalmente desmarcar para que generarLiquidacionProp los tome
-  const backup=pagosDeLiq.map(p=>({id:p._id,ref:p.liquidacionRef,fecha:p.fechaLiquidacion}));
-  S.pagos=S.pagos.map(p=>backup.some(b=>b.id===p._id)?{...p,liquidadoProp:false}:p);
-  // Asegurar que estén en la selección
-  const meses=[...new Set(pagosDeLiq.map(p=>p.mes))];
-  S.liqSeleccion[nombre]={};
-  meses.forEach(m=>{S.liqSeleccion[nombre][m]=true;});
-  await generarLiquidacionProp(nombre);
-  // Restaurar marcas
-  S.pagos=S.pagos.map(p=>{
-    const b=backup.find(x=>x.id===p._id);
-    return b?{...p,liquidadoProp:true,liquidacionRef:b.ref,fechaLiquidacion:b.fecha}:p;
-  });
-  render();
-}
-
-// ── SALDO PROPIETARIO (persiste entre liquidaciones) ──────────────────────
-const S_SALDO_PROP = {};  // cache: { nombre: { docId, monto, updatedAt } }
-
-async function cargarSaldoProp(nombre){
-  if(S_SALDO_PROP[nombre]!==undefined) return;
-  try{
-    const snap=await getDocs(query(collection(db,"saldos_prop"),where("propietario","==",nombre)));
-    if(!snap.empty){
-      const d=snap.docs[0];
-      S_SALDO_PROP[nombre]={docId:d.id,...d.data()};
-    } else {
-      S_SALDO_PROP[nombre]={docId:null,propietario:nombre,monto:0};
-    }
-  }catch(e){ S_SALDO_PROP[nombre]={docId:null,propietario:nombre,monto:0}; }
-}
-
-async function guardarSaldoProp(nombre, monto){
-  const data={propietario:nombre,monto,updatedAt:Date.now()};
-  try{
-    if(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].docId){
-      await updateDoc(doc(db,"saldos_prop",S_SALDO_PROP[nombre].docId),data);
-    } else {
-      const ref=await fbAdd("saldos_prop",data);
-      if(!S_SALDO_PROP[nombre])S_SALDO_PROP[nombre]={};
-      S_SALDO_PROP[nombre].docId=ref;
-    }
-    S_SALDO_PROP[nombre]={...S_SALDO_PROP[nombre],...data};
-  }catch(e){ toast("Error guardando saldo",false); }
-}
-
-// ── WHATSAPP IPC ─────────────────────────────────────────────────────────────
-function generarMensajeIPC(c, pct, alqNuevo){
-  const alqViejo = c.alquilerBase || 0;
-  const dep = c.deposito || {};
-  const depAnterior = dep.pagado || 0;
-  const difDep = alqNuevo - depAnterior;
-  const nombreInq = (c.inquilino || "").split(",")[0].trim(); // solo primer apellido o nombre
-
-  let msg = `Estimado/a ${nombreInq},%0A%0A`;
-  msg += `Le informamos que a partir del proximo mes se aplica la actualizacion de alquiler correspondiente:%0A%0A`;
-  msg += `🏠 *Propiedad:* ${c.direccion || ""}%0A`;
-  msg += `📋 *Alquiler anterior:* $${Math.round(alqViejo).toLocaleString("es-AR")}%0A`;
-  msg += `📈 *Nuevo alquiler:* $${Math.round(alqNuevo).toLocaleString("es-AR")} (${pct}% de aumento)%0A`;
-
-  if(difDep > 0){
-    msg += `%0A💰 *Actualizacion deposito en garantia:*%0A`;
-    msg += `   Deposito anterior: $${Math.round(depAnterior).toLocaleString("es-AR")}%0A`;
-    msg += `   Nuevo deposito: $${Math.round(alqNuevo).toLocaleString("es-AR")}%0A`;
-    msg += `   Diferencia a abonar: $${Math.round(difDep).toLocaleString("es-AR")}%0A`;
-  }
-
-  msg += `%0ACualquier consulta estamos a su disposicion.%0A`;
-  msg += `%0AEckerdt Negocios Inmobiliarios%0A`;
-  msg += `Urdinarrain, Entre Rios`;
-
-  return msg;
-}
-
-window.abrirWhatsAppIPC=function(cid, pct){
-  const c = S.contratos.find(x => x._id === cid);
-  if(!c){ toast("Contrato no encontrado", false); return; }
-
-  // Obtener el nuevo alquiler desde el input del IPC
-  const inp = document.getElementById(`ipc-pct-${c.frecActualizacion||6}`);
-  const pctVal = pct || (inp ? parseFloat(inp.value) : 0);
-  if(!pctVal){ toast("Ingresa el % de aumento primero", false); return; }
-
-  const alqNuevo = Math.round((c.alquilerBase||0) * (1 + pctVal/100));
-  const tel = (c.telefono||"").replace(/\D/g,""); // solo números
-
-  if(!tel){
-    toast("Este inquilino no tiene teléfono registrado", false);
-    return;
-  }
-
-  // Número argentino: si empieza con 0 quitar el 0, agregar 549
-  let telWA = tel;
-  if(telWA.startsWith("0")){ telWA = telWA.substring(1); }
-  if(!telWA.startsWith("54")){ telWA = "549" + telWA; }
-
-  const msg = generarMensajeIPC(c, pctVal, alqNuevo);
-  const url = `https://wa.me/${telWA}?text=${msg}`;
-  window.open(url, "_blank");
-};
-
-window.abrirWhatsAppIPCMasivo=function(fr, pct){
-  // Abrir todos los WhatsApp del grupo de una vez (abre múltiples tabs)
-  if(!pct || isNaN(+pct)){ toast("Ingresá el % primero", false); return; }
-  const activos = S.contratos.filter(c => c.estado==="activo" && +(c.frecActualizacion||6)===+fr);
-  const conTel = activos.filter(c => c.telefono);
-  const sinTel = activos.filter(c => !c.telefono);
-
-  if(!conTel.length){ toast("Ningún inquilino de este grupo tiene teléfono", false); return; }
-
-  if(!confirm(`¿Abrir WhatsApp para ${conTel.length} inquilino(s) de c/${fr}m?\n${sinTel.length>0?`(${sinTel.length} sin teléfono registrado, se omiten)`:""}`)){ return; }
-
-  conTel.forEach((c, i) => {
-    setTimeout(() => {
-      abrirWhatsAppIPC(c._id, +pct);
-    }, i * 800); // 800ms entre cada uno para no saturar
-  });
-
-  if(sinTel.length > 0){
-    toast(`✅ ${conTel.length} abiertos · ${sinTel.length} sin teléfono`, false);
-  } else {
-    toast(`✅ ${conTel.length} WhatsApp abiertos`);
-  }
-};
-
-// ── RENOVAR CONTRATO ─────────────────────────────────────────────────────────
 function abrirRenovacion(cid){
   const c=S.contratos.find(x=>x._id===cid);
   if(!c)return;
@@ -2519,6 +2047,152 @@ async function guardarMatrizGastos(){
   toast("Gastos fijos guardados ✓");
   render();
 }
+
+// ── GASTOS FIJOS CON FRECUENCIA ──────────────────────────────────────────────
+// Cada extra del contrato ahora puede tener: {desc, monto, frecuencia, mesInicio}
+// frecuencia: "mensual" | "bimestral" | "trimestral" | "semestral" | "anual"
+// mesInicio: "2026-01" — mes a partir del cual empieza a contar el ciclo
+
+
+
+function proximoMesGasto(extra, desdeMs){
+  // Encuentra el próximo mes (desde desdeMs) en que corresponde este gasto
+  const desde=desdeMs||mesActual();
+  let cur=desde;
+  for(let i=0;i<24;i++){
+    if(gastoCorrespondeMes(extra,cur)) return cur;
+    cur=mesPrevio(cur)<cur?sumarMeses(cur,1):cur; // avanzar un mes
+  }
+  return desde;
+}
+
+function sumarMeses(mes, n){
+  const [y,m]=mes.split("-").map(Number);
+  const d=new Date(y,m-1+n,1);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+
+const FREC_LABELS={mensual:"Mensual",bimestral:"Bimestral",trimestral:"Trimestral",semestral:"Semestral",anual:"Anual"};
+
+// ── GASTOS FIJOS CON FRECUENCIA ──────────────────────────────────────────────
+// Cada extra ahora puede tener: {desc, monto, frecuencia, mesInicio}
+// frecuencia: 1=mensual, 2=bimestral, 3=trimestral, 6=semestral, 12=anual
+// mesInicio: "2026-01" -> a partir de qué mes empieza a contar
+
+function gastoCorrespondeEnMes(extra, mesObjetivo){
+  const freq=+(extra.frecuencia||1);
+  if(freq<=1) return true; // mensual, siempre corresponde
+  const inicio=extra.mesInicio||extra.creadoMes||mesObjetivo;
+  const [yI,mI]=inicio.split("-").map(Number);
+  const [yO,mO]=mesObjetivo.split("-").map(Number);
+  const mesesDesdeInicio=(yO-yI)*12+(mO-mI);
+  if(mesesDesdeInicio<0) return false; // todavía no empezó
+  return mesesDesdeInicio%freq===0;
+}
+
+function gastosFijosDelMes(contrato, mes){
+  const extras=contrato.extras||[];
+  return extras.filter(e=>+(e.monto||0)>0 && gastoCorrespondeEnMes(e, mes));
+}
+
+function labelFrecuencia(freq){
+  const f=+(freq||1);
+  if(f===1) return "Mensual";
+  if(f===2) return "Bimestral";
+  if(f===3) return "Trimestral";
+  if(f===6) return "Semestral";
+  if(f===12) return "Anual";
+  return "c/"+f+"m";
+}
+
+document.addEventListener("change",function(e){
+  if(e.target.classList&&e.target.classList.contains("extras-freq")){
+    const row=e.target.closest(".extra-row");
+    if(!row)return;
+    const freq=+e.target.value;
+    let mesInput=row.querySelector(".extras-mesinicio");
+    const labelSpan=row.querySelector(".extras-freq").nextElementSibling;
+    if(freq>1){
+      if(!mesInput){
+        const span=document.createElement("span");
+        span.style.fontSize="10px";span.style.color="var(--gris3)";span.textContent="desde";
+        const inp=document.createElement("input");
+        inp.type="month";inp.className="inp extras-mesinicio";inp.style.width="130px";inp.style.fontSize="11px";
+        inp.value=new Date().toISOString().slice(0,7);
+        if(labelSpan&&labelSpan.tagName==="SPAN"){labelSpan.remove();}
+        e.target.parentElement.appendChild(span);
+        e.target.parentElement.appendChild(inp);
+      }
+    } else {
+      if(mesInput)mesInput.remove();
+      const prevSpan=row.querySelector(".extras-freq").parentElement.querySelectorAll("span");
+      prevSpan.forEach(function(s){if(s.textContent==="desde")s.remove();});
+      if(!row.querySelector(".extras-freq").parentElement.querySelector("span")){
+        const span2=document.createElement("span");
+        span2.style.fontSize="10px";span2.style.color="var(--gris4)";span2.textContent="se cobra todos los meses";
+        row.querySelector(".extras-freq").parentElement.appendChild(span2);
+      }
+    }
+  }
+});
+
+// ── NOTAS TEMPORALES (recordatorios de corto plazo, se borran cuando ya no sirven) ──
+const S_NOTAS = {};  // cache: { key: [{texto, creadoEn, docId}] }
+
+function notaKey(tipo, id){ return tipo+"_"+id; }
+
+async function cargarNotasTemp(tipo, id){
+  const key=notaKey(tipo,id);
+  if(S_NOTAS[key]!==undefined) return;
+  try{
+    const campo=tipo==="contrato"?"contratoId":"propietarioNombre";
+    const snap=await getDocs(query(collection(db,"notas_temp"),where(campo,"==",id)));
+    S_NOTAS[key]=snap.docs.map(function(d){return{...d.data(),_id:d.id};}).filter(function(n){return !n._eliminado;});
+  }catch(e){ S_NOTAS[key]=[]; }
+}
+
+async function agregarNotaTemp(tipo, id){
+  const key=notaKey(tipo,id);
+  const inp=document.getElementById("nota-temp-input-"+key);
+  if(!inp||!inp.value.trim()){toast("Escribi un comentario",false);return;}
+  const campo=tipo==="contrato"?"contratoId":"propietarioNombre";
+  const data={};
+  data[campo]=id;
+  data.texto=inp.value.trim();
+  data.creadoEn=Date.now();
+  const docId=await fbAdd("notas_temp",data);
+  if(!S_NOTAS[key])S_NOTAS[key]=[];
+  S_NOTAS[key].push({...data,_id:docId});
+  inp.value="";
+  render();
+}
+
+async function borrarNotaTemp(tipo, id, notaId){
+  const key=notaKey(tipo,id);
+  try{ await updateDoc(doc(db,"notas_temp",notaId),{_eliminado:true}); }catch(e){}
+  if(S_NOTAS[key]) S_NOTAS[key]=S_NOTAS[key].filter(function(n){return n._id!==notaId;});
+  render();
+}
+
+function renderNotasTemp(tipo, id){
+  const key=notaKey(tipo,id);
+  if(S_NOTAS[key]===undefined){
+    cargarNotasTemp(tipo,id).then(function(){render();});
+    return '<div style="font-size:11px;color:var(--gris4);padding:6px 0">Cargando notas...</div>';
+  }
+  const notas=S_NOTAS[key]||[];
+  const lista=notas.map(function(n){
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.2);border-radius:6px;padding:8px 10px;margin-bottom:6px">'
+      +'<span style="font-size:12px;flex:1">📝 '+n.texto+'</span>'
+      +'<button class="btn sm" data-action="borrarNotaTemp" data-tipo="'+tipo+'" data-id="'+id+'" data-notaid="'+n._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px;flex-shrink:0">x</button>'
+      +'</div>';
+  }).join("");
+  return '<div style="margin-bottom:10px">'+lista+'</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<input id="nota-temp-input-'+key+'" class="inp" style="flex:1" placeholder="Escribi un comentario temporal (se borra cuando quieras)..." data-action="notaTempEnter" data-tipo="'+tipo+'" data-id="'+id+'">'
+    +'<button class="btn sm naranja" data-action="agregarNotaTempBtn" data-tipo="'+tipo+'" data-id="'+id+'">+ Agregar</button>'
+    +'</div>';
+}
 document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
@@ -2546,6 +2220,7 @@ document.addEventListener("keydown",e=>{
   if(!action)return;
   if(e.key==="Enter"&&action==="hpropEnter"){e.preventDefault();agregarHistorialProp(t.dataset.pid);}
   else if(e.key==="Enter"&&action==="hinqEnter"){e.preventDefault();agregarHistorialInq(t.dataset.nombre);}
+  else if(e.key==="Enter"&&action==="notaTempEnter"){e.preventDefault();agregarNotaTemp(t.dataset.tipo,t.dataset.id);}
 });
 document.addEventListener("change",e=>{
   const t=e.target;
@@ -2614,7 +2289,10 @@ document.addEventListener("click",e=>{
       }
     });
     S._extrasTemp.push({desc:"",monto:0});render();
-  }else if(action==="extrasBorrar"){
+  }else if(action==="extrasFreqChange"){
+    // No re-render — solo mostrar/ocultar el campo mes inicio via JS directo
+  }
+  else if(action==="extrasBorrar"){
     const rows3=document.querySelectorAll(".extra-row");
     if(!S._extrasTemp)S._extrasTemp=[];
     rows3.forEach((row,i)=>{
@@ -2658,7 +2336,9 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
-  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="guardarSaldoInit"){const nombre=t.dataset.nombre;const inp=document.getElementById("saldo-init-"+nombre);if(!inp)return;const monto=+(inp.value||0);guardarSaldoProp(nombre,monto).then(()=>toast("Saldo de "+nombre+" guardado ✓"));}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}
+  else if(action==="agregarNotaTempBtn"){agregarNotaTemp(t.dataset.tipo,t.dataset.id);}
+  else if(action==="borrarNotaTemp"){borrarNotaTemp(t.dataset.tipo,t.dataset.id,t.dataset.notaid);}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="guardarSaldoInit"){const nombre=t.dataset.nombre;const inp=document.getElementById("saldo-init-"+nombre);if(!inp)return;const monto=+(inp.value||0);guardarSaldoProp(nombre,monto).then(()=>toast("Saldo de "+nombre+" guardado ✓"));}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
@@ -2732,10 +2412,9 @@ function abrirContrato(cid){
   S.itemsCobro=[];  // limpiar mientras carga
   // Gastos que corresponden este mes según frecuencia configurada
   const mesACobrar=S.form.mes||mesActual();
-  const gastosFrec=gastosQueCorresponden(c,mesACobrar);
-  const itemsFijos=gastosFrec.length>0
-    ? gastosFrec.map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}))
-    : (c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+  const itemsFijos=(c.extras||[])
+    .filter(e=>gastoCorrespondeEnMes(e,mesACobrar))
+    .map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
   // Calcular saldo del mes anterior automáticamente
   const mesPrev=mesPrevio(mesActual());
   const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
@@ -3395,6 +3074,10 @@ function renderFichaPropietario(nombre, prop){
     +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Comision</div><div class="kval" style="font-size:17px;color:#ff7b6b">-'+moneda(comBase)+'</div></div>'
     +'<div class="kcard" style="border-top-color:#5ddb8a"><div class="klbl">Neto estimado</div><div class="kval" style="font-size:17px;color:#5ddb8a">'+moneda(neto)+'</div></div>'
     +'</div>';
+  html+='<div class="lcard" style="margin-bottom:16px">'
+    +'<div style="font-size:11px;font-weight:600;color:var(--gris3);margin-bottom:8px;text-transform:uppercase">📝 Comentarios temporales</div>'
+    +renderNotasTemp("propietario",nombre)
+    +'</div>';
   html+='<div class="stitle" style="display:flex;justify-content:space-between;align-items:center">'
     +'<span>Propiedades e historial</span>'
     +'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="nuevaPropiedad" data-nombre="'+nombre+'">+ Agregar propiedad</button>'
@@ -3519,6 +3202,10 @@ function renderModalDetalle(){
           ${S.itemsCobro.length===0?`<p style="font-size:11px;color:var(--gris3);padding:4px 0">Sin items extra. Podés agregar TGI, agua, gastos variables o saldo del mes anterior.</p>`:""}
         </div>
           <button class="btn" data-action="guardarGastosPend" style="width:100%;margin-top:10px;background:rgba(39,174,96,.1);color:#5ddb8a;border:1px solid rgba(39,174,96,.3);font-size:12px;padding:9px">💾 Guardar gastos para cobrar después</button>
+        </div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--negro4)">
+          <div style="font-size:11px;font-weight:600;color:var(--gris3);margin-bottom:8px;text-transform:uppercase">📝 Comentarios temporales</div>
+          ${renderNotasTemp("contrato", c._id)}
         </div>
       </div>
 
