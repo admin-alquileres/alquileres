@@ -2141,14 +2141,25 @@ const S_NOTAS = {};  // cache: { key: [{texto, creadoEn, docId}] }
 
 function notaKey(tipo, id){ return tipo+"_"+id; }
 
+const S_NOTAS_CARGANDO = {};
 async function cargarNotasTemp(tipo, id){
   const key=notaKey(tipo,id);
   if(S_NOTAS[key]!==undefined) return;
+  if(S_NOTAS_CARGANDO[key]) return; // evita reentradas mientras carga
+  S_NOTAS_CARGANDO[key]=true;
+  const campo=tipo==="contrato"?"contratoId":"propietarioNombre";
   try{
-    const campo=tipo==="contrato"?"contratoId":"propietarioNombre";
     const snap=await getDocs(query(collection(db,"notas_temp"),where(campo,"==",id)));
     S_NOTAS[key]=snap.docs.map(function(d){return{...d.data(),_id:d.id};}).filter(function(n){return !n._eliminado;});
-  }catch(e){ S_NOTAS[key]=[]; }
+  }catch(e){
+    // Fallback: traer toda la colección y filtrar en JS (por si falta indice)
+    try{
+      const snap2=await getDocs(collection(db,"notas_temp"));
+      S_NOTAS[key]=snap2.docs.map(function(d){return{...d.data(),_id:d.id};}).filter(function(n){return n[campo]===id&&!n._eliminado;});
+    }catch(e2){ S_NOTAS[key]=[]; }
+  }
+  S_NOTAS_CARGANDO[key]=false;
+  render();
 }
 
 async function agregarNotaTemp(tipo, id){
@@ -2177,7 +2188,7 @@ async function borrarNotaTemp(tipo, id, notaId){
 function renderNotasTemp(tipo, id){
   const key=notaKey(tipo,id);
   if(S_NOTAS[key]===undefined){
-    cargarNotasTemp(tipo,id).then(function(){render();});
+    cargarNotasTemp(tipo,id);
     return '<div style="font-size:11px;color:var(--gris4);padding:6px 0">Cargando notas...</div>';
   }
   const notas=S_NOTAS[key]||[];
