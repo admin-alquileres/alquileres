@@ -3184,10 +3184,13 @@ function renderFichaPropietario(nombre, prop){
   pendLiq.forEach(p=>{if(!pendPorMes[p.mes])pendPorMes[p.mes]=[];pendPorMes[p.mes].push(p);});
   const mesesPend=Object.keys(pendPorMes).sort().reverse();
   const totalPendBruto=pendLiq.reduce((s,p)=>s+(p.alquiler||0),0);
-  const totalDepPend=pendLiq.reduce((s,p)=>{const c=S.contratos.find(x=>x._id===p.contratoId);return s+((c&&c.deposito&&c.deposito.pendiente)||0);},0);
+  const totalExtrasPend=pendLiq.reduce((s,p)=>{
+    const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+    return s+items.reduce((si,it)=>si+(it.monto||0),0);
+  },0);
   const comPct=prop.comisionAgencia||5;
   const comBase=Math.round(totalPendBruto*comPct/100);
-  const neto=totalPendBruto+totalDepPend-comBase;
+  const neto=totalPendBruto+totalExtrasPend-comBase;
   const seleccion=S.liqSeleccion[nombre]||{};
   const mesesCards=mesesPend.map(function(mes){
     const pagosMes=pendPorMes[mes];
@@ -3202,9 +3205,12 @@ function renderFichaPropietario(nombre, prop){
   const seleccionados=mesesPend.filter(function(m){return seleccion[m]!==false;});
   const pagosSel=seleccionados.reduce(function(a,m){return a.concat(pendPorMes[m]||[]);}, []);
   const totalSelBruto=pagosSel.reduce(function(s,p){return s+(p.alquiler||0);},0);
-  const totalSelDep=pagosSel.reduce(function(s,p){const c=S.contratos.find(function(x){return x._id===p.contratoId;});return s+((c&&c.deposito&&c.deposito.pendiente)||0);},0);
+  const totalSelExtras=pagosSel.reduce(function(s,p){
+    const items=p.itemsCobro||(p.extras||[]).map(function(e){return{tipo:"fijo",desc:e.desc,monto:+(e.monto||0)};});
+    return s+items.reduce(function(si,it){return si+(it.monto||0);},0);
+  },0);
   const comSel=Math.round(totalSelBruto*comPct/100);
-  const netoSel=totalSelBruto+totalSelDep-comSel;
+  const netoSel=totalSelBruto+totalSelExtras-comSel;
   // Historial liquidaciones
   const liquidadas=pagos.filter(function(p){return p.liquidadoProp;});
   const liqPorRef={};
@@ -3265,9 +3271,10 @@ function renderFichaPropietario(nombre, prop){
     +(prop.telefonoAlt?telLink(prop.telefonoAlt):"")
     +(prop.cbu?'<span style="font-size:12px;color:var(--gris3)">CBU: '+prop.cbu+(prop.banco?" ("+prop.banco+")":"")+'</span>':"")
     +'</div>';
-  html+='<div class="kgrid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">'
+  html+='<div class="kgrid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">'
     +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Propiedades activas</div><div class="kval">'+activos.length+'</div></div>'
-    +'<div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Por liquidar</div><div class="kval" style="font-size:17px;color:var(--naranja)">'+moneda(totalPendBruto)+'</div></div>'
+    +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Alquileres a liquidar</div><div class="kval" style="font-size:17px;color:var(--celeste)">'+moneda(totalPendBruto)+'</div></div>'
+    +'<div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Gastos extra (TGI, agua, etc.)</div><div class="kval" style="font-size:17px;color:var(--naranja)">'+moneda(totalExtrasPend)+'</div></div>'
     +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Comision</div><div class="kval" style="font-size:17px;color:#ff7b6b">-'+moneda(comBase)+'</div></div>'
     +'<div class="kcard" style="border-top-color:#5ddb8a"><div class="klbl">Neto estimado</div><div class="kval" style="font-size:17px;color:#5ddb8a">'+moneda(neto)+'</div></div>'
     +'</div>';
@@ -3299,6 +3306,143 @@ function renderFichaPropietario(nombre, prop){
       +'<tbody>'+histHtml+'</tbody></table></div>';
   }
   return html;
+}
+
+// ── LIQUIDACIÓN A PROPIETARIO (agrupada por propiedad, con subtotales) ──────
+// El propietario se lleva, por cada propiedad: alquiler + todos los extras que
+// el inquilino dejó para él (TGI, agua, internet, diferencia de depósito, etc.).
+// La comisión de la agencia (5%) se calcula UNICAMENTE sobre la suma de alquileres,
+// nunca sobre los extras — esos ya son plata del propietario, no de la agencia.
+async function generarLiquidacionProp(nombre){
+  const seleccion=S.liqSeleccion[nombre]||{};
+  const pagos=S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
+  const pendPorMes={};
+  pagos.forEach(p=>{if(!pendPorMes[p.mes])pendPorMes[p.mes]=[];pendPorMes[p.mes].push(p);});
+  const mesesPend=Object.keys(pendPorMes).sort();
+  const mesesSel=mesesPend.filter(m=>seleccion[m]!==false);
+  const pagosSel=mesesSel.reduce((a,m)=>a.concat(pendPorMes[m]||[]),[]);
+  if(!pagosSel.length){toast("No hay meses seleccionados para liquidar",false);return;}
+
+  const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
+  const comPct=prop.comisionAgencia||5;
+
+  // Agrupar por propiedad (dirección), no por mes — así sale el formato pedido:
+  // una propiedad, todo lo que dejó ese inquilino, subtotal; siguiente propiedad, etc.
+  const porPropiedad={};
+  pagosSel.forEach(p=>{
+    const dir=p.direccion||"Sin dirección";
+    if(!porPropiedad[dir])porPropiedad[dir]={direccion:dir,inquilino:p.inquilino||"",pagos:[]};
+    porPropiedad[dir].pagos.push(p);
+  });
+  const propiedades=Object.values(porPropiedad).sort((a,b)=>a.direccion.localeCompare(b.direccion));
+
+  // Totales generales: bruto = todo lo que el propietario se lleva (alquiler + extras).
+  // La comisión solo descuenta sobre el total de alquileres puros.
+  let totalAlquileres=0, totalExtras=0;
+  propiedades.forEach(prop2=>{
+    prop2.pagos.forEach(p=>{
+      totalAlquileres+=(p.alquiler||0);
+      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+      items.forEach(it=>{ if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
+    });
+  });
+  const totalBruto=totalAlquileres+totalExtras;
+  const comision=Math.round(totalAlquileres*comPct/100);
+  const netoSinSaldo=totalBruto-comision;
+
+  // Saldo del mes anterior (a favor o en contra del propietario, ya cargado en memoria).
+  await cargarSaldoProp(nombre);
+  const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
+  const netoAEntregar=netoSinSaldo+saldoAnterior;
+
+  // El cobrador puede ajustar manualmente cuánto entregó realmente (cambio exacto,
+  // redondeo de billetes, etc.) — la diferencia queda como nuevo saldo para el mes que viene.
+  const inputMonto=document.getElementById("pago-prop-input");
+  const montoEntregado=inputMonto&&inputMonto.value!==""?+inputMonto.value:netoAEntregar;
+  const nuevoSaldo=montoEntregado-netoAEntregar;
+  await guardarSaldoProp(nombre,nuevoSaldo);
+
+  // ── PDF ──────────────────────────────────────────────────────────────────
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  let y=14;
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(20,20,20);
+  doc.text("LIQUIDACION A PROPIETARIO",105,y,{align:"center"});y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(120,120,120);
+  doc.text("Documento no valido como factura",105,y,{align:"center"});y+=8;
+  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=7;
+
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
+  doc.text(nombre.toUpperCase(),12,y);
+  doc.setFont("helvetica","normal");doc.setFontSize(9);
+  doc.text("Periodo: "+mesesSel.map(mesNombreMay).join(", "),198,y,{align:"right"});y+=8;
+
+  propiedades.forEach(prop2=>{
+    if(y>260){doc.addPage();y=18;}
+    doc.setFillColor(240,240,240);doc.rect(12,y-4,186,7,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(30,30,30);
+    doc.text(prop2.direccion+"  ("+prop2.inquilino+")",14,y);y+=7;
+
+    let subtotal=0;
+    prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
+      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
+      doc.text("Alquiler "+mesNombre(p.mes),16,y);
+      doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
+      subtotal+=(p.alquiler||0);
+      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+      items.forEach(it=>{
+        if((it.monto||0)===0)return;
+        const neg=(it.monto||0)<0;
+        doc.setTextColor(neg?180:60,neg?60:60,60);
+        doc.text("  "+(it.desc||it.tipo),16,y);
+        doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=5.5;
+        subtotal+=(it.monto||0);
+        doc.setTextColor(60,60,60);
+      });
+      if(y>270){doc.addPage();y=18;}
+    });
+    doc.setDrawColor(200,200,200);doc.line(14,y,198,y);y+=1;
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
+    doc.text("Subtotal "+prop2.direccion,14,y+4);
+    doc.text(moneda(subtotal),198,y+4,{align:"right"});y+=10;
+  });
+
+  if(y>250){doc.addPage();y=18;}
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.4);doc.line(12,y,198,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
+  doc.text("Total general (alquileres + gastos)",12,y);doc.text(moneda(totalBruto),198,y,{align:"right"});y+=6;
+  doc.setTextColor(180,30,30);
+  doc.text("Comision agencia ("+comPct+"% s/ alquileres)",12,y);doc.text("- "+moneda(comision),198,y,{align:"right"});y+=6;
+  if(saldoAnterior!==0){
+    doc.setTextColor(saldoAnterior>0?20:180,saldoAnterior>0?120:30,saldoAnterior>0?60:30);
+    doc.text("Saldo mes anterior ("+(saldoAnterior>0?"a favor":"en contra")+")",12,y);
+    doc.text((saldoAnterior>0?"+ ":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
+  }
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
+  doc.text("NETO A ENTREGAR",12,y);
+  doc.setTextColor(20,120,60);doc.text(moneda(netoAEntregar),198,y,{align:"right"});y+=6;
+  doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("("+numeroALetras(netoAEntregar)+" pesos)",12,y);y+=10;
+
+  if(nuevoSaldo!==0){
+    doc.setFont("helvetica","normal");doc.setFontSize(8.5);
+    doc.setTextColor(nuevoSaldo>0?20:180,nuevoSaldo>0?120:30,nuevoSaldo>0?60:30);
+    doc.text("Entregado: "+moneda(montoEntregado)+" — Queda "+(nuevoSaldo>0?"a favor":"en contra")+" del propietario: "+moneda(Math.abs(nuevoSaldo))+" para el proximo mes",12,y);y+=8;
+  }
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
+
+  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
+
+  // ── Marcar pagos como liquidados y registrar la referencia ───────────────
+  const ref=nombre+"_"+mesesSel.join("-")+"_"+Date.now();
+  const fechaLiq=hoy();
+  await Promise.all(pagosSel.map(p=>fbUpd("pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq})));
+  S.pagos=S.pagos.map(p=>pagosSel.some(ps=>ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq}:p);
+
+  toast("Liquidacion generada — Neto: "+moneda(netoAEntregar));
+  render();
 }
 
 function renderModalDetalle(){
