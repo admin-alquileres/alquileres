@@ -2456,6 +2456,72 @@ function abrirContrato(cid){
   });
 }
 
+// ── GASTOS PENDIENTES POR CONTRATO (persisten entre sesiones) ──────────────
+const S_GPEND = {};
+const S_GPEND_CARGANDO = {};
+async function cargarGastosPendientes(cid){
+  if(S_GPEND[cid]!==undefined) return;
+  if(S_GPEND_CARGANDO[cid]) return;
+  S_GPEND_CARGANDO[cid]=true;
+  try{
+    const snap=await getDocs(query(collection(db,"gastos_pendientes"),where("contratoId","==",cid)));
+    const docs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+    S_GPEND[cid]={items:(docs[0]&&docs[0].items)||[],_docId:(docs[0]&&docs[0]._id)||null};
+  }catch(e){
+    try{
+      const snap2=await getDocs(collection(db,"gastos_pendientes"));
+      const docs2=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>d.contratoId===cid);
+      S_GPEND[cid]={items:(docs2[0]&&docs2[0].items)||[],_docId:(docs2[0]&&docs2[0]._id)||null};
+    }catch(e2){ S_GPEND[cid]={items:[],_docId:null}; }
+  }
+  S_GPEND_CARGANDO[cid]=false;
+}
+async function guardarGastosPendientes(cid, items){
+  if(!cid) return;
+  const limpio=(items||[]).filter(it=>(it.desc||"").trim()||+(it.monto||0)!==0);
+  if(S_GPEND[cid]&&S_GPEND[cid]._docId){
+    await fbUpd("gastos_pendientes",S_GPEND[cid]._docId,{contratoId:cid,items:limpio});
+  } else {
+    const docId=await fbAdd("gastos_pendientes",{contratoId:cid,items:limpio});
+    if(!S_GPEND[cid]) S_GPEND[cid]={items:[],_docId:null};
+    S_GPEND[cid]._docId=docId;
+  }
+  S_GPEND[cid].items=limpio;
+}
+
+// ── SALDO DE PROPIETARIO ENTRE LIQUIDACIONES ────────────────────────────────
+const S_SALDO_PROP = {};
+const S_SALDO_PROP_CARGANDO = {};
+async function cargarSaldoProp(nombre){
+  if(S_SALDO_PROP[nombre]!==undefined) return;
+  if(S_SALDO_PROP_CARGANDO[nombre]) return;
+  S_SALDO_PROP_CARGANDO[nombre]=true;
+  try{
+    const snap=await getDocs(query(collection(db,"saldos_prop"),where("propietarioNombre","==",nombre)));
+    const docs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+    S_SALDO_PROP[nombre]={monto:(docs[0]&&docs[0].monto)||0,_docId:(docs[0]&&docs[0]._id)||null};
+  }catch(e){
+    try{
+      const snap2=await getDocs(collection(db,"saldos_prop"));
+      const docs2=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>d.propietarioNombre===nombre);
+      S_SALDO_PROP[nombre]={monto:(docs2[0]&&docs2[0].monto)||0,_docId:(docs2[0]&&docs2[0]._id)||null};
+    }catch(e2){ S_SALDO_PROP[nombre]={monto:0,_docId:null}; }
+  }
+  S_SALDO_PROP_CARGANDO[nombre]=false;
+  render();
+}
+async function guardarSaldoProp(nombre, monto){
+  if(!nombre) return;
+  if(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre]._docId){
+    await fbUpd("saldos_prop",S_SALDO_PROP[nombre]._docId,{propietarioNombre:nombre,monto:+(monto||0)});
+  } else {
+    const docId=await fbAdd("saldos_prop",{propietarioNombre:nombre,monto:+(monto||0)});
+    S_SALDO_PROP[nombre]={monto:+(monto||0),_docId:docId};
+    return;
+  }
+  S_SALDO_PROP[nombre].monto=+(monto||0);
+}
+
 function mesPrevio(mes){
   if(!mes)return"";
   const[y,m]=mes.split("-").map(Number);
