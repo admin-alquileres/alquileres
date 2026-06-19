@@ -566,6 +566,12 @@ function renderIPC(){
           <input class="inp ipc-inp" type="number" step="0.01" placeholder="ej: 12.5" id="ipc-pct-${fr}"
             oninput="calcularNuevosMontos(${fr})"
             style="width:90px">
+          <label style="font-size:11px;color:var(--gris3)">Dif. depósito en:</label>
+          <select class="inp" id="ipc-depcuotas-${fr}" style="width:110px">
+            <option value="1">1 cuota</option>
+            <option value="2">2 cuotas</option>
+            <option value="3">3 cuotas</option>
+          </select>
           <button class="btn" style="background:rgba(39,174,96,.15);color:#5ddb8a"
             onclick="aplicarIPCGrupo(${fr})">✓ Aplicar a todos</button>
           <button class="btn" style="background:rgba(37,211,102,.15);color:#25d366;font-size:12px"
@@ -609,20 +615,25 @@ window.aplicarIPCGrupo=async function(fr){
   if(!inp) return;
   const pct=parseFloat(inp.value);
   if(!pct||isNaN(pct)){toast("Ingresá un % válido",false);return;}
+  const depCuotasSel=document.getElementById(`ipc-depcuotas-${fr}`);
+  const depCuotas=+(depCuotasSel?.value||1);
   const rows=document.querySelectorAll(`.ipc-row[data-fr="${fr}"]`);
-  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?\n\nEsto también actualizará la diferencia de depósito pendiente.`)) return;
+  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?\n\nLa diferencia de depósito se repartirá en ${depCuotas} cuota(s).`)) return;
   const promises=[];
   rows.forEach(row=>{
     const cid=row.dataset.id;
     const c=S.contratos.find(x=>x._id===cid);
     if(!c) return;
     const nuevo=Math.round(c.alquilerBase*(1+pct/100));
-    const dep=c.deposito||{};
-    const depPagado=dep.pagado||0;
-    const difDep=nuevo-depPagado;
+    const depViejo=c.deposito||{};
+    // Diferencia real entre el depósito vigente (su total, ya completado) y el nuevo monto objetivo.
+    // Por la regla de negocio, nunca se aplica una nueva actualización mientras quede pendiente la anterior,
+    // así que totalViejo siempre está ya cancelado al llegar a este punto.
+    const totalViejo=depViejo.total||0;
+    const difDep=nuevo-totalViejo;
     const nuevoDeposito=difDep>0
-      ?{...dep,total:nuevo,pendiente:difDep,completo:false}
-      :{...dep,total:nuevo};
+      ?calcularDepositoActualizacionIPC(nuevo,difDep,depCuotas)
+      :{...depViejo,total:nuevo,pendiente:0,completo:true};
     const upd={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:pct,deposito:nuevoDeposito};
     promises.push(fbUpd("contratos",cid,upd).then(()=>{
       S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
@@ -638,11 +649,16 @@ async function cobrarCuotaDep(cid){
   const dep=c.deposito||{};
   const montoFaltante=dep.pendiente||0;
   if(!montoFaltante){toast("El depósito ya está completo",false);return;}
-  if(!confirm(`¿Registrar 2da cuota depósito de ${moneda(montoFaltante)} para ${c.inquilino}?`))return;
-  const nuevoDeposito={...dep,pagado:(dep.pagado||0)+montoFaltante,pendiente:0,pagadas:2,completo:true};
+  const n=dep.cuotasTotales||dep.cuotas||1;
+  const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
+  const proximaCuota=yaPagadas+1;
+  const montoEstaCuota=Math.min(montoFaltante,dep.montoCuota||montoFaltante);
+  if(!confirm(`¿Registrar cuota ${proximaCuota} de ${n} del depósito (${moneda(montoEstaCuota)}) para ${c.inquilino}?`))return;
+  const nuevoDeposito=registrarCuotaDeposito(dep);
   await fbUpd("contratos",cid,{deposito:nuevoDeposito});
   S.contratos=S.contratos.map(x=>x._id===cid?{...x,deposito:nuevoDeposito}:x);
-  toast("2da cuota depósito registrada ✓");render();
+  toast(nuevoDeposito.completo?"Depósito completado ✓":`Cuota ${proximaCuota} de ${n} registrada ✓ — queda ${moneda(nuevoDeposito.pendiente)}`);
+  render();
 }
 
 async function cobrarCuotaHon(cid){
@@ -1467,7 +1483,8 @@ function renderModalRenovar(){
       <div><label class="fl">Depósito</label>
         <select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">
           <option value="1"${+(f.depCuotas||1)===1?" selected":""}>1 cuota (completo al ingreso)</option>
-          <option value="2"${+(f.depCuotas||1)===2?" selected":""}>2 cuotas (mitad + mitad)</option>
+          <option value="2"${+(f.depCuotas||1)===2?" selected":""}>2 cuotas</option>
+          <option value="3"${+(f.depCuotas||1)===3?" selected":""}>3 cuotas</option>
         </select>
       </div>
       <div><label class="fl">Honorarios</label>
@@ -1487,6 +1504,82 @@ function renderModalRenovar(){
   </div></div>`;
 }
 
+// ── DEPÓSITO: modelo unificado de cuotas (1, 2 o 3) ─────────────────────────
+// Usado tanto al dar de alta un contrato como al actualizar por IPC.
+// total: monto objetivo vigente del depósito en este momento.
+// cuotasTotales: en cuántas cuotas se decidió cubrir ESTE monto (1, 2 o 3).
+// cuotasPagadas: cuántas de esas cuotas ya se cobraron (arranca en 1, la primera se paga en el acto).
+// montoCuota: total/cuotasTotales redondeado.
+// pagadoAcumulado: lo que ya entró de este total.
+// pendiente: total - pagadoAcumulado.
+function calcularDeposito(total, cuotasTotales){
+  const n=Math.max(1,Math.min(3,+(cuotasTotales||1)));
+  const montoCuota=Math.round(total/n);
+  // La primera cuota se considera pagada en el momento del alta/actualización.
+  const pagadoAcumulado=n===1?total:montoCuota;
+  const cuotasPagadas=1;
+  const pendiente=Math.max(0,total-pagadoAcumulado);
+  return{
+    total,
+    cuotasTotales:n,
+    cuotasPagadas,
+    montoCuota,
+    pagadoAcumulado,
+    pendiente,
+    completo:pendiente===0,
+    // compatibilidad hacia atrás con vistas/reportes que leían estos nombres viejos
+    cuotas:n,
+    pagadas:cuotasPagadas,
+    pagado:pagadoAcumulado
+  };
+}
+
+// Registra el cobro de la PRÓXIMA cuota pendiente del depósito (la que sigue, no necesariamente la última).
+// Funciona igual sin importar si el origen fue un alta/renovación (cuotas sobre el total)
+// o una actualización IPC (cuotas sobre la diferencia): en ambos casos "pendiente" ya
+// representa lo que falta cobrar, y montoCuota siempre viene calculado desde el origen.
+function registrarCuotaDeposito(dep){
+  const n=dep.cuotasTotales||dep.cuotas||1;
+  const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
+  if(yaPagadas>=n||(dep.pendiente||0)<=0) return dep; // ya está completo, no hay nada para cobrar
+  const nuevasPagadas=yaPagadas+1;
+  const restantes=n-yaPagadas;
+  const montoCuota=dep.montoCuota||Math.round((dep.pendiente||0)/restantes);
+  const pendiente=nuevasPagadas>=n
+    ? 0 // la última cuota cierra siempre en cero, evita centavos sueltos por redondeo
+    : Math.max(0,(dep.pendiente||0)-montoCuota);
+  const nuevoPagado=(dep.total||0)-pendiente;
+  return{
+    ...dep,
+    cuotasTotales:n,cuotas:n,
+    cuotasPagadas:nuevasPagadas,pagadas:nuevasPagadas,
+    montoCuota,
+    pagadoAcumulado:nuevoPagado,pagado:nuevoPagado,
+    pendiente,
+    completo:pendiente===0
+  };
+}
+
+// Actualización por IPC: el monto a financiar es solo la DIFERENCIA entre el depósito viejo
+// (ya cancelado, por regla de negocio) y el nuevo total objetivo. A diferencia del alta,
+// acá ninguna cuota se considera pagada todavía: la primera recién se cobra en el próximo cobro mensual.
+function calcularDepositoActualizacionIPC(totalNuevo, difPendiente, cuotasTotales){
+  const n=Math.max(1,Math.min(3,+(cuotasTotales||1)));
+  const montoCuota=Math.round(difPendiente/n);
+  return{
+    total:totalNuevo,
+    cuotasTotales:n,
+    cuotasPagadas:0,
+    montoCuota,
+    pagadoAcumulado:totalNuevo-difPendiente,
+    pendiente:difPendiente,
+    completo:false,
+    cuotas:n,
+    pagadas:0,
+    pagado:totalNuevo-difPendiente
+  };
+}
+
 async function confirmarRenovacion(){
   const cid=S.contratoRenovar;
   const c=S.contratos.find(x=>x._id===cid);
@@ -1499,7 +1592,7 @@ async function confirmarRenovacion(){
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
-  const deposito={total:alqBase,cuotas:depCuotas,pagadas:1,pagado:depCuotas===1?alqBase:Math.round(alqBase/2),pendiente:depCuotas===2?Math.round(alqBase/2):0,completo:depCuotas===1};
+  const deposito=calcularDeposito(alqBase,depCuotas);
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
 
   const upd={
@@ -2448,11 +2541,27 @@ function abrirContrato(cid){
       });
     }
   }
-  // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo)
+  // Cuota de depósito pendiente: se suma como item más del cobro del mes,
+  // sin importar si el origen fue el alta del contrato o una actualización por IPC.
+  const dep=c.deposito||{};
+  const depPend=dep.pendiente||0;
+  const itemsDeposito=[];
+  if(depPend>0){
+    const n=dep.cuotasTotales||dep.cuotas||1;
+    const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
+    const proximaCuota=yaPagadas+1;
+    const montoEstaCuota=Math.min(depPend,dep.montoCuota||depPend);
+    itemsDeposito.push({
+      tipo:"deposito",
+      desc:`Depósito cuota ${proximaCuota}/${n}`,
+      monto:montoEstaCuota
+    });
+  }
+  // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo + depósito)
   cargarGastosPendientes(cid).then(()=>{
     const pend=S_GPEND[cid]&&S_GPEND[cid].items&&S_GPEND[cid].items.length>0
       ? S_GPEND[cid].items
-      : [...itemsFijos,...itemsSaldo];
+      : [...itemsFijos,...itemsDeposito,...itemsSaldo];
     S.itemsCobro=pend;
     render();
   });
@@ -2556,6 +2665,15 @@ async function registrarPago(){
     S.pagos.unshift({...data,_id:id});
     // Limpiar gastos pendientes después de registrar el pago
     if(c._id) limpiarGastosPendientes(c._id);
+    // Si el cobrador dejó el item de depósito en el cobro, avanzar la cuota en el contrato.
+    // Si lo borró a mano (decidió no cobrarla este mes), no se toca el contrato.
+    const itemDep=items.find(it=>it.tipo==="deposito");
+    if(itemDep){
+      const depActual=c.deposito||{};
+      const nuevoDeposito=registrarCuotaDeposito(depActual);
+      await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
+      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
+    }
     toast("Pago registrado ✓");
     S.modal=null;S.contratoActivo=null;render();
     setTimeout(()=>{if(confirm("¿Emitir comprobante para el INQUILINO?"))generarPDFInquilino({...data,_id:id});},400);
@@ -2591,7 +2709,7 @@ async function guardarContrato(){
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
-  const deposito={total:depTotal,cuotas:depCuotas,pagadas:1,pagado:depCuotas===1?depTotal:Math.round(depTotal/2),pendiente:depCuotas===2?Math.round(depTotal/2):0,completo:depCuotas===1};
+  const deposito=calcularDeposito(depTotal,depCuotas);
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
@@ -2920,7 +3038,7 @@ function renderInquilinos(){
             <div style="font-size:11px;margin-top:3px;color:${depComp?"#5ddb8a":depPend>0?"#ff7b6b":"var(--gris3)"}">
               ${depComp?"✓ Completo":depPend>0?`⚠️ Falta ${moneda(depPend)}`:`Pagado: ${moneda(dep.pagado||0)}`}
             </div>
-            ${depPend>0?`<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Cobrar 2da cuota</button>`:""}
+            ${depPend>0?`<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Cobrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1}</button>`:""}
           </div>
           <div style="background:${honComp?"rgba(39,174,96,.08)":honPend>0?"rgba(231,76,60,.08)":"var(--negro3)"};border:1px solid ${honComp?"rgba(39,174,96,.25)":honPend>0?"rgba(231,76,60,.25)":"var(--negro4)"};border-radius:8px;padding:10px">
             <div style="font-size:10px;color:var(--gris3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Honorarios (${hon.monto==="mes"?"1 mes":"½ mes"})</div>
@@ -3233,8 +3351,8 @@ function renderModalDetalle(){
         html+=`<div class="fc" style="border-left:3px solid ${depComp?"var(--verde)":depPend>0?"var(--rojo)":"var(--gris4)"}">
           <div class="fc-l">Depósito garantía</div>
           <div class="fc-v">${moneda(depTotal)} total &nbsp;·&nbsp; Pagado: ${moneda(depPag)}</div>
-          ${depPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota pendiente: ${moneda(depPend)}</div>
-          <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Registrar 2da cuota depósito</button>`:""}
+          ${depPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1} pendiente: ${moneda(Math.min(depPend,dep.montoCuota||depPend))}</div>
+          <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Registrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de depósito</button>`:""}
           ${depComp?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Depósito completo</div>`:""}
         </div>`;
         html+=`<div class="fc" style="border-left:3px solid ${honComp?"var(--verde)":honPend>0?"var(--rojo)":"var(--gris4)"}">
@@ -3371,7 +3489,8 @@ function renderModal(){
         <div><label class="fl">Depósito (= 1 mes alquiler)</label>
           <select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">
             <option value="1"${(f.depCuotas||1)==1?" selected":""}>1 cuota (pago completo al ingreso)</option>
-            <option value="2"${+(f.depCuotas||1)==2?" selected":""}>2 cuotas (mitad al ingreso, mitad al mes sig.)</option>
+            <option value="2"${+(f.depCuotas||1)==2?" selected":""}>2 cuotas</option>
+            <option value="3"${+(f.depCuotas||1)==3?" selected":""}>3 cuotas</option>
           </select>
         </div>
         <div><label class="fl">Honorarios inmobiliaria</label>
