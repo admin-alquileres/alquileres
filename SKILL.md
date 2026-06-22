@@ -1,15 +1,19 @@
 ---
 name: eckerdt-alquileres
-description: Contexto técnico completo para desarrollar y mantener el sistema de gestión de alquileres de Eckerdt Negocios Inmobiliarios. Usar SIEMPRE al inicio de cualquier sesión de trabajo sobre el archivo HTML de alquileres, cuando se pida agregar funcionalidades, corregir bugs, refactorizar código, o cualquier tarea relacionada con admin-alquileres.html. También usar cuando se mencione Firebase, Firestore, contratos, cobranzas, IPC, depósitos, o cualquier módulo del sistema.
+description: Contexto técnico completo para desarrollar y mantener el sistema de gestión de alquileres de Eckerdt Negocios Inmobiliarios. Usar SIEMPRE al inicio de cualquier sesión de trabajo sobre app.js, styles.css o index.html, cuando se pida agregar funcionalidades, corregir bugs, refactorizar código, o cualquier tarea relacionada con el sistema de alquileres. También usar cuando se mencione Firebase, Firestore, contratos, cobranzas, IPC, depósitos, o cualquier módulo del sistema.
 ---
 
 # Skill: Eckerdt Alquileres — Sistema de Gestión
 
 ## Descripción del proyecto
 
-Aplicación web de gestión de alquileres para **Eckerdt Negocios Inmobiliarios** (Urdinarrain, Entre Ríos, Argentina). Un único archivo HTML autocontenido, hosteado en GitHub Pages.
+Aplicación web de gestión de alquileres para **Eckerdt Negocios Inmobiliarios** (Urdinarrain, Entre Ríos, Argentina). Hosteada en GitHub Pages, separada en 3 archivos:
 
-- **URL producción:** `https://admin-alquileres.github.io/alquileres/admin-alquileres.html`
+- `index.html` — estructura HTML mínima (638 B)
+- `styles.css` — todo el CSS (~15 KB)
+- `app.js` — todo el JavaScript (~297 KB, ~3600 líneas)
+
+- **URL producción:** `https://admin-alquileres.github.io/alquileres/`
 - **Stack:** HTML + CSS + JavaScript vanilla + Firebase (Firestore + Auth)
 - **Usuarios:** gaston@ie.com, matias@ie.com, ara@ie.com
 - **Sin backend propio** — toda la lógica es client-side con Firebase como base de datos
@@ -60,15 +64,17 @@ Si el HTML queda en estado inconsistente por ediciones fallidas, la solución es
 
 ## Workflow de deploy (GitHub Pages)
 
-No hay CI/CD. El flujo es manual:
+No hay CI/CD. El flujo es git desde la terminal:
 
-1. Claude genera el archivo `.txt` con el HTML completo
-2. Gaston abre el `.txt` → `Cmd+A` → `Cmd+C`
-3. Va al archivo en GitHub → editar → `Cmd+A` → `Delete` → `Cmd+V`
-4. Commit directamente en `main`
-5. GitHub Pages lo publica automáticamente en ~30 segundos
+```bash
+git add .
+git commit -m "descripción del cambio"
+git push
+```
 
-**Implicación:** cada sesión de desarrollo debe entregar el HTML completo listo para copiar, no diffs ni parches parciales.
+GitHub Pages publica automáticamente en ~30 segundos. Solo Gaston hace deploys.
+
+**Implicación:** Claude edita directamente los archivos del repo (`app.js`, `styles.css`, `index.html`). No hace falta entregar HTML completo para copiar — basta con el diff del archivo modificado.
 
 ---
 
@@ -89,10 +95,50 @@ Campos clave:
 - `historialActualizaciones` — array de objetos `{fecha, monto, ipc}`
 
 ### `propietarios` / `inquilinos`
-Colecciones de historial. Guardan el historial de propiedades/contratos por persona.
+Datos de contacto y perfil de cada persona. Se cruzan con `contratos` por nombre.
 
-### `cajaAgencia`
-Movimientos de caja de la agencia. Ingresos por honorarios, depósitos retenidos, egresos.
+Campos clave (`propietarios`): `nombre`, `dni`, `telefono`, `telefonoAlt`, `email`, `cbu`, `banco`, `comisionAgencia`, `obs`
+Campos clave (`inquilinos`): `nombre`, `dni`, `telefono`, `telefonoAlt`, `email`, `garante`, `telGarante`, `ocupacion`, `obs`
+
+### `pagos`
+Un documento por cobro registrado.
+
+Campos clave: `contratoId`, `inquilino`, `direccion`, `propietarioNombre`, `mes` (formato `"2026-07"`), `alquiler`, `itemsCobro` (array), `totalInquilino`, `comision`, `netoPropiertario`, `fechaCobro`, `estado` (`cobrado` | `pendiente` | `vencido`), `comprobante`, `liquidadoProp`, `liquidacionRef`
+
+### `propiedades`
+Inmuebles registrados, independientes de los contratos. Un propietario puede tener propiedades sin contrato activo.
+
+Campos clave: `propietarioNombre`, `direccion`, `tipo` (`Casa` | `Departamento` | `Local comercial` | etc.), `superficie`, `ambientes`, `descripcion`, `_eliminado`
+
+### `caja`
+Movimientos de caja de la agencia (nombre real en Firestore: `caja`, no `cajaAgencia`).
+
+Campos clave: `tipo` (`gasto` | `retiro` | `adelanto` | `honorario`), `concepto`, `monto`, `fecha`, `detalle`, `inquilino`, `recuperado`
+
+### `historial_prop`
+Eventos de cada propiedad (reparaciones, cambios, etc.). Persiste entre inquilinos.
+
+Campos clave: `propiedadId` (normalización de la dirección), `fecha`, `descripcion`, `creadoEn`
+
+### `historial_inq`
+Anotaciones sobre cada inquilino (llamados, acuerdos, observaciones).
+
+Campos clave: `inquilino` (nombre), `fecha`, `nota`, `creadoEn`
+
+### `notas_temp`
+Comentarios temporales vinculados a un contrato o propietario. Se borran manualmente cuando ya no sirven.
+
+Campos clave: `contratoId` o `propietarioNombre`, `texto`, `creadoEn`
+
+### `gastos_pendientes`
+Items de cobro guardados para un contrato entre sesiones (para no perder lo que se estaba preparando cobrar).
+
+Campos clave: `contratoId`, `items` (array de `{tipo, desc, monto}`)
+
+### `saldos_prop`
+Saldo de un propietario entre liquidaciones (diferencia entre lo calculado y lo entregado realmente).
+
+Campos clave: `propietarioNombre`, `monto` (positivo = a favor del propietario, negativo = deuda)
 
 ### `usuarios`
 Configuración por usuario (gaston@ie.com, matias@ie.com, ara@ie.com).
@@ -142,15 +188,15 @@ Configuración por usuario (gaston@ie.com, matias@ie.com, ara@ie.com).
 - **Modales:** para formularios de alta/edición, con overlay oscuro
 - **Alertas:** banner en dashboard para vencimientos y pagos pendientes
 - **Filtros:** panel colapsable sobre cada tabla principal
-- **Colores:** esquema propio de la app (no Bootstrap), definido en variables CSS en el `<style>`
+- **Colores:** esquema propio de la app (no Bootstrap), definido en variables CSS en `styles.css`
 
 ---
 
 ## Convenciones de código
 
 - **Sin frameworks** — JavaScript vanilla puro
-- **Sin bundler** — el archivo se edita y se sirve tal cual
-- **Firebase SDK** cargado desde CDN via `<script type="module">`
+- **Sin bundler** — los archivos se editan y se sirven tal cual
+- **Firebase SDK** cargado desde CDN via `<script type="module" src="app.js">`
 - **Autenticación** con Firebase Auth (email/password)
 - Las funciones de Firestore usan la API modular v9+ (`import { collection, getDocs } from 'firebase/firestore'`)
 - Variables globales para estado de la UI (módulo activo, filtros aplicados, etc.)
@@ -161,10 +207,10 @@ Configuración por usuario (gaston@ie.com, matias@ie.com, ara@ie.com).
 
 - [ ] ¿Hay algún `onclick` inline como string? → Reemplazar con data-action
 - [ ] ¿Hay template literals anidados? → Extraer a variables
-- [ ] ¿El archivo HTML resultante está completo de inicio a fin? → Verificar que no esté truncado
 - [ ] ¿Los índices de reemplazo usan `h[idx_e:]` con dos puntos?
-- [ ] ¿Las nuevas colecciones Firestore están documentadas arriba?
+- [ ] ¿Las nuevas colecciones Firestore están documentadas en SKILL.md?
 - [ ] ¿Los nuevos módulos siguen los patrones de UI establecidos?
+- [ ] ¿El cambio va en `app.js`, `styles.css` o `index.html` según corresponda?
 
 ---
 
