@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -1685,6 +1685,27 @@ async function migrarPropiedadIdEnContratos(dryRun=true){
 }
 window.migrarPropiedadIdEnContratos=migrarPropiedadIdEnContratos;
 
+function calcularPendientesMigracion(){
+  return S.contratos.filter(c=>!c.direccion&&!c._eliminado).reduce(function(acc,c){
+    const props=(S.propiedades||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
+    if(props.length>=2)acc.push({propietario:c.propietarioNombre,contratoId:c._id,inquilino:c.inquilino,inicio:c.inicio,monto:c.alquilerBase,propiedades:props.map(p=>({id:p._id,direccion:p.direccion}))});
+    return acc;
+  },[]);
+}
+async function confirmarMigracionFila(contratoId){
+  const propiedadId=S.migSeleccion[contratoId];
+  if(!propiedadId){toast("Elegí una propiedad primero",false);return;}
+  const prop=(S.propiedades||[]).find(p=>p._id===propiedadId);
+  if(!prop){toast("Propiedad no encontrada",false);return;}
+  try{
+    await updateDoc(doc(db,"contratos",contratoId),{propiedadId:prop._id,direccion:prop.direccion,_ts:Date.now()});
+    const c=S.contratos.find(x=>x._id===contratoId);
+    if(c){c.propiedadId=prop._id;c.direccion=prop.direccion;}
+    delete S.migSeleccion[contratoId];
+    toast("Asignado ✓");render();
+  }catch(e){toast("Error: "+e.message,false);}
+}
+
 function propiedadesDelPropietario(nombre){
   const n=normStr(nombre);
   return (S.propiedadesInmuebles||[]).filter(p=>normStr(p.propietarioNombre)===n&&!p._eliminado);
@@ -2192,6 +2213,7 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
+  else if(action==="migSelProp"){S.migSeleccion[t.dataset.id]=t.value;render();}
   // Selects del form modal (depósito, honorarios, período, estado)
   else if(action==="setForm"){
     const k=t.dataset.key;
@@ -2303,6 +2325,8 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
+  else if(action==="abrirMigracion"){S.modal="migracion";S.migSeleccion={};render();}
+  else if(action==="migConfirmar")confirmarMigracionFila(t.dataset.id);
   else if(action==="openContrato")openModal("contrato");
   else if(action==="openPropietario")openModal("propietario");
   else if(action==="openInquilino")openModal("inquilino");
@@ -3032,7 +3056,7 @@ function renderPropietarios(){
     </tr>`;
   }).join("");
 
-  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><div style="display:flex;gap:6px">${calcularPendientesMigracion().length?'<button class="btn sm" style="background:rgba(231,174,60,.15);color:var(--naranja)" data-action="abrirMigracion">⚠️ '+calcularPendientesMigracion().length+' prop. sin asignar</button>':''}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div></div>
   <div class="tw"><table><thead><tr><th>Propietario</th><th>Propiedades</th><th>Estado cobro</th><th></th></tr></thead>
   <tbody>${rows||`<tr><td colspan=4><div class="empty">Sin propietarios</div></td></tr>`}</tbody></table></div>`;
 }
@@ -3443,12 +3467,37 @@ function renderModalDetalle(){
   </div></div>`;
 }
 
+function renderModalMigracion(){
+  const pendientes=calcularPendientesMigracion();
+  const rows=pendientes.map(function(r){
+    const sel=S.migSeleccion[r.contratoId]||"";
+    const opts=r.propiedades.map(p=>'<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+p.direccion+'</option>').join('');
+    return '<tr>'
+      +'<td style="font-size:12px">'+r.propietario+'</td>'
+      +'<td style="font-size:12px">'+(r.inquilino||'—')+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+(r.inicio||'—')+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+moneda(r.monto||0)+'</td>'
+      +'<td><select data-action="migSelProp" data-id="'+r.contratoId+'" style="width:100%;font-size:11px;padding:3px 6px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px">'
+        +'<option value="">— elegí propiedad —</option>'+opts
+      +'</select></td>'
+      +'<td><button class="btn sm" style="background:rgba(75,200,232,.15);color:var(--celeste);opacity:'+(sel?'1':'.4')+'" data-action="migConfirmar" data-id="'+r.contratoId+'"'+(sel?'':' disabled')+'>✓</button></td>'
+    +'</tr>';
+  }).join('');
+  const body=pendientes.length
+    ?'<div class="tw"><table><thead><tr><th>Propietario</th><th>Inquilino</th><th>Inicio</th><th>Monto</th><th style="min-width:220px">Propiedad</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    :'<p style="color:var(--gris3);font-size:13px;padding:8px 0">✅ Todas las propiedades ya están asignadas.</p>';
+  return '<div class="modal-overlay"><div class="modal" style="max-width:960px;max-height:85vh;display:flex;flex-direction:column">'
+    +'<div class="modal-header"><span>Asignar propiedades — '+(pendientes.length?pendientes.length+' pendientes':'listo')+'</span><button data-action="closeModal">✕</button></div>'
+    +'<div style="padding:16px;overflow-y:auto;flex:1">'+body+'</div>'
+  +'</div></div>';
+}
 function renderModal(){
   const extra=S.modalExtra==="grilla_gastos"?renderModalGrillaGastos():"";
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
   if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="feriados")return renderModalFeriados();if(S.modal==="matriz_gastos")return renderModalMatrizGastos();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
+  if(S.modal==="migracion")return renderModalMigracion();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
