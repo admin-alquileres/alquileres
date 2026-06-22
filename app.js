@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",ipcDepCuotas:{},cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -366,6 +366,11 @@ function renderIPC(){
       const c=item.c;
       const dep=c.deposito||{};
       const depPend=dep.pendiente||0;
+      const cuotasSel=(S.ipcDepCuotas||{})[c._id]||1;
+      const selDep='<select class="inp" data-action="ipcDepCuotas" data-id="'+c._id+'" style="font-size:10px;padding:2px 4px;width:80px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px">'
+        +'<option value="1"'+(cuotasSel===1?' selected':'')+'>1 cuota</option>'
+        +'<option value="2"'+(cuotasSel===2?' selected':'')+'>2 cuotas</option>'
+        +'</select>';
       return `<tr class="ipc-row" data-id="${c._id}" data-alq="${c.alquilerBase}" data-fr="${fr}">
         <td class="tdm">${c.inquilino||""}</td>
         <td>${c.direccion||""}</td>
@@ -374,7 +379,7 @@ function renderIPC(){
         <td style="font-weight:600">${moneda(c.alquilerBase)}</td>
         <td class="nuevo-alq" style="font-weight:700;color:var(--celeste)">—</td>
         <td class="dif-alq" style="font-size:11px;color:#5ddb8a">—</td>
-        <td class="dif-dep" style="font-size:11px;color:var(--rojo)">${depPend>0?`⚠️ dep. ${moneda(depPend)}`:"—"}</td>
+        <td class="dif-dep" style="font-size:11px">${depPend>0?'<span style="color:var(--rojo)">⚠️ dep. '+moneda(depPend)+'</span> '+selDep:selDep}</td>
         <td>${c.telefono?`<button class="btn sm" style="background:rgba(37,211,102,.12);color:#25d366;padding:4px 8px;font-size:11px"
           onclick="abrirWhatsAppIPC('${c._id}', +document.getElementById('ipc-pct-${fr}')?.value)">📱</button>`:'<span style="color:var(--gris4);font-size:10px">Sin tel.</span>'}</td>
       </tr>`;
@@ -390,12 +395,6 @@ function renderIPC(){
           <input class="inp ipc-inp" type="number" step="0.01" placeholder="ej: 12.5" id="ipc-pct-${fr}"
             oninput="calcularNuevosMontos(${fr})"
             style="width:90px">
-          <label style="font-size:11px;color:var(--gris3)">Dif. depósito en:</label>
-          <select class="inp" id="ipc-depcuotas-${fr}" style="width:110px">
-            <option value="1">1 cuota</option>
-            <option value="2">2 cuotas</option>
-            <option value="3">3 cuotas</option>
-          </select>
           <button class="btn" style="background:rgba(39,174,96,.15);color:#5ddb8a"
             onclick="aplicarIPCGrupo(${fr})">✓ Aplicar a todos</button>
           <button class="btn" style="background:rgba(37,211,102,.15);color:#25d366;font-size:12px"
@@ -403,7 +402,7 @@ function renderIPC(){
         </div>
       </div>
       <div class="tw"><table>
-        <thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. depósito</th><th>WA</th></tr></thead>
+        <thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. dep. / cuotas</th><th>WA</th></tr></thead>
         <tbody>${filas}</tbody>
       </table></div>
     </div>`;
@@ -440,20 +439,16 @@ window.aplicarIPCGrupo=async function(fr){
   if(!inp) return;
   const pct=parseFloat(inp.value);
   if(!pct||isNaN(pct)){toast("Ingresá un % válido",false);return;}
-  const depCuotasSel=document.getElementById(`ipc-depcuotas-${fr}`);
-  const depCuotas=+(depCuotasSel?.value||1);
   const rows=document.querySelectorAll(`.ipc-row[data-fr="${fr}"]`);
-  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?\n\nLa diferencia de depósito se repartirá en ${depCuotas} cuota(s).`)) return;
+  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?`)) return;
   const promises=[];
   rows.forEach(row=>{
     const cid=row.dataset.id;
     const c=S.contratos.find(x=>x._id===cid);
     if(!c) return;
+    const depCuotas=+((S.ipcDepCuotas||{})[cid]||1);
     const nuevo=Math.round(c.alquilerBase*(1+pct/100));
     const depViejo=c.deposito||{};
-    // Diferencia real entre el depósito vigente (su total, ya completado) y el nuevo monto objetivo.
-    // Por la regla de negocio, nunca se aplica una nueva actualización mientras quede pendiente la anterior,
-    // así que totalViejo siempre está ya cancelado al llegar a este punto.
     const totalViejo=depViejo.total||0;
     const difDep=nuevo-totalViejo;
     const nuevoDeposito=difDep>0
@@ -2227,7 +2222,8 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
-  else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
+  else if(action==="setIpcMes"){S.ipcMes=t.value;S.ipcDepCuotas={};render();}
+  else if(action==="ipcDepCuotas"){if(!S.ipcDepCuotas)S.ipcDepCuotas={};S.ipcDepCuotas[t.dataset.id]=+t.value;}
   else if(action==="migSelProp"){S.migSeleccion[t.dataset.id]=t.value;render();}
   // Selects del form modal (depósito, honorarios, período, estado)
   else if(action==="setForm"){
@@ -2361,6 +2357,7 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
     const [y,m]=base.split("-").map(Number);
     const d=new Date(y,action==="ipcMesPrev"?m-2:m,1);
     S.ipcMes=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    S.ipcDepCuotas={};
     render();
   }
 });
