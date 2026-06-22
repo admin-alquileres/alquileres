@@ -105,6 +105,7 @@ async function cargarTodo(){
       const snap=await getDocs(collection(db,col));
       S[col]=snap.docs.map(d=>({...d.data(),_id:d.id}));
     }
+    S.propiedadesInmuebles=S.propiedades.filter(p=>!p._eliminado);
     const meses=[...new Set(S.pagos.map(p=>p.mes))].sort().reverse();
     S.liqMes=meses[0]||mesActual();
     S.synced=true;
@@ -1646,7 +1647,7 @@ async function migrarPropiedadIdEnContratos(dryRun=true){
   let nAuto=0,nManual=0,nSinProp=0;
   const pendientes=[];
   for(const c of sinDir){
-    const props=(S.propiedadesInmuebles||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
+    const props=(S.propiedades||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
     if(props.length===1){
       const p=props[0];
       if(dryRun){
