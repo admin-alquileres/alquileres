@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -1701,7 +1701,7 @@ async function confirmarMigracionFila(contratoId){
     await updateDoc(doc(db,"contratos",contratoId),{propiedadId:prop._id,direccion:prop.direccion,_ts:Date.now()});
     const c=S.contratos.find(x=>x._id===contratoId);
     if(c){c.propiedadId=prop._id;c.direccion=prop.direccion;}
-    delete S.migSeleccion[contratoId];
+    delete S.migSeleccion[contratoId];delete S.migEditando[contratoId];
     toast("Asignado ✓");render();
   }catch(e){toast("Error: "+e.message,false);}
 }
@@ -2325,7 +2325,9 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
-  else if(action==="abrirMigracion"){S.modal="migracion";S.migSeleccion={};render();}
+  else if(action==="abrirMigracion"){S.modal="migracion";S.migSeleccion={};S.migEditando={};render();}
+  else if(action==="migEditar"){const _mc=S.contratos.find(x=>x._id===t.dataset.id);S.migEditando[t.dataset.id]=true;if(_mc)S.migSeleccion[t.dataset.id]=_mc.propiedadId||"";render();}
+  else if(action==="migCancelarEditar"){delete S.migEditando[t.dataset.id];delete S.migSeleccion[t.dataset.id];render();}
   else if(action==="migConfirmar")confirmarMigracionFila(t.dataset.id);
   else if(action==="openContrato")openModal("contrato");
   else if(action==="openPropietario")openModal("propietario");
@@ -3467,9 +3469,19 @@ function renderModalDetalle(){
   </div></div>`;
 }
 
+function calcularConfirmadosMigracion(){
+  return S.contratos.filter(c=>c.direccion&&!c._eliminado).reduce(function(acc,c){
+    const props=(S.propiedades||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
+    if(props.length>=2)acc.push({propietario:c.propietarioNombre,contratoId:c._id,inquilino:c.inquilino,inicio:c.inicio,monto:c.alquilerBase,direccionActual:c.direccion,propiedadIdActual:c.propiedadId,propiedades:props.map(p=>({id:p._id,direccion:p.direccion}))});
+    return acc;
+  },[]);
+}
 function renderModalMigracion(){
   const pendientes=calcularPendientesMigracion();
-  const rows=pendientes.map(function(r){
+  const confirmados=calcularConfirmadosMigracion();
+  const TH='<thead><tr><th>Propietario</th><th>Inquilino</th><th>Inicio</th><th>Monto</th><th style="min-width:220px">Propiedad</th><th></th></tr></thead>';
+  const WRAP='overflow-x:auto;border:1px solid var(--negro4);border-radius:10px;margin-bottom:14px';
+  const rowsPend=pendientes.map(function(r){
     const sel=S.migSeleccion[r.contratoId]||"";
     const opts=r.propiedades.map(p=>'<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+p.direccion+'</option>').join('');
     return '<tr>'
@@ -3477,17 +3489,42 @@ function renderModalMigracion(){
       +'<td style="font-size:12px">'+(r.inquilino||'—')+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+(r.inicio||'—')+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+moneda(r.monto||0)+'</td>'
-      +'<td><select data-action="migSelProp" data-id="'+r.contratoId+'" style="width:100%;font-size:11px;padding:3px 6px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px">'
-        +'<option value="">— elegí propiedad —</option>'+opts
-      +'</select></td>'
+      +'<td><select data-action="migSelProp" data-id="'+r.contratoId+'" style="width:100%;font-size:11px;padding:3px 6px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px"><option value="">— elegí propiedad —</option>'+opts+'</select></td>'
       +'<td><button class="btn sm" style="background:rgba(75,200,232,.15);color:var(--celeste);opacity:'+(sel?'1':'.4')+'" data-action="migConfirmar" data-id="'+r.contratoId+'"'+(sel?'':' disabled')+'>✓</button></td>'
     +'</tr>';
   }).join('');
-  const body=pendientes.length
-    ?'<div style="overflow-x:auto;border:1px solid var(--negro4);border-radius:10px;margin-bottom:14px"><table><thead><tr><th>Propietario</th><th>Inquilino</th><th>Inicio</th><th>Monto</th><th style="min-width:220px">Propiedad</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    :'<p style="color:var(--gris3);font-size:13px;padding:8px 0">✅ Todas las propiedades ya están asignadas.</p>';
+  const rowsConf=confirmados.map(function(r){
+    const editando=S.migEditando&&S.migEditando[r.contratoId];
+    if(editando){
+      const sel=S.migSeleccion[r.contratoId]||r.propiedadIdActual||"";
+      const opts=r.propiedades.map(p=>'<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+p.direccion+'</option>').join('');
+      return '<tr style="background:rgba(75,200,232,.04)">'
+        +'<td style="font-size:12px">'+r.propietario+'</td>'
+        +'<td style="font-size:12px">'+(r.inquilino||'—')+'</td>'
+        +'<td style="font-size:11px;color:var(--gris3)">'+(r.inicio||'—')+'</td>'
+        +'<td style="font-size:11px;color:var(--gris3)">'+moneda(r.monto||0)+'</td>'
+        +'<td><select data-action="migSelProp" data-id="'+r.contratoId+'" style="width:100%;font-size:11px;padding:3px 6px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px">'+opts+'</select></td>'
+        +'<td style="display:flex;gap:4px">'
+          +'<button class="btn sm" style="background:rgba(75,200,232,.15);color:var(--celeste)" data-action="migConfirmar" data-id="'+r.contratoId+'">✓</button>'
+          +'<button class="btn sm" style="background:rgba(255,80,80,.12);color:#f87171" data-action="migCancelarEditar" data-id="'+r.contratoId+'">✕</button>'
+        +'</td>'
+      +'</tr>';
+    }
+    return '<tr style="opacity:.65">'
+      +'<td style="font-size:12px">'+r.propietario+'</td>'
+      +'<td style="font-size:12px">'+(r.inquilino||'—')+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+(r.inicio||'—')+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+moneda(r.monto||0)+'</td>'
+      +'<td style="font-size:11px;color:var(--verde)">✓ '+(r.direccionActual||'—')+'</td>'
+      +'<td><button class="btn sm" style="background:rgba(255,255,255,.06);color:var(--gris3)" data-action="migEditar" data-id="'+r.contratoId+'">✎</button></td>'
+    +'</tr>';
+  }).join('');
+  let body='';
+  if(pendientes.length)body+='<p style="font-size:11px;color:var(--gris3);margin:0 0 6px">Pendientes ('+pendientes.length+')</p><div style="'+WRAP+'"><table>'+TH+'<tbody>'+rowsPend+'</tbody></table></div>';
+  else body+='<p style="color:var(--gris3);font-size:13px;padding:4px 0 8px">✅ Sin pendientes.</p>';
+  if(confirmados.length)body+='<p style="font-size:11px;color:var(--gris3);margin:8px 0 6px">Ya asignados ('+confirmados.length+')</p><div style="'+WRAP+'"><table>'+TH+'<tbody>'+rowsConf+'</tbody></table></div>';
   return '<div class="overlay"><div class="modal" style="max-width:960px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
-    +'<div class="modal-header"><span>Asignar propiedades — '+(pendientes.length?pendientes.length+' pendientes':'listo')+'</span><button data-action="closeModal">✕</button></div>'
+    +'<div class="modal-header"><span>Asignar propiedades'+(pendientes.length?' — '+pendientes.length+' pendientes':'')+'</span><button data-action="closeModal">✕</button></div>'
     +'<div style="padding:16px;overflow-y:auto;flex:1">'+body+'</div>'
   +'</div></div>';
 }
