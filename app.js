@@ -3486,7 +3486,7 @@ function renderModalMigracion(){
   const body=pendientes.length
     ?'<div class="tw"><table><thead><tr><th>Propietario</th><th>Inquilino</th><th>Inicio</th><th>Monto</th><th style="min-width:220px">Propiedad</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     :'<p style="color:var(--gris3);font-size:13px;padding:8px 0">✅ Todas las propiedades ya están asignadas.</p>';
-  return '<div class="modal-overlay"><div class="modal" style="max-width:960px;max-height:85vh;display:flex;flex-direction:column">'
+  return '<div class="overlay"><div class="modal" style="max-width:960px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">'
     +'<div class="modal-header"><span>Asignar propiedades — '+(pendientes.length?pendientes.length+' pendientes':'listo')+'</span><button data-action="closeModal">✕</button></div>'
     +'<div style="padding:16px;overflow-y:auto;flex:1">'+body+'</div>'
   +'</div></div>';
