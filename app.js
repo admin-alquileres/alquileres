@@ -1640,6 +1640,50 @@ async function migrarPropiedadesDesdeContratos(){
   if(nuevas.length)console.log("Migradas "+nuevas.length+" propiedades");
 }
 
+async function migrarPropiedadIdEnContratos(dryRun=true){
+  const sinId=S.contratos.filter(c=>!c.propiedadId&&!c._eliminado);
+  console.log("[migración] Contratos a procesar:",sinId.length);
+  let nAuto=0,nManual=0,nSinProp=0;
+  const pendientes=[];
+  for(const c of sinId){
+    const props=(S.propiedadesInmuebles||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
+    if(props.length===1){
+      const p=props[0];
+      if(dryRun){
+        console.log("✅ AUTO",c.propietarioNombre,"|",c.inquilino,"→",p.direccion,"(id:",p._id+")");
+      }else{
+        try{
+          await updateDoc(doc(db,"contratos",c._id),{propiedadId:p._id,direccion:p.direccion,_ts:Date.now()});
+          c.propiedadId=p._id;c.direccion=p.direccion;
+        }catch(e){console.error("Error en contrato",c._id,e);}
+      }
+      nAuto++;
+    }else if(props.length>1){
+      pendientes.push({propietario:c.propietarioNombre,contratoId:c._id,inquilino:c.inquilino,inicio:c.inicio,monto:c.alquilerBase,propiedades:props.map(p=>({id:p._id,direccion:p.direccion}))});
+      nManual++;
+    }else{
+      console.warn("❌ SIN PROP",c.propietarioNombre,"|",c.inquilino);
+      nSinProp++;
+    }
+  }
+  console.log("\n=== RESUMEN ===");
+  console.log("✅ Auto-vinculados"+(dryRun?" (simulado)":"")+":",nAuto);
+  console.log("⚠️  Manual pendiente:",nManual);
+  console.log("❌ Sin propiedad:",nSinProp);
+  if(pendientes.length){
+    console.log("\n=== PENDIENTES MANUALES ===");
+    pendientes.forEach(r=>{
+      console.log("\n👤",r.propietario);
+      r.propiedades.forEach((p,i)=>console.log("  Prop "+(i+1)+":",p.direccion,"| id:",p.id));
+      console.log("  Contrato:",r.contratoId,"| Inquilino:",r.inquilino,"| Inicio:",r.inicio,"| $:",r.monto);
+    });
+  }
+  if(dryRun)console.log("\n⚠️  DRY-RUN — nada se guardó. Ejecutá migrarPropiedadIdEnContratos(false) para confirmar.");
+  else{console.log("\n✅ Migración ejecutada.");render();}
+  return pendientes;
+}
+window.migrarPropiedadIdEnContratos=migrarPropiedadIdEnContratos;
+
 function propiedadesDelPropietario(nombre){
   const n=normStr(nombre);
   return (S.propiedadesInmuebles||[]).filter(p=>normStr(p.propietarioNombre)===n&&!p._eliminado);
