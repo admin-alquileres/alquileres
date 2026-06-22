@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -326,39 +326,51 @@ function generarPDFPropietario(p){
 
 function renderIPC(){
   const activos=S.contratos.filter(c=>c.estado==="activo"||!c.estado);
-  const hoyD=new Date();
-  const grupos={3:{v:[],p:[]},4:{v:[],p:[]},6:{v:[],p:[]},12:{v:[],p:[]}};
+  const mesSel=S.ipcMes||mesActual();
+  const [anioSel,mSel]=mesSel.split("-").map(Number);
+  const mesNombres=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  const mesLbl=mesNombres[mSel-1]+" "+anioSel;
+  const mesSig=(()=>{const d=new Date(anioSel,mSel,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
+  const [anioSig,mSig]=mesSig.split("-").map(Number);
+  const mesLblSig=mesNombres[mSig-1]+" "+anioSig;
+  const mesPrev=(()=>{const d=new Date(anioSel,mSel-2,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
+  const grupos={3:[],4:[],6:[],12:[]};
+  let cntSig=0;
   activos.forEach(c=>{
     const fr=+(c.frecActualizacion||6);
-    if(!grupos[fr]) grupos[fr]={v:[],p:[]};
+    if(!grupos[fr]) grupos[fr]=[];
     const prox=getProxActualizacion(c);
     if(!prox) return;
-    const du=Math.round((prox-hoyD)/86400000);
-    if(du<0) grupos[fr].v.push({c,dias:Math.abs(du),prox});
-    else if(du<=60) grupos[fr].p.push({c,dias:du,prox});
+    const proxMes=prox.getFullYear()+"-"+String(prox.getMonth()+1).padStart(2,"0");
+    if(proxMes===mesSel) grupos[fr].push({c,prox});
+    if(proxMes===mesSig) cntSig++;
   });
-  const totalV=Object.values(grupos).reduce((s,g)=>s+g.v.length,0);
-  const totalP=Object.values(grupos).reduce((s,g)=>s+g.p.length,0);
-  let html=`<div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
-    <div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Vencidas</div><div class="kval">${totalV}</div></div>
-    <div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Próximos 60 días</div><div class="kval">${totalP}</div></div>
-    <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Contratos activos</div><div class="kval">${activos.length}</div></div>
+  const totalSel=Object.values(grupos).reduce((s,g)=>s+g.length,0);
+  const selector=`<div style="display:flex;align-items:center;gap:10px;margin:16px 0">
+    <button class="btn sm" data-action="ipcMesPrev" style="font-size:16px;padding:4px 10px">◀</button>
+    <input type="month" class="inp" value="${mesSel}" data-action="setIpcMes" style="width:160px;font-size:13px">
+    <button class="btn sm" data-action="ipcMesNext" style="font-size:16px;padding:4px 10px">▶</button>
+    <span style="font-size:13px;font-weight:600;color:var(--celeste)">${mesLbl}</span>
   </div>`;
+  let html=`<div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kcard" style="border-top-color:${totalSel>0?"var(--naranja)":"var(--gris4)"}"><div class="klbl">En ${mesLbl}</div><div class="kval" style="color:${totalSel>0?"var(--naranja)":"var(--gris4)"}">${totalSel}</div><div class="ksub">contratos a actualizar</div></div>
+    <div class="kcard" style="border-top-color:var(--gris4)"><div class="klbl">En ${mesLblSig}</div><div class="kval" style="color:var(--gris3)">${cntSig}</div><div class="ksub">próximo mes</div></div>
+    <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Contratos activos</div><div class="kval">${activos.length}</div></div>
+  </div>${selector}`;
+  let hayBloques=false;
   [3,4,6,12].forEach(fr=>{
-    const g=grupos[fr];
-    const todos=g.v.concat(g.p);
-    if(!todos.length) return;
-    const color=g.v.length?"var(--rojo)":"var(--naranja)";
-    const filas=todos.map(item=>{
+    const items=grupos[fr];
+    if(!items.length) return;
+    hayBloques=true;
+    const filas=items.map(item=>{
       const c=item.c;
-      const esV=g.v.indexOf(item)!==-1;
       const dep=c.deposito||{};
       const depPend=dep.pendiente||0;
       return `<tr class="ipc-row" data-id="${c._id}" data-alq="${c.alquilerBase}" data-fr="${fr}">
         <td class="tdm">${c.inquilino||""}</td>
         <td>${c.direccion||""}</td>
         <td style="color:var(--gris3);font-size:11px">${c.propietarioNombre||""}</td>
-        <td style="color:${esV?"var(--rojo)":"var(--gris3)"};font-size:11px">${item.prox.toLocaleDateString("es-AR")}${esV?" ⚠️":""}</td>
+        <td style="color:var(--gris3);font-size:11px">${item.prox.toLocaleDateString("es-AR")}</td>
         <td style="font-weight:600">${moneda(c.alquilerBase)}</td>
         <td class="nuevo-alq" style="font-weight:700;color:var(--celeste)">—</td>
         <td class="dif-alq" style="font-size:11px;color:#5ddb8a">—</td>
@@ -367,11 +379,11 @@ function renderIPC(){
           onclick="abrirWhatsAppIPC('${c._id}', +document.getElementById('ipc-pct-${fr}')?.value)">📱</button>`:'<span style="color:var(--gris4);font-size:10px">Sin tel.</span>'}</td>
       </tr>`;
     }).join("");
-    html+=`<div class="lcard" style="border-left:3px solid ${color};margin-bottom:20px">
+    html+=`<div class="lcard" style="border-left:3px solid var(--naranja);margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-size:15px;font-weight:700">Cada ${fr} meses</div>
-          <div style="font-size:11px;color:var(--gris3)">${g.v.length?`<span style="color:var(--rojo)">${g.v.length} atrasada(s)</span> · `:""}${g.p.length} próxima(s)</div>
+          <div style="font-size:11px;color:var(--gris3)">${items.length} contrato(s) en ${mesLbl}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <label style="font-size:11px;color:var(--gris3)">% aumento c/${fr}m:</label>
@@ -396,7 +408,8 @@ function renderIPC(){
       </table></div>
     </div>`;
   });
-  return html||`<div class="empty">No hay contratos a actualizar en los próximos 60 días</div>`;
+  if(!hayBloques) html+=`<div class="empty">Sin contratos a actualizar en ${mesLbl}</div>`;
+  return html;
 }
 
 window.calcularNuevosMontos=function(fr){
@@ -2214,6 +2227,7 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
+  else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
   else if(action==="migSelProp"){S.migSeleccion[t.dataset.id]=t.value;render();}
   // Selects del form modal (depósito, honorarios, período, estado)
   else if(action==="setForm"){
@@ -2342,6 +2356,13 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="setFiltroEstado")setFiltro("estado",t.value);
   else if(action==="setFiltroTipo")setFiltro("buscarPor",t.value);
   else if(action==="setLiqMes")setLiqMes(t.value);
+  else if(action==="ipcMesPrev"||action==="ipcMesNext"){
+    const base=S.ipcMes||mesActual();
+    const [y,m]=base.split("-").map(Number);
+    const d=new Date(y,action==="ipcMesPrev"?m-2:m,1);
+    S.ipcMes=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    render();
+  }
 });
 
 document.addEventListener("input",e=>{
