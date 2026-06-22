@@ -1713,14 +1713,15 @@ function propiedadesDelPropietario(nombre){
 
 function normStr(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 function propiedadLibre(pid){
-  const prop=S.propiedadesInmuebles.find(p=>p._id===pid);
+  const prop=S.propiedades.find(p=>p._id===pid);
   if(!prop) return true;
   const nDir=normStr(prop.direccion);
   const nProp=normStr(prop.propietarioNombre);
   return !S.contratos.some(c=>
-    (normStr(c.propietarioNombre)===nProp || nProp==="") &&
-    normStr(c.direccion)===nDir &&
-    (c.estado==="activo"||!c.estado)
+    (c.propiedadId===pid ||
+     (!c.propiedadId && normStr(c.direccion)===nDir && (normStr(c.propietarioNombre)===nProp||nProp===""))) &&
+    (c.estado==="activo"||!c.estado) &&
+    !c._eliminado
   );
 }
 
@@ -2686,7 +2687,7 @@ function renderDashboard(){
     <div class="kcard" style="border-top-color:var(--verde)"><div class="klbl">Inquilinos pagaron</div><div class="kval">${inqPag.size} <span style="font-size:13px;color:var(--gris3)">/ ${activos.length}</span></div><div class="ksub" style="color:${inqPag.size===activos.length?"var(--verde)":"var(--naranja)"}">${mesNombre(mesHoy)}</div></div>
     <div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Propietarios cobrados</div><div class="kval">${propCob.size} <span style="font-size:13px;color:var(--gris3)">/ ${propTotal}</span></div><div class="ksub" style="color:${propCob.size===propTotal?"var(--verde)":"var(--naranja)"}">${mesNombre(mesHoy)}</div></div>
   </div>
-  <div class="kgrid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="kgrid" style="grid-template-columns:repeat(4,1fr)">
     <div class="kcard" style="border-top-color:var(--naranja)"><div class="klbl">Comisiones cobradas</div><div class="kval" style="font-size:17px">${moneda(comMes)}</div><div class="ksub">${pct}% del objetivo</div></div>
     <div class="kcard" style="border-top-color:var(--gris4)"><div class="klbl">Objetivo comisiones</div><div class="kval" style="font-size:17px">${moneda(comObj)}</div><div class="ksub">si cobran todos</div></div>
     ${(()=>{
@@ -2697,6 +2698,16 @@ function renderDashboard(){
         +"<div class=\"klbl\">Prop. sin liquidar</div>"
         +"<div class=\"kval\" style=\"color:"+color+"\">"+propSinLiq.size+"</div>"
         +"<div class=\"ksub\" style=\"color:"+(hayPend?"var(--naranja)":"var(--gris3)")+"\">"+(hayPend?moneda(montoPendLiq)+" pendiente":"Al dia")+"</div>"
+        +"</div>";
+    })()}
+    ${(()=>{
+      const totalProps=S.propiedades.filter(p=>!p._eliminado);
+      const dispCount=totalProps.filter(p=>propiedadLibre(p._id)).length;
+      const color=dispCount>0?"var(--naranja)":"var(--gris3)";
+      return "<div class=\"kcard\" style=\"border-top-color:"+color+";cursor:pointer\" data-action=\"nav\" data-sec=\"propietarios\">"
+        +"<div class=\"klbl\">Inmuebles disponibles</div>"
+        +"<div class=\"kval\" style=\"color:"+color+"\">"+dispCount+"</div>"
+        +"<div class=\"ksub\" style=\"color:var(--gris3)\">de "+totalProps.length+" en total</div>"
         +"</div>";
     })()}
   </div>
@@ -3115,7 +3126,7 @@ function renderFichaPropietario(nombre, prop){
     const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     if(!S_HIST[pid]){cargarHistorialProp(pid).then(function(){renderHistPropInline(pid);});}
     const entradas=(S_HIST[pid]||[]).filter(function(e){return !e._eliminado;});
-    const cActivo=S.contratos.find(function(c){return normStr(c.propietarioNombre)===normStr(nombre)&&normStr(c.direccion)===normStr(p.direccion)&&(c.estado==="activo"||!c.estado);});
+    const cActivo=S.contratos.find(function(c){return((c.propiedadId&&c.propiedadId===p._id)||(!c.propiedadId&&normStr(c.propietarioNombre)===normStr(nombre)&&normStr(c.direccion)===normStr(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;});
     const chip=cActivo
       ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:2px 8px;border-radius:10px">Ocupada: '+(cActivo.inquilino||"")+'</span>'
       :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>';
