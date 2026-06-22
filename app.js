@@ -1641,11 +1641,11 @@ async function migrarPropiedadesDesdeContratos(){
 }
 
 async function migrarPropiedadIdEnContratos(dryRun=true){
-  const sinId=S.contratos.filter(c=>!c.propiedadId&&!c._eliminado);
-  console.log("[migración] Contratos a procesar:",sinId.length);
+  const sinDir=S.contratos.filter(c=>!c.direccion&&!c._eliminado);
+  console.log("[migración] Contratos a procesar:",sinDir.length);
   let nAuto=0,nManual=0,nSinProp=0;
   const pendientes=[];
-  for(const c of sinId){
+  for(const c of sinDir){
     const props=(S.propiedadesInmuebles||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
     if(props.length===1){
       const p=props[0];
