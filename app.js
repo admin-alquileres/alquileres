@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",ipcDepCuotas:{},cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
   presencia:[]
 };
 
@@ -366,11 +366,6 @@ function renderIPC(){
       const c=item.c;
       const dep=c.deposito||{};
       const depPend=dep.pendiente||0;
-      const cuotasSel=(S.ipcDepCuotas||{})[c._id]||1;
-      const selDep='<select class="inp" data-action="ipcDepCuotas" data-id="'+c._id+'" style="font-size:10px;padding:2px 4px;width:80px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px">'
-        +'<option value="1"'+(cuotasSel===1?' selected':'')+'>1 cuota</option>'
-        +'<option value="2"'+(cuotasSel===2?' selected':'')+'>2 cuotas</option>'
-        +'</select>';
       return `<tr class="ipc-row" data-id="${c._id}" data-alq="${c.alquilerBase}" data-fr="${fr}">
         <td class="tdm">${c.inquilino||""}</td>
         <td>${c.direccion||""}</td>
@@ -379,7 +374,7 @@ function renderIPC(){
         <td style="font-weight:600">${moneda(c.alquilerBase)}</td>
         <td class="nuevo-alq" style="font-weight:700;color:var(--celeste)">—</td>
         <td class="dif-alq" style="font-size:11px;color:#5ddb8a">—</td>
-        <td class="dif-dep" style="font-size:11px">${depPend>0?'<span style="color:var(--rojo)">⚠️ dep. '+moneda(depPend)+'</span> '+selDep:selDep}</td>
+        <td class="dif-dep" style="font-size:11px">${depPend>0?'<span style="color:var(--rojo)">⚠️ dep. '+moneda(depPend)+'</span>':''}</td>
         <td>${c.telefono?`<button class="btn sm" style="background:rgba(37,211,102,.12);color:#25d366;padding:4px 8px;font-size:11px"
           onclick="abrirWhatsAppIPC('${c._id}', +document.getElementById('ipc-pct-${fr}')?.value)">📱</button>`:'<span style="color:var(--gris4);font-size:10px">Sin tel.</span>'}</td>
       </tr>`;
@@ -446,7 +441,7 @@ window.aplicarIPCGrupo=async function(fr){
     const cid=row.dataset.id;
     const c=S.contratos.find(x=>x._id===cid);
     if(!c) return;
-    const depCuotas=+((S.ipcDepCuotas||{})[cid]||1);
+    const depCuotas=1;
     const nuevo=Math.round(c.alquilerBase*(1+pct/100));
     const depViejo=c.deposito||{};
     const totalViejo=depViejo.total||0;
@@ -2222,8 +2217,25 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
-  else if(action==="setIpcMes"){S.ipcMes=t.value;S.ipcDepCuotas={};render();}
-  else if(action==="ipcDepCuotas"){if(!S.ipcDepCuotas)S.ipcDepCuotas={};S.ipcDepCuotas[t.dataset.id]=+t.value;}
+  else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
+  else if(action==="setDepCuotasCobro"){
+    S.depCuotasCobro=+t.value;
+    const dep=(S.contratoActivo||{}).deposito||{};
+    const depPend=dep.pendiente||0;
+    const idx=S.itemsCobro.findIndex(it=>it.tipo==="deposito");
+    if(idx>=0){
+      const n=S.contratos.find(x=>x._id===(S.contratoActivo||{})._id);
+      const cuotasPagadas=(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0));
+      const total=dep.cuotasTotales||dep.cuotas||1;
+      const prox=cuotasPagadas+1;
+      if(S.depCuotasCobro===2){
+        S.itemsCobro[idx]={...S.itemsCobro[idx],monto:Math.round(depPend/2),desc:"Depósito cuota "+prox+"/2 (2da cuota: próx. cobro)"};
+      } else {
+        S.itemsCobro[idx]={...S.itemsCobro[idx],monto:depPend,desc:"Depósito pendiente"};
+      }
+    }
+    render();
+  }
   else if(action==="migSelProp"){S.migSeleccion[t.dataset.id]=t.value;render();}
   // Selects del form modal (depósito, honorarios, período, estado)
   else if(action==="setForm"){
@@ -2357,7 +2369,6 @@ else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
     const [y,m]=base.split("-").map(Number);
     const d=new Date(y,action==="ipcMesPrev"?m-2:m,1);
     S.ipcMes=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
-    S.ipcDepCuotas={};
     render();
   }
 });
@@ -2413,6 +2424,7 @@ function abrirContrato(cid){
   if(!S.contratoActivo)return;
   const c=S.contratoActivo;
   S.modal="contrato_detalle";
+  S.depCuotasCobro=1;
   S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
   // Cargar gastos pendientes de Firebase (cargados durante el mes)
   S.itemsCobro=[];  // limpiar mientras carga
@@ -2570,7 +2582,16 @@ async function registrarPago(){
     const itemDep=items.find(it=>it.tipo==="deposito");
     if(itemDep){
       const depActual=c.deposito||{};
-      const nuevoDeposito=registrarCuotaDeposito(depActual);
+      const montoPagado=+(itemDep.monto||0);
+      const nuevoPendiente=Math.max(0,(depActual.pendiente||0)-montoPagado);
+      const nuevoPagado=(depActual.total||0)-nuevoPendiente;
+      const yasPagadas=(depActual.cuotasPagadas!==undefined?depActual.cuotasPagadas:(depActual.pagadas||0));
+      const nuevoDeposito={
+        ...depActual,
+        pagado:nuevoPagado,pagadoAcumulado:nuevoPagado,
+        pendiente:nuevoPendiente,completo:nuevoPendiente===0,
+        cuotasPagadas:yasPagadas+1,pagadas:yasPagadas+1
+      };
       await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
       S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
     }
@@ -3455,6 +3476,22 @@ function renderModalDetalle(){
           </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${S.itemsCobro.map((it,i)=>{
+            if(it.tipo==="deposito"){
+              const cuotasSel=S.depCuotasCobro||1;
+              const opt1=cuotasSel===1?" selected":"";
+              const opt2=cuotasSel===2?" selected":"";
+              const depMontoStr=moneda(it.monto||0);
+              return '<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:rgba(39,174,96,.08);border-radius:6px;padding:7px 10px">'
+                +'<span style="font-size:10px;font-weight:600;color:#5ddb8a;min-width:48px;text-transform:uppercase">DEP</span>'
+                +'<span style="flex:1;font-size:12px;color:var(--blanco)">'+it.desc+'</span>'
+                +'<select class="inp" data-action="setDepCuotasCobro" style="font-size:10px;padding:2px 4px;width:90px">'
+                +'<option value="1"'+opt1+'>1 cuota</option>'
+                +'<option value="2"'+opt2+'>2 cuotas</option>'
+                +'</select>'
+                +'<span style="width:90px;text-align:right;font-weight:600;font-size:12px;color:#5ddb8a">'+depMontoStr+'</span>'
+                +'<button class="btn sm" data-action="removeItem" data-id="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
+                +'</div>';
+            }
             const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)"};
             const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo"};
             return `<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:${colors[it.tipo]||colors.variable};border-radius:6px;padding:7px 10px">
