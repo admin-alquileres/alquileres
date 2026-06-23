@@ -2453,7 +2453,15 @@ function abrirContrato(cid){
   const c=S.contratoActivo;
   S.modal="contrato_detalle";
   S.depCuotasCobro=1;
-  S.form={mes:mesActual(),alquiler:c.alquilerBase||0,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
+  const alqBase=c.alquilerBase||0;
+  let alqPrimerMes=alqBase;
+  if(c.inicio&&mesActual()===c.inicio.substring(0,7)){
+    const [_y,_m,_d]=c.inicio.split('-').map(Number);
+    const diasEnMes=new Date(_y,_m,0).getDate();
+    const diasVividos=diasEnMes-_d+1;
+    if(_d>1) alqPrimerMes=Math.round(alqBase*diasVividos/diasEnMes);
+  }
+  S.form={mes:mesActual(),alquiler:alqPrimerMes,fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
   // Cargar gastos pendientes de Firebase (cargados durante el mes)
   S.itemsCobro=[];  // limpiar mientras carga
   // Gastos que corresponden este mes según frecuencia configurada
@@ -3603,7 +3611,7 @@ function renderModalDetalle(){
       <div class="fsec-t">Registrar pago del mes</div>
       <div class="fg">
         <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
-        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" id="cobro-alquiler" data-action="setAlquilerCobro"></div>
+        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" id="cobro-alquiler" data-action="setAlquilerCobro">${(()=>{if(!c.inicio||f.mes!==c.inicio.substring(0,7))return"";const[_y,_m,_d]=c.inicio.split('-').map(Number);if(_d<=1)return"";const diasEnMes=new Date(_y,_m,0).getDate();const diasVividos=diasEnMes-_d+1;return'<div style="font-size:11px;color:var(--naranja);margin-top:4px">📅 Mes parcial: '+diasVividos+' de '+diasEnMes+' días (ingreso día '+_d+')</div>';})()}</div>
         <div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="${f.fechaCobro||hoy()}" data-action="setForm" data-key="fechaCobro"></div>
         <div><label class="fl">N° Comprobante</label><input class="inp" style="width:100%" placeholder="Auto" data-action="setForm" data-key="comprobante"></div>
       </div>
