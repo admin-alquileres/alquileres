@@ -2342,8 +2342,10 @@ document.addEventListener("click",e=>{
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="busqEscape"){S.busqGlobal="";render();}
-  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles()]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
-else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
+  else if(action==="ajustePropBorrar"){if(!confirm("¿Borrar este ajuste?"))return;borrarAjusteProp(t.dataset.id,S.propietarioActivo);}
+  else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
   else if(action==="hinqAgregar"){agregarHistorialInq(t.dataset.nombre);}
   else if(action==="hinqEliminar"){eliminarHistorialInq(id,t.dataset.nombre);}
@@ -2566,6 +2568,32 @@ async function guardarSaldoProp(nombre, monto){
     return;
   }
   S_SALDO_PROP[nombre].monto=+(monto||0);
+}
+
+const S_AJUSTES_PROP={};
+async function cargarAjustesProp(nombre){
+  if(S_AJUSTES_PROP[nombre]!==undefined)return;
+  S_AJUSTES_PROP[nombre]=[];
+  try{
+    const snap=await getDocs(query(collection(db,"ajustes_prop"),where("propietarioNombre","==",nombre)));
+    S_AJUSTES_PROP[nombre]=snap.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>!d._eliminado);
+  }catch(e){ S_AJUSTES_PROP[nombre]=[]; }
+  render();
+}
+async function agregarAjusteProp(nombre,desc,monto){
+  if(!nombre||!desc||isNaN(monto)||monto===0)return;
+  const data={propietarioNombre:nombre,fecha:hoy(),descripcion:desc,monto:+monto,liquidacionRef:null,_eliminado:false};
+  const id=await fbAdd("ajustes_prop",data);
+  if(!S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=[];
+  S_AJUSTES_PROP[nombre].unshift({...data,_id:id});
+  render();
+}
+async function borrarAjusteProp(id,nombre){
+  try{
+    await updateDoc(doc(db,"ajustes_prop",id),{_eliminado:true});
+    if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].filter(a=>a._id!==id);
+    render();
+  }catch(e){toast("Error al borrar",false);}
 }
 
 function mesPrevio(mes){
@@ -3212,16 +3240,32 @@ function renderFichaPropietario(nombre, prop){
       +'<button class="btn sm naranja" style="height:36px" data-action="hpropAgregar" data-pid="'+pid+'">+ Agregar</button>'
       +'</div><div id="hp-tabla-'+pid+'">'+tablaH+'</div></div>';
   }).join("");
+  // Ajustes cuenta corriente
+  const _ajustesAll=(S_AJUSTES_PROP[nombre]||[]);
+  const ajustesPendFicha=_ajustesAll.filter(function(a){return !a.liquidacionRef&&!a._eliminado;});
+  const ajustesHistFicha=_ajustesAll.filter(function(a){return a.liquidacionRef&&!a._eliminado;});
+  const totalAjustesPendFicha=ajustesPendFicha.reduce(function(s,a){return s+(a.monto||0);},0);
   // Saldo anterior
   const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
-  const netoConSaldo=netoSel+saldoAnterior;
-  const saldoInfoHtml=saldoAnterior!==0
-    ?'<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:'+(saldoAnterior>0?"#5ddb8a":"#ff7b6b")+'">'
-      +'<span>Saldo anterior ('+(saldoAnterior>0?"a favor":"deuda")+')</span>'
-      +'<span style="font-weight:600">'+(saldoAnterior>0?"+":"")+moneda(saldoAnterior)+'</span></div>'
-      +'<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;font-weight:700;border-top:1px solid var(--negro4);margin-top:4px">'
-      +'<span>Total a entregar</span><span style="color:#5ddb8a">'+moneda(netoConSaldo)+'</span></div>'
-    :"";
+  const netoConSaldo=netoSel+saldoAnterior+totalAjustesPendFicha;
+  const saldoInfoHtml=(function(){
+    var rows='';
+    if(saldoAnterior!==0){
+      rows+='<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:'+(saldoAnterior>0?"#5ddb8a":"#ff7b6b")+'">'
+        +'<span>Saldo anterior ('+(saldoAnterior>0?"a favor":"deuda")+')</span>'
+        +'<span style="font-weight:600">'+(saldoAnterior>0?"+":"")+moneda(saldoAnterior)+'</span></div>';
+    }
+    if(totalAjustesPendFicha!==0){
+      rows+='<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:'+(totalAjustesPendFicha>0?"#5ddb8a":"#ff7b6b")+'">'
+        +'<span>Ajustes cta. cte. pendientes</span>'
+        +'<span style="font-weight:600">'+(totalAjustesPendFicha>0?"+":"")+moneda(totalAjustesPendFicha)+'</span></div>';
+    }
+    if(rows){
+      rows+='<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;font-weight:700;border-top:1px solid var(--negro4);margin-top:4px">'
+        +'<span>Total a entregar</span><span style="color:#5ddb8a">'+moneda(netoConSaldo)+'</span></div>';
+    }
+    return rows;
+  })();
   // Ensamblar
   let html='<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">'
     +'<button class="btn sm" data-action="volverPropietarios">← Volver</button>'
@@ -3249,6 +3293,46 @@ function renderFichaPropietario(nombre, prop){
     +'<div style="font-size:11px;font-weight:600;color:var(--gris3);margin-bottom:8px;text-transform:uppercase">📝 Comentarios temporales</div>'
     +renderNotasTemp("propietario",nombre)
     +'</div>';
+  html+=(function(){
+    var colorSaldo=totalAjustesPendFicha>0?"#5ddb8a":totalAjustesPendFicha<0?"#ff7b6b":"var(--gris3)";
+    var rowsPend=ajustesPendFicha.map(function(a){
+      var c=(a.monto||0)>=0?"#5ddb8a":"#ff7b6b";
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--negro4)">'
+        +'<span style="font-size:11px;color:var(--gris3);min-width:80px">'+(a.fecha||"")+'</span>'
+        +'<span style="flex:1;font-size:12px">'+(a.descripcion||"")+'</span>'
+        +'<span style="font-weight:600;color:'+c+';min-width:80px;text-align:right">'+((a.monto||0)>0?"+":"")+moneda(a.monto||0)+'</span>'
+        +'<button class="btn sm" data-action="ajustePropBorrar" data-id="'+a._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px;font-size:11px">x</button>'
+        +'</div>';
+    }).join("");
+    var rowsHist=ajustesHistFicha.slice(0,5).map(function(a){
+      var c=(a.monto||0)>=0?"#5ddb8a":"#ff7b6b";
+      var refLabel=(a.liquidacionRef||"").split("_").slice(1,-1).join(" ");
+      return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--negro4);opacity:.6">'
+        +'<span style="font-size:11px;color:var(--gris3);min-width:80px">'+(a.fecha||"")+'</span>'
+        +'<span style="flex:1;font-size:12px">'+(a.descripcion||"")+'</span>'
+        +'<span style="font-weight:600;color:'+c+';min-width:80px;text-align:right">'+((a.monto||0)>0?"+":"")+moneda(a.monto||0)+'</span>'
+        +'<span style="font-size:10px;color:var(--gris4);white-space:nowrap">'+refLabel+'</span>'
+        +'<button class="btn sm" data-action="ajustePropBorrar" data-id="'+a._id+'" style="background:rgba(231,76,60,.1);color:#ff7b6b;padding:2px 7px;font-size:11px">x</button>'
+        +'</div>';
+    }).join("");
+    return '<div class="lcard" style="margin-bottom:16px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+      +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase">💰 Cuenta corriente</div>'
+      +'<div style="font-size:12px;font-weight:700;color:'+colorSaldo+'">Pendiente: '+(totalAjustesPendFicha>0?"+":"")+moneda(totalAjustesPendFicha)+'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+      +'<input id="ajuste-desc-input" class="inp" placeholder="Descripcion del ajuste" style="flex:1;min-width:160px">'
+      +'<input id="ajuste-monto-input" class="inp" type="number" placeholder="Monto (+/-)" style="width:120px">'
+      +'<button class="btn sm naranja" data-action="ajustePropAgregar">+ Agregar</button>'
+      +'</div>'
+      +(ajustesPendFicha.length
+        ?'<div style="font-size:10px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin-bottom:4px">Pendientes — se incluyen en la próxima liquidación</div>'+rowsPend
+        :'<div style="font-size:11px;color:var(--gris4);padding:4px 0">Sin ajustes pendientes.</div>')
+      +(ajustesHistFicha.length
+        ?'<div style="font-size:10px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:10px 0 4px">Histórico</div>'+rowsHist
+        :"")
+      +'</div>';
+  })();
   html+='<div class="stitle" style="display:flex;justify-content:space-between;align-items:center">'
     +'<span>Propiedades e historial</span>'
     +'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="nuevaPropiedad" data-nombre="'+nombre+'">+ Agregar propiedad</button>'
@@ -3320,7 +3404,11 @@ async function generarLiquidacionProp(nombre){
   // Saldo del mes anterior (a favor o en contra del propietario, ya cargado en memoria).
   await cargarSaldoProp(nombre);
   const saldoAnterior=(S_SALDO_PROP[nombre]&&S_SALDO_PROP[nombre].monto)||0;
-  const netoAEntregar=netoSinSaldo+saldoAnterior;
+  // Ajustes de cuenta corriente pendientes
+  await cargarAjustesProp(nombre);
+  const ajustesPendLiq=(S_AJUSTES_PROP[nombre]||[]).filter(function(a){return !a.liquidacionRef&&!a._eliminado;});
+  const totalAjustesPendLiq=ajustesPendLiq.reduce(function(s,a){return s+(a.monto||0);},0);
+  const netoAEntregar=netoSinSaldo+saldoAnterior+totalAjustesPendLiq;
 
   // El cobrador puede ajustar manualmente cuánto entregó realmente (cambio exacto,
   // redondeo de billetes, etc.) — la diferencia queda como nuevo saldo para el mes que viene.
@@ -3385,6 +3473,13 @@ async function generarLiquidacionProp(nombre){
     doc.text("Saldo mes anterior ("+(saldoAnterior>0?"a favor":"en contra")+")",12,y);
     doc.text((saldoAnterior>0?"+ ":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
   }
+  ajustesPendLiq.forEach(function(a){
+    if(y>265){doc.addPage();y=18;}
+    var neg=(a.monto||0)<0;
+    doc.setTextColor(neg?180:20,neg?30:120,neg?30:60);
+    doc.text((a.descripcion||"Ajuste").substring(0,65),12,y);
+    doc.text((neg?"- ":"+ ")+moneda(Math.abs(a.monto||0)),198,y,{align:"right"});y+=6;
+  });
   doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
   doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
   doc.text("NETO A ENTREGAR",12,y);
@@ -3407,6 +3502,12 @@ async function generarLiquidacionProp(nombre){
   const fechaLiq=hoy();
   await Promise.all(pagosSel.map(p=>fbUpd("pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq})));
   S.pagos=S.pagos.map(p=>pagosSel.some(ps=>ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq}:p);
+  if(ajustesPendLiq.length){
+    await Promise.all(ajustesPendLiq.map(function(a){return fbUpd("ajustes_prop",a._id,{liquidacionRef:ref,fechaLiquidacion:fechaLiq});}));
+    if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(function(a){
+      return ajustesPendLiq.some(function(ap){return ap._id===a._id;})?{...a,liquidacionRef:ref,fechaLiquidacion:fechaLiq}:a;
+    });
+  }
 
   toast("Liquidacion generada — Neto: "+moneda(netoAEntregar));
   render();

@@ -140,6 +140,11 @@ Saldo de un propietario entre liquidaciones (diferencia entre lo calculado y lo 
 
 Campos clave: `propietarioNombre`, `monto` (positivo = a favor del propietario, negativo = deuda)
 
+### `ajustes_prop`
+Ajustes manuales de cuenta corriente por propietario. Descripción libre + monto. Se acumulan hasta la próxima liquidación, luego quedan en historial. Pueden borrarse en cualquier momento.
+
+Campos clave: `propietarioNombre`, `fecha` (YYYY-MM-DD), `descripcion`, `monto` (positivo = a favor, negativo = deuda), `liquidacionRef` (null = pendiente, string = ya aplicado), `_eliminado`
+
 ### `usuarios`
 Configuración por usuario (gaston@ie.com, matias@ie.com, ara@ie.com).
 
