@@ -335,12 +335,18 @@ function renderIPC(){
   const mesLblSig=mesNombres[mSig-1]+" "+anioSig;
   const mesPrev=(()=>{const d=new Date(anioSel,mSel-2,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
   const grupos={3:[],4:[],6:[],12:[]};
+  const vencenAntes=[];
   let cntSig=0;
   activos.forEach(c=>{
     const fr=+(c.frecActualizacion||6);
     if(!grupos[fr]) grupos[fr]=[];
     const prox=getProxActualizacion(c);
     if(!prox) return;
+    if(c.fin){
+      const _fp=c.fin.split('-').map(Number);
+      const finDate=new Date(_fp[0],_fp[1]-1,_fp[2]);
+      if(prox>=finDate){vencenAntes.push({c,prox,fr});return;}
+    }
     const proxMes=prox.getFullYear()+"-"+String(prox.getMonth()+1).padStart(2,"0");
     if(proxMes===mesSel) grupos[fr].push({c,prox});
     if(proxMes===mesSig) cntSig++;
@@ -360,7 +366,8 @@ function renderIPC(){
   let hayBloques=false;
   [3,4,6,12].forEach(fr=>{
     const items=grupos[fr];
-    if(!items.length) return;
+    const vencFr=vencenAntes.filter(v=>v.fr===fr);
+    if(!items.length&&!vencFr.length) return;
     hayBloques=true;
     const filas=items.map(item=>{
       const c=item.c;
@@ -396,10 +403,24 @@ function renderIPC(){
             onclick="abrirWhatsAppIPCMasivo(${fr}, document.getElementById('ipc-pct-${fr}')?.value)">📱 WhatsApp a todos</button>
         </div>
       </div>
-      <div class="tw"><table>
-        <thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. dep. / cuotas</th><th>WA</th></tr></thead>
-        <tbody>${filas}</tbody>
-      </table></div>
+      ${items.length?'<div class="tw"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Propietario</th><th>Próx. actualiz.</th><th>Alquiler actual</th><th>Nuevo alquiler</th><th>Aumento</th><th>Dif. dep. / cuotas</th><th>WA</th></tr></thead><tbody>'+filas+'</tbody></table></div>':""}
+      ${(function(){
+        if(!vencFr.length) return '';
+        const vRows=vencFr.map(function(v){
+          const proxStr=v.prox.getFullYear()+"-"+String(v.prox.getMonth()+1).padStart(2,"0");
+          return '<tr>'
+            +'<td style="font-size:12px">'+v.c.inquilino+'</td>'
+            +'<td style="font-size:11px;color:var(--gris3)">'+(v.c.direccion||'—')+'</td>'
+            +'<td style="font-size:11px;color:var(--naranja)">'+v.c.fin+'</td>'
+            +'<td style="font-size:11px;color:var(--gris3)">'+proxStr+'</td>'
+            +'</tr>';
+        }).join('');
+        const n=vencFr.length;
+        return '<div style="margin-top:10px;background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.25);border-radius:8px;padding:10px 14px">'
+          +'<div style="font-size:11px;font-weight:600;color:var(--naranja);margin-bottom:8px">📅 '+n+' contrato'+(n>1?'s vencen':' vence')+' antes de la próxima actualización — no corresponde aumento</div>'
+          +'<div style="overflow-x:auto"><table><thead><tr><th>Inquilino</th><th>Propiedad</th><th>Vencimiento</th><th>Próx. actualiz.</th></tr></thead><tbody>'+vRows+'</tbody></table></div>'
+          +'</div>';
+      })()}
     </div>`;
   });
   if(!hayBloques) html+=`<div class="empty">Sin contratos a actualizar en ${mesLbl}</div>`;
