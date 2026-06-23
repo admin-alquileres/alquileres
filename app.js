@@ -3411,7 +3411,7 @@ async function generarLiquidacionProp(nombre){
     prop2.pagos.forEach(p=>{
       totalAlquileres+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.forEach(it=>{ if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
+      items.forEach(it=>{ if(it.tipo==="gestion")return; if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
     });
   });
   const totalBruto=totalAlquileres+totalExtras;
@@ -3463,6 +3463,7 @@ async function generarLiquidacionProp(nombre){
       subtotal+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
       items.forEach(it=>{
+        if(it.tipo==="gestion")return;
         if((it.monto||0)===0)return;
         const neg=(it.monto||0)<0;
         doc.setTextColor(neg?180:60,neg?60:60,60);
@@ -3627,7 +3628,7 @@ function renderModalDetalle(){
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn sm" data-action="addItem" data-tipo="fijo" style="background:rgba(75,200,232,.12);color:var(--celeste)">+ Fijo</button>
               <button class="btn sm" data-action="addItem" data-tipo="variable" style="background:rgba(245,166,35,.12);color:var(--naranja)">+ Variable</button>
-              <button class="btn sm" data-action="addItem" data-tipo="saldo" style="background:rgba(231,76,60,.12);color:#ff7b6b">± Saldo</button><button class="btn sm" data-action="addMora" style="background:rgba(245,166,35,.15);color:var(--naranja)">⏰ Mora</button>
+              <button class="btn sm" data-action="addItem" data-tipo="saldo" style="background:rgba(231,76,60,.12);color:#ff7b6b">± Saldo</button><button class="btn sm" data-action="addMora" style="background:rgba(245,166,35,.15);color:var(--naranja)">⏰ Mora</button><button class="btn sm" data-action="addItem" data-tipo="gestion" style="background:rgba(160,120,220,.12);color:#b48ef0">🏢 Gestión</button>
             </div>
           </div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -3648,8 +3649,8 @@ function renderModalDetalle(){
                 +'<button class="btn sm" data-action="removeItem" data-id="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
                 +'</div>';
             }
-            const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)"};
-            const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo"};
+            const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)",gestion:"rgba(160,120,220,.08)"};
+            const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo",gestion:"Gestión"};
             return `<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:${colors[it.tipo]||colors.variable};border-radius:6px;padding:7px 10px">
               <span style="font-size:10px;font-weight:600;color:var(--gris3);min-width:48px;text-transform:uppercase">${labels[it.tipo]||it.tipo}</span>
               <input class="item-desc inp" value="${it.desc||""}" placeholder="Descripción" style="flex:1">
