@@ -2412,7 +2412,7 @@ document.addEventListener("input",e=>{
   else if(action==="setFiltroEstadoSel")setFiltro("estado",t.value);
   else if(action==="setFiltroTipoSel")setFiltro("buscarPor",t.value);
   else if(action==="setLiqMesSel")setLiqMes(t.value);
-  else if(action==="propBuscar"){S.propBuscar=t.value;render();}
+  else if(action==="propBuscar"){S.propBuscar=t.value;renderParcial();}
 });
 
 function renderResumen(){
@@ -2438,7 +2438,7 @@ function renderResumen(){
 // ── ACCIONES ──────────────────────────────────────────────────────────────────
 window.go=s=>{S.sec=s;S.modal=null;S.modalExtra=null;S.contratoActivo=null;S.inquilinoActivo=null;S.propietarioActivo=null;S.liqSeleccion={};S.filtros={buscar:"",buscarPor:"inquilino",estado:"activo",cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos"};render();};
 function go(s){window.go(s);}
-function setFiltro(k,v){S.filtros[k]=v;render();}
+function setFiltro(k,v){S.filtros[k]=v;renderParcial();}
 function setLiqMes(v){S.liqMes=v;render();}
 function openModal(t){S.modal=t;S.form={comisionAgencia:5,estado:"activo",tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC",depCuotas:1,honMonto:"medio",honCuotas:1};S.formExtras=[];render();}
 window.closeModal=function(){S.modal=null;S.contratoActivo=null;render();};
@@ -3888,12 +3888,13 @@ window.toggleTema=function(){
 function renderParcial(){
   const ae=document.activeElement;
   const fid=ae&&ae.id?ae.id:null;
+  const faction=ae&&ae.dataset&&ae.dataset.action?ae.dataset.action:null;
   const fstart=ae&&ae.tagName==="INPUT"?ae.selectionStart:null;
   const fend=ae&&ae.tagName==="INPUT"?ae.selectionEnd:null;
   render();
-  if(fid){
+  if(fid||faction){
     setTimeout(()=>{
-      const el=document.getElementById(fid);
+      const el=fid?document.getElementById(fid):document.querySelector('[data-action="'+faction+'"]');
       if(el){el.focus();try{if(fstart!==null)el.setSelectionRange(fstart,fend);}catch(e){}}
     },0);
   }
