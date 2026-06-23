@@ -1078,7 +1078,8 @@ function renderDeudores(){
   const hoyD=new Date();
   const activos=S.contratos.filter(c=>c.estado==="activo"||!c.estado);
   // Fecha de corte: solo evaluar deudas desde esta fecha en adelante
-  const corte=new Date((S.fechaCorte||"2026-07")+"-01");
+  const _corteParts=(S.fechaCorte||"2026-07").split('-').map(Number);
+  const corte=new Date(_corteParts[0],_corteParts[1]-1,1);
   const corteStr=(S.fechaCorte||"2026-07")+"-01";
   const corteMes=S.fechaCorte||"2026-07"; // "2026-07"
 
@@ -1086,7 +1087,8 @@ function renderDeudores(){
     const pagosC=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado);
     const mesesSinPago=[];
     // Generar meses desde el corte (o inicio del contrato si es posterior) hasta hoy
-    const inicioEval=c.inicio&&c.inicio>corteStr?new Date(c.inicio+"-01"):new Date(corte);
+    const _ip=c.inicio&&c.inicio>corteStr?c.inicio.split('-').map(Number):null;
+    const inicioEval=_ip?new Date(_ip[0],_ip[1]-1,1):new Date(corte);
     let cur=new Date(inicioEval);
     const limite=new Date(hoyD.getFullYear(),hoyD.getMonth(),1);
     while(cur<=limite){
@@ -1189,10 +1191,10 @@ function renderModalGrillaGastos(){
   const pagosC=S.pagos.filter(function(p){return p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado";}).sort(function(a,b){return(a.mes||"").localeCompare(b.mes||"");});
   const mesActualS=mesActual();
   // Generar rango de meses: desde 6 meses atrás hasta 2 meses adelante
-  const base=new Date(mesActualS+"-01");
+  const _baseParts=mesActualS.split('-').map(Number);
   const meses=[];
   for(let i=-8;i<=2;i++){
-    const d=new Date(base.getFullYear(),base.getMonth()+i,1);
+    const d=new Date(_baseParts[0],_baseParts[1]-1+i,1);
     meses.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
   }
   function norm(s){return(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
@@ -1817,7 +1819,7 @@ function calcularMora(alquiler, mes, fechaCobro){
   const cobro=new Date(fechaCobro);
   if(cobro<=limite) return null; // pagó a tiempo
   // Días de mora: desde el día 1 del mes hasta la fecha de cobro
-  const inicio=new Date(mes+"-01");
+  const _mp=mes.split('-').map(Number);const inicio=new Date(_mp[0],_mp[1]-1,1);
   const diasMora=Math.round((cobro-inicio)/86400000);
   const monto=Math.round(alquiler*(diasMora*0.01)); // 1% por día
   return {dias:diasMora, monto, limite:limite.toISOString().split("T")[0]};
@@ -1933,9 +1935,9 @@ function renderModalMatrizGastos(){
 
   // Generar columnas de meses (3 anteriores + actual + 3 próximos)
   const meses=[];
+  const _mhp=mesHoy.split('-').map(Number);
   for(let i=-3;i<=3;i++){
-    const d=new Date(mesHoy+"-01");
-    d.setMonth(d.getMonth()+i);
+    const d=new Date(_mhp[0],_mhp[1]-1+i,1);
     meses.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
   }
 
@@ -2646,10 +2648,9 @@ S.matrizTemp=null;  // limpiar después de guardar
 // ── HELPER PROX ACTUALIZACIÓN ─────────────────────────────────────────────────
 function getProxActualizacion(c){
   if(!c.frecActualizacion||!c.inicio)return null;
-  const base=new Date(c.ultimaActualizacion||c.inicio);
-  const prox=new Date(base);
-  prox.setMonth(prox.getMonth()+(+(c.frecActualizacion||6)));
-  return prox;
+  const baseStr=c.ultimaActualizacion||c.inicio;
+  const [y,m,d]=baseStr.split('-').map(Number);
+  return new Date(y,m-1+(+(c.frecActualizacion||6)),d);
 }
 
 // ── RENDERS ────────────────────────────────────────────────────────────────────
