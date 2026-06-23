@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",
   presencia:[]
 };
 
@@ -2412,6 +2412,7 @@ document.addEventListener("input",e=>{
   else if(action==="setFiltroEstadoSel")setFiltro("estado",t.value);
   else if(action==="setFiltroTipoSel")setFiltro("buscarPor",t.value);
   else if(action==="setLiqMesSel")setLiqMes(t.value);
+  else if(action==="propBuscar"){S.propBuscar=t.value;render();}
 });
 
 function renderResumen(){
@@ -3125,6 +3126,7 @@ function renderPropietarios(){
     else propMap[p.nombre]={...propMap[p.nombre],...p};
   });
   const lista=Object.values(propMap).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+  const listaFiltrada=S.propBuscar?lista.filter(p=>normStr(p.nombre).includes(normStr(S.propBuscar))):lista;
 
   // ── FICHA DE PROPIETARIO ──────────────────────────────────────────────────
   if(S.propietarioActivo){
@@ -3133,7 +3135,7 @@ function renderPropietarios(){
 
   // ── LISTA DE PROPIETARIOS ─────────────────────────────────────────────────
   const mesHoy=mesActual();
-  const rows=lista.map(prop=>{
+  const rows=listaFiltrada.map(prop=>{
     const activos=prop.contratos.filter(c=>c.estado==="activo"||!c.estado);
     const propsTotales=propiedadesDelPropietario(prop.nombre).filter(p=>!p._eliminado);
     const disponibles=propsTotales.filter(p=>!activos.some(c=>normStr(c.direccion)===normStr(p.direccion)));
@@ -3158,9 +3160,11 @@ function renderPropietarios(){
     </tr>`;
   }).join("");
 
-  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><div style="display:flex;gap:6px">${(()=>{const _mig=calcularPendientesMigracion();const _act=_mig.filter(r=>r.estado==="activo").length;const _tot=_mig.length;return _tot?'<button class="btn sm" style="background:rgba(231,174,60,.15);color:var(--naranja)" data-action="abrirMigracion">⚠️ '+_act+' activos sin asignar'+(_tot>_act?' ('+(_tot-_act)+' finaliz.)':'')+' </button>':''})()}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div></div>
+  const _migBtn=(()=>{const _mig=calcularPendientesMigracion();const _act=_mig.filter(r=>r.estado==="activo").length;const _tot=_mig.length;return _tot?'<button class="btn sm" style="background:rgba(231,174,60,.15);color:var(--naranja)" data-action="abrirMigracion">⚠️ '+_act+' activos sin asignar'+(_tot>_act?' ('+(_tot-_act)+' finaliz.)':'')+' </button>':''})();
+  const _emptyMsg=S.propBuscar?'<tr><td colspan=4><div class="empty">Sin resultados para "'+S.propBuscar+'"</div></td></tr>':`<tr><td colspan=4><div class="empty">Sin propietarios</div></td></tr>`;
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input class="inp" placeholder="Buscar propietario..." data-action="propBuscar" value="${S.propBuscar||""}" style="min-width:180px">${_migBtn}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div></div>
   <div class="tw"><table><thead><tr><th>Propietario</th><th>Propiedades</th><th>Estado cobro</th><th></th></tr></thead>
-  <tbody>${rows||`<tr><td colspan=4><div class="empty">Sin propietarios</div></td></tr>`}</tbody></table></div>`;
+  <tbody>${rows||_emptyMsg}</tbody></table></div>`;
 }
 
 function renderFichaPropietario(nombre, prop){
