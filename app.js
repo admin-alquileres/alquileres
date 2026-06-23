@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",ultimoPago:null,
   presencia:[]
 };
 
@@ -946,12 +946,12 @@ function addItemCobro(tipo){
   syncItemsFromDOM();
   const defaults={fijo:{desc:"",monto:0},variable:{desc:"",monto:0},saldo:{desc:"Saldo mes anterior",monto:0}};
   S.itemsCobro.push({tipo,desc:defaults[tipo]?.desc||"",monto:defaults[tipo]?.monto||0});
-  render();
+  renderParcial();
 }
 function removeItemCobro(i){
   syncItemsFromDOM();
   S.itemsCobro.splice(i,1);
-  render();
+  renderParcial();
 }
 function updItemCobro(i,field,val){
   if(S.itemsCobro[i]) S.itemsCobro[i][field] = field==="monto"?+(val||0):val;
@@ -1863,7 +1863,7 @@ function agregarMora(){
     monto:mora.monto
   });
   toast("Mora "+mora.dias+" dias = "+moneda(mora.monto)+" (1% diario s/alquiler)");
-  render();
+  renderParcial();
 }
 
 // Modal para administrar feriados
@@ -2257,7 +2257,7 @@ document.addEventListener("change",e=>{
         S.itemsCobro[idx]={...S.itemsCobro[idx],monto:depPend,desc:"Depósito pendiente"};
       }
     }
-    render();
+    renderParcial();
   }
   else if(action==="migSelProp"){S.migSeleccion[t.dataset.id]=t.value;render();}
   // Selects del form modal (depósito, honorarios, período, estado)
@@ -2343,7 +2343,9 @@ document.addEventListener("click",e=>{
   else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="busqEscape"){S.busqGlobal="";render();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
-else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
+else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
+  else if(action==="emitirPDFInqPago"){if(S.ultimoPago)generarPDFInquilino(S.ultimoPago);}
+  else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
   else if(action==="ajustePropBorrar"){if(!confirm("¿Borrar este ajuste?"))return;borrarAjusteProp(t.dataset.id,S.propietarioActivo);}
   else if(action==="hpropAgregar"){agregarHistorialProp(t.dataset.pid);}
   else if(action==="hpropEliminar"){eliminarHistorialProp(id,t.dataset.pid);}
@@ -2441,7 +2443,7 @@ function go(s){window.go(s);}
 function setFiltro(k,v){S.filtros[k]=v;renderParcial();}
 function setLiqMes(v){S.liqMes=v;render();}
 function openModal(t){S.modal=t;S.form={comisionAgencia:5,estado:"activo",tipo:"Casa",frecActualizacion:6,indiceActualizacion:"IPC",depCuotas:1,honMonto:"medio",honCuotas:1};S.formExtras=[];render();}
-window.closeModal=function(){S.modal=null;S.contratoActivo=null;render();};
+window.closeModal=function(){S.modal=null;S.contratoActivo=null;S.ultimoPago=null;render();};
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
 
@@ -2648,9 +2650,8 @@ async function registrarPago(){
       S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
     }
     toast("Pago registrado ✓");
-    S.modal=null;S.contratoActivo=null;render();
-    setTimeout(()=>{if(confirm("¿Emitir comprobante para el INQUILINO?"))generarPDFInquilino({...data,_id:id});},400);
-    setTimeout(()=>{if(confirm("¿Emitir liquidación para el PROPIETARIO?"))generarPDFPropietario({...data,_id:id});},900);
+    S.ultimoPago={...data,_id:id};
+    renderParcial();
   }
 }
 
@@ -3519,6 +3520,22 @@ async function generarLiquidacionProp(nombre){
 
 function renderModalDetalle(){
   const c=S.contratoActivo;if(!c)return"";
+  if(S.ultimoPago&&S.ultimoPago.contratoId===c._id){
+    const p=S.ultimoPago;
+    return '<div class="overlay"><div class="modal" style="max-width:520px">'
+      +'<button class="mclose" data-action="cerrarModalPago">✕</button>'
+      +'<div style="text-align:center;padding:32px 24px 16px">'
+      +'<div style="font-size:40px;margin-bottom:12px">✅</div>'
+      +'<div style="font-size:18px;font-weight:700;color:#5ddb8a;margin-bottom:8px">Pago registrado</div>'
+      +'<div style="font-size:13px;color:var(--gris3)">'+p.inquilino+' — '+mesNombre(p.mes)+'</div>'
+      +'<div style="font-size:22px;font-weight:700;margin-top:8px">'+moneda(p.totalInquilino||p.alquiler||0)+'</div>'
+      +'</div>'
+      +'<div class="fa" style="justify-content:center;gap:12px;padding-bottom:24px">'
+      +'<button class="btn" style="background:rgba(75,200,232,.12);color:var(--celeste);border-color:rgba(75,200,232,.3)" data-action="emitirPDFInqPago">📄 PDF Inquilino</button>'
+      +'<button class="btn" data-action="cerrarModalPago">Cerrar</button>'
+      +'</div>'
+      +'</div></div>';
+  }
   const f=S.form;
   const alq=+(f.alquiler||c.alquilerBase||0);
   const extras=(c.extras||[]);
@@ -3656,7 +3673,7 @@ function renderModalDetalle(){
       <tbody>${pagosHtml}</tbody></table></div>
     </div>`:""}
     ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}<div class="fa">
-      <button class="btn" data-action="closeModal">Cancelar</button>
+      <button class="btn" data-action="closeModal">Cerrar</button>
       <button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button><button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>
     </div>
   </div></div>`;
@@ -3891,13 +3908,19 @@ function renderParcial(){
   const faction=ae&&ae.dataset&&ae.dataset.action?ae.dataset.action:null;
   const fstart=ae&&ae.tagName==="INPUT"?ae.selectionStart:null;
   const fend=ae&&ae.tagName==="INPUT"?ae.selectionEnd:null;
+  const modalEl=document.querySelector('.modal');
+  const modalScroll=modalEl?modalEl.scrollTop:0;
   render();
-  if(fid||faction){
-    setTimeout(()=>{
+  setTimeout(()=>{
+    if(fid||faction){
       const el=fid?document.getElementById(fid):document.querySelector('[data-action="'+faction+'"]');
       if(el){el.focus();try{if(fstart!==null)el.setSelectionRange(fstart,fend);}catch(e){}}
-    },0);
-  }
+    }
+    if(modalScroll){
+      const newModal=document.querySelector('.modal');
+      if(newModal)newModal.scrollTop=modalScroll;
+    }
+  },0);
 }
 function render(){
   if(!S.usuario){renderLogin();return;}
