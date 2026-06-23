@@ -1691,7 +1691,7 @@ window.migrarPropiedadIdEnContratos=migrarPropiedadIdEnContratos;
 function calcularPendientesMigracion(){
   return S.contratos.filter(c=>!c.direccion&&!c._eliminado).reduce(function(acc,c){
     const props=(S.propiedades||[]).filter(p=>p.propietarioNombre===c.propietarioNombre&&!p._eliminado);
-    if(props.length>=2)acc.push({propietario:c.propietarioNombre,contratoId:c._id,inquilino:c.inquilino,inicio:c.inicio,monto:c.alquilerBase,propiedades:props.map(p=>({id:p._id,direccion:p.direccion}))});
+    if(props.length>=2)acc.push({propietario:c.propietarioNombre,contratoId:c._id,inquilino:c.inquilino,inicio:c.inicio,monto:c.alquilerBase,estado:c.estado||"activo",propiedades:props.map(p=>({id:p._id,direccion:p.direccion}))});
     return acc;
   },[]);
 }
@@ -3108,7 +3108,7 @@ function renderPropietarios(){
     </tr>`;
   }).join("");
 
-  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><div style="display:flex;gap:6px">${calcularPendientesMigracion().length?'<button class="btn sm" style="background:rgba(231,174,60,.15);color:var(--naranja)" data-action="abrirMigracion">⚠️ '+calcularPendientesMigracion().length+' prop. sin asignar</button>':''}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div></div>
+  return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><p style="font-size:11px;color:var(--gris3);margin:0">Clic en un propietario para ver su ficha y generar liquidaciones</p><div style="display:flex;gap:6px">${(()=>{const _mig=calcularPendientesMigracion();const _act=_mig.filter(r=>r.estado==="activo").length;const _tot=_mig.length;return _tot?'<button class="btn sm" style="background:rgba(231,174,60,.15);color:var(--naranja)" data-action="abrirMigracion">⚠️ '+_act+' activos sin asignar'+(_tot>_act?' ('+(_tot-_act)+' finaliz.)':'')+' </button>':''})()}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="openPropietario">+ Nuevo propietario</button></div></div>
   <div class="tw"><table><thead><tr><th>Propietario</th><th>Propiedades</th><th>Estado cobro</th><th></th></tr></thead>
   <tbody>${rows||`<tr><td colspan=4><div class="empty">Sin propietarios</div></td></tr>`}</tbody></table></div>`;
 }
@@ -3547,12 +3547,18 @@ function renderModalMigracion(){
   const confirmados=calcularConfirmadosMigracion();
   const TH='<thead><tr><th>Propietario</th><th>Inquilino</th><th>Inicio</th><th>Monto</th><th style="min-width:220px">Propiedad</th><th></th></tr></thead>';
   const WRAP='overflow-x:auto;border:1px solid var(--negro4);border-radius:10px;margin-bottom:14px';
+  pendientes.sort(function(a,b){const aF=a.estado==="activo"?0:1;const bF=b.estado==="activo"?0:1;return aF-bF;});
   const rowsPend=pendientes.map(function(r){
+    const esActivo=r.estado==="activo";
+    const badge=esActivo
+      ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle">ACTIVO</span>'
+      :'<span style="background:rgba(255,80,80,.12);color:#f87171;font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle">FINALIZADO</span>';
+    const rowBg=esActivo?'':'background:rgba(255,80,80,.03)';
     const sel=S.migSeleccion[r.contratoId]||"";
     const opts=r.propiedades.map(p=>'<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+p.direccion+'</option>').join('');
-    return '<tr>'
+    return '<tr style="'+rowBg+'">'
       +'<td style="font-size:12px">'+r.propietario+'</td>'
-      +'<td style="font-size:12px">'+(r.inquilino||'—')+'</td>'
+      +'<td style="font-size:12px">'+(r.inquilino||'—')+badge+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+(r.inicio||'—')+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+moneda(r.monto||0)+'</td>'
       +'<td><select data-action="migSelProp" data-id="'+r.contratoId+'" style="width:100%;font-size:11px;padding:3px 6px;background:var(--negro3);color:var(--blanco);border:1px solid var(--negro4);border-radius:4px"><option value="">— elegí propiedad —</option>'+opts+'</select></td>'
