@@ -1430,7 +1430,11 @@ async function confirmarRenovacion(){
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
-  const deposito=calcularDeposito(alqBase,depCuotas);
+  const depViejoTotal=(c.deposito&&c.deposito.total)?c.deposito.total:(c.alquilerBase||0);
+  const difDep=Math.max(0,alqBase-depViejoTotal);
+  const deposito=difDep>0
+    ?calcularDepositoActualizacionIPC(alqBase,difDep,depCuotas)
+    :{...calcularDeposito(alqBase,1),pendiente:0,completo:true};
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
 
   const upd={
