@@ -105,6 +105,7 @@ async function cargarTodo(){
       const snap=await getDocs(collection(db,col));
       S[col]=snap.docs.map(d=>({...d.data(),_id:d.id}));
     }
+    S.pagos=S.pagos.filter(p=>!p._eliminado);
     S.propiedadesInmuebles=S.propiedades.filter(p=>!p._eliminado);
     const meses=[...new Set(S.pagos.map(p=>p.mes))].sort().reverse();
     S.liqMes=meses[0]||mesActual();
