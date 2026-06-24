@@ -3667,17 +3667,19 @@ function renderModalDetalle(){
         <div style="display:flex;flex-direction:column;gap:6px">
           ${S.itemsCobro.map((it,i)=>{
             if(it.tipo==="deposito"){
+              const depObj=(S.contratoActivo||{}).deposito||{};
+              const depCuotasPag=depObj.cuotasPagadas!==undefined?depObj.cuotasPagadas:(depObj.pagadas||0);
               const cuotasSel=S.depCuotasCobro||1;
               const opt1=cuotasSel===1?" selected":"";
               const opt2=cuotasSel===2?" selected":"";
               const depMontoStr=moneda(it.monto||0);
+              const selectorHtml=depCuotasPag===0
+                ?'<select class="inp" data-action="setDepCuotasCobro" style="font-size:10px;padding:2px 4px;width:90px"><option value="1"'+opt1+'>1 cuota</option><option value="2"'+opt2+'>2 cuotas</option></select>'
+                :'';
               return '<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:rgba(39,174,96,.08);border-radius:6px;padding:7px 10px">'
                 +'<span style="font-size:10px;font-weight:600;color:#5ddb8a;min-width:48px;text-transform:uppercase">DEP</span>'
                 +'<span style="flex:1;font-size:12px;color:var(--blanco)">'+it.desc+'</span>'
-                +'<select class="inp" data-action="setDepCuotasCobro" style="font-size:10px;padding:2px 4px;width:90px">'
-                +'<option value="1"'+opt1+'>1 cuota</option>'
-                +'<option value="2"'+opt2+'>2 cuotas</option>'
-                +'</select>'
+                +selectorHtml
                 +'<span style="width:90px;text-align:right;font-weight:600;font-size:12px;color:#5ddb8a">'+depMontoStr+'</span>'
                 +'<button class="btn sm" data-action="removeItem" data-id="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
                 +'</div>';
