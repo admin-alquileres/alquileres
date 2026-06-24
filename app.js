@@ -2511,12 +2511,20 @@ function abrirContrato(cid){
       monto:montoEstaCuota
     });
   }
-  // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo + depósito)
+  const hon=c.honorarios||{};
+  const itemsHonorarios=[];
+  if((hon.pendiente||0)>0){
+    const nHon=hon.cuotas||1;
+    const proximaCuotaHon=(hon.pagadas||0)+1;
+    const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.total||hon.pendiente)/nHon));
+    itemsHonorarios.push({tipo:"honorario",desc:"Honorarios cuota "+proximaCuotaHon+"/"+nHon,monto:montoEstaCuotaHon});
+  }
+  // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo + depósito + honorarios)
   cargarGastosPendientes(cid).then(()=>{
     const itemsPend=(S_GPEND[cid]&&S_GPEND[cid].por_mes&&S_GPEND[cid].por_mes[mesACobrar])||[];
     const pend=itemsPend.length>0
       ? itemsPend
-      : [...itemsFijos,...itemsDeposito,...itemsSaldo];
+      : [...itemsFijos,...itemsDeposito,...itemsHonorarios,...itemsSaldo];
     S.itemsCobro=pend;
     render();
   });
@@ -2674,6 +2682,16 @@ async function registrarPago(){
       };
       await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
       S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
+    }
+    const itemHon=items.find(it=>it.tipo==="honorario");
+    if(itemHon){
+      const honActual=c.honorarios||{};
+      const montoHonPagado=+(itemHon.monto||0);
+      const honNuevoPendiente=Math.max(0,(honActual.pendiente||0)-montoHonPagado);
+      const honNuevoPagado=(honActual.pagado||0)+montoHonPagado;
+      const nuevoHon={...honActual,pagado:honNuevoPagado,pendiente:honNuevoPendiente,completo:honNuevoPendiente===0,pagadas:(honActual.pagadas||0)+1};
+      await fbUpd("contratos",c._id,{honorarios:nuevoHon});
+      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,honorarios:nuevoHon}:x);
     }
     toast("Pago registrado ✓");
     S.ultimoPago={...data,_id:id};
@@ -3663,8 +3681,8 @@ function renderModalDetalle(){
                 +'<button class="btn sm" data-action="removeItem" data-id="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
                 +'</div>';
             }
-            const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)",gestion:"rgba(160,120,220,.08)"};
-            const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo",gestion:"Gestión"};
+            const colors={fijo:"rgba(75,200,232,.08)",variable:"rgba(245,166,35,.08)",saldo:"rgba(231,76,60,.08)",gestion:"rgba(160,120,220,.08)",honorario:"rgba(39,174,96,.08)"};
+            const labels={fijo:"Fijo",variable:"Variable",saldo:"Saldo",gestion:"Gestión",honorario:"Honor."};
             return `<div class="item-cobro-row" style="display:flex;align-items:center;gap:8px;background:${colors[it.tipo]||colors.variable};border-radius:6px;padding:7px 10px">
               <span style="font-size:10px;font-weight:600;color:var(--gris3);min-width:48px;text-transform:uppercase">${labels[it.tipo]||it.tipo}</span>
               <input class="item-desc inp" value="${it.desc||""}" placeholder="Descripción" style="flex:1">
