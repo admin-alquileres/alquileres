@@ -2272,9 +2272,12 @@ document.addEventListener("change",e=>{
       // Si cambió el período y hay contrato activo, recalcular gastos que corresponden
       if(k==="mes"&&S.contratoActivo){
         const c=S.contratoActivo;
-        const gastosFrec=gastosQueCorresponden(c,t.value);
-        if(gastosFrec.length>0){
-          // Mantener items manuales (variables/saldo) pero actualizar los fijos
+        const newMes=t.value;
+        const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
+        if(guardados.length>0){
+          S.itemsCobro=guardados;
+        } else {
+          const gastosFrec=gastosQueCorresponden(c,newMes);
           const itemsManuales=S.itemsCobro.filter(it=>it.tipo!=="fijo");
           const itemsFijosNuevos=gastosFrec.map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
           S.itemsCobro=[...itemsFijosNuevos,...itemsManuales];
@@ -2375,7 +2378,7 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
   else if(action==="addItem"){addItemCobro(t.dataset.tipo);}else if(action==="addMora"){agregarMora();}
   else if(action==="agregarNotaTempBtn"){agregarNotaTemp(t.dataset.tipo,t.dataset.id);}
-  else if(action==="borrarNotaTemp"){borrarNotaTemp(t.dataset.tipo,t.dataset.id,t.dataset.notaid);}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="guardarSaldoInit"){const nombre=t.dataset.nombre;const inp=document.getElementById("saldo-init-"+nombre);if(!inp)return;const monto=+(inp.value||0);guardarSaldoProp(nombre,monto).then(()=>toast("Saldo de "+nombre+" guardado ✓"));}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
+  else if(action==="borrarNotaTemp"){borrarNotaTemp(t.dataset.tipo,t.dataset.id,t.dataset.notaid);}else if(action==="abrirFeriados"){abrirModalFeriados();}else if(action==="guardarSaldoInit"){const nombre=t.dataset.nombre;const inp=document.getElementById("saldo-init-"+nombre);if(!inp)return;const monto=+(inp.value||0);guardarSaldoProp(nombre,monto).then(()=>toast("Saldo de "+nombre+" guardado ✓"));}else if(action==="agregarFeriado"){const inp=document.getElementById("nuevo-feriado");if(!inp||!inp.value){toast("Elegí una fecha",false);return;}const lista=cargarFeriados();if(!lista.includes(inp.value))lista.push(inp.value);guardarFeriados(lista);render();toast("Feriado agregado");}else if(action==="borrarFeriado"){const lista=cargarFeriados().filter(f=>f!==t.dataset.fecha);guardarFeriados(lista);render();}else if(action==="guardarGastosPend"){syncItemsFromDOM();guardarGastosPendientes(S.contratoActivo&&S.contratoActivo._id,S.form&&S.form.mes,S.itemsCobro);}else if(action==="removeItem"){removeItemCobro(+id);}else if(action==="abrirInquilino"){const nombre=t.dataset.nombre;const todos2={};S.contratos.forEach(c=>{if(!c.inquilino)return;if(!todos2[c.inquilino])todos2[c.inquilino]={nombre:c.inquilino,dni:c.dni||"",telefono:c.telefono||"",email:c.email||"",contratos:[]};todos2[c.inquilino].contratos.push(c);});S.inquilinos.forEach(i2=>{if(!todos2[i2.nombre])todos2[i2.nombre]={...i2,contratos:[]};else todos2[i2.nombre]={...todos2[i2.nombre],...i2};});S.inquilinoActivo=todos2[nombre]||{nombre,contratos:[]};render();}
   else if(action==="removeExtra")removeExtra(+id);
   else if(action==="addExtra")addExtra();
   else if(action==="closeModal")closeModal();
@@ -2510,8 +2513,9 @@ function abrirContrato(cid){
   }
   // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo + depósito)
   cargarGastosPendientes(cid).then(()=>{
-    const pend=S_GPEND[cid]&&S_GPEND[cid].items&&S_GPEND[cid].items.length>0
-      ? S_GPEND[cid].items
+    const itemsPend=(S_GPEND[cid]&&S_GPEND[cid].por_mes&&S_GPEND[cid].por_mes[mesACobrar])||[];
+    const pend=itemsPend.length>0
+      ? itemsPend
       : [...itemsFijos,...itemsDeposito,...itemsSaldo];
     S.itemsCobro=pend;
     render();
@@ -2528,27 +2532,38 @@ async function cargarGastosPendientes(cid){
   try{
     const snap=await getDocs(query(collection(db,"gastos_pendientes"),where("contratoId","==",cid)));
     const docs=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    S_GPEND[cid]={items:(docs[0]&&docs[0].items)||[],_docId:(docs[0]&&docs[0]._id)||null};
+    S_GPEND[cid]={por_mes:(docs[0]&&docs[0].por_mes)||{},_docId:(docs[0]&&docs[0]._id)||null};
   }catch(e){
     try{
       const snap2=await getDocs(collection(db,"gastos_pendientes"));
       const docs2=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>d.contratoId===cid);
-      S_GPEND[cid]={items:(docs2[0]&&docs2[0].items)||[],_docId:(docs2[0]&&docs2[0]._id)||null};
-    }catch(e2){ S_GPEND[cid]={items:[],_docId:null}; }
+      S_GPEND[cid]={por_mes:(docs2[0]&&docs2[0].por_mes)||{},_docId:(docs2[0]&&docs2[0]._id)||null};
+    }catch(e2){ S_GPEND[cid]={por_mes:{},_docId:null}; }
   }
   S_GPEND_CARGANDO[cid]=false;
 }
-async function guardarGastosPendientes(cid, items){
-  if(!cid) return;
+async function guardarGastosPendientes(cid, mes, items){
+  if(!cid||!mes) return;
   const limpio=(items||[]).filter(it=>(it.desc||"").trim()||+(it.monto||0)!==0);
-  if(S_GPEND[cid]&&S_GPEND[cid]._docId){
-    await fbUpd("gastos_pendientes",S_GPEND[cid]._docId,{contratoId:cid,items:limpio});
+  if(!S_GPEND[cid]) S_GPEND[cid]={por_mes:{},_docId:null};
+  const por_mes={...S_GPEND[cid].por_mes};
+  if(limpio.length) por_mes[mes]=limpio; else delete por_mes[mes];
+  if(S_GPEND[cid]._docId){
+    await fbUpd("gastos_pendientes",S_GPEND[cid]._docId,{contratoId:cid,por_mes});
   } else {
-    const docId=await fbAdd("gastos_pendientes",{contratoId:cid,items:limpio});
-    if(!S_GPEND[cid]) S_GPEND[cid]={items:[],_docId:null};
+    const docId=await fbAdd("gastos_pendientes",{contratoId:cid,por_mes});
     S_GPEND[cid]._docId=docId;
   }
-  S_GPEND[cid].items=limpio;
+  S_GPEND[cid].por_mes=por_mes;
+}
+async function limpiarGastosPendientes(cid, mes){
+  if(!cid||!mes||!S_GPEND[cid]) return;
+  const por_mes={...S_GPEND[cid].por_mes};
+  delete por_mes[mes];
+  S_GPEND[cid].por_mes=por_mes;
+  if(S_GPEND[cid]._docId){
+    await fbUpd("gastos_pendientes",S_GPEND[cid]._docId,{contratoId:cid,por_mes});
+  }
 }
 
 // ── SALDO DE PROPIETARIO ENTRE LIQUIDACIONES ────────────────────────────────
@@ -2641,7 +2656,7 @@ async function registrarPago(){
   if(id){
     S.pagos.unshift({...data,_id:id});
     // Limpiar gastos pendientes después de registrar el pago
-    if(c._id) limpiarGastosPendientes(c._id);
+    if(c._id) limpiarGastosPendientes(c._id, f.mes);
     // Si el cobrador dejó el item de depósito en el cobro, avanzar la cuota en el contrato.
     // Si lo borró a mano (decidió no cobrarla este mes), no se toca el contrato.
     const itemDep=items.find(it=>it.tipo==="deposito");
