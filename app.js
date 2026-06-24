@@ -2470,9 +2470,8 @@ function abrirContrato(cid){
   S.itemsCobro=[];  // limpiar mientras carga
   // Gastos que corresponden este mes según frecuencia configurada
   const mesACobrar=S.form.mes||mesActual();
-  const itemsFijos=(c.extras||[])
-    .filter(e=>gastoCorrespondeEnMes(e,mesACobrar))
-    .map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
+    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
   // Calcular saldo del mes anterior automáticamente
   const mesPrev=mesPrevio(mesActual());
   const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
