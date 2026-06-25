@@ -2276,14 +2276,7 @@ document.addEventListener("change",e=>{
         const c=S.contratoActivo;
         const newMes=t.value;
         const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
-        if(guardados.length>0){
-          S.itemsCobro=guardados;
-        } else {
-          const gastosFrec=gastosQueCorresponden(c,newMes);
-          const itemsManuales=S.itemsCobro.filter(it=>it.tipo!=="fijo");
-          const itemsFijosNuevos=gastosFrec.map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
-          S.itemsCobro=[...itemsFijosNuevos,...itemsManuales];
-        }
+        S.itemsCobro=guardados.length>0?guardados:calcularItemsParaMes(c,newMes);
       }
       render();
     }
@@ -2456,6 +2449,50 @@ window.closeModal=function(){S.modal=null;S.contratoActivo=null;S.ultimoPago=nul
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
 
+function calcularItemsParaMes(c,mesACobrar){
+  const cid=c._id;
+  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
+    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
+  const mesPrev=mesPrevio(mesACobrar);
+  const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
+    .sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
+  const itemsSaldo=[];
+  if(pagoPrev){
+    const totalCobrado=pagoPrev.totalInquilino||pagoPrev.total||pagoPrev.monto||0;
+    const totalEsperado=pagoPrev.alquiler||0;
+    const itemsPrev=pagoPrev.itemsCobro||(pagoPrev.extras||[]).map(e=>({monto:+(e.monto||0)}));
+    const totalEsperadoConItems=totalEsperado+itemsPrev.reduce((s,it)=>s+(it.monto||0),0);
+    const diferencia=totalCobrado-totalEsperadoConItems;
+    if(Math.abs(diferencia)>1){
+      const signo=diferencia>0?"a favor del inquilino":"a favor de la agencia";
+      itemsSaldo.push({
+        tipo:"saldo",
+        desc:"Saldo "+mesNombre(mesPrev)+" ("+signo+")",
+        monto:diferencia>0?-diferencia:Math.abs(diferencia)*-1
+      });
+    }
+  }
+  const dep=c.deposito||{};
+  const depPend=dep.pendiente||0;
+  const itemsDeposito=[];
+  if(depPend>0){
+    const n=dep.cuotasTotales||dep.cuotas||1;
+    const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
+    const proximaCuota=yaPagadas+1;
+    const montoEstaCuota=Math.min(depPend,dep.montoCuota||depPend);
+    itemsDeposito.push({tipo:"deposito",desc:"Depósito cuota "+proximaCuota+"/"+n,monto:montoEstaCuota});
+  }
+  const hon=c.honorarios||{};
+  const itemsHonorarios=[];
+  if((hon.pendiente||0)>0){
+    const nHon=hon.cuotas||1;
+    const proximaCuotaHon=(hon.pagadas||0)+1;
+    const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.total||hon.pendiente)/nHon));
+    itemsHonorarios.push({tipo:"honorario",desc:"Honorarios cuota "+proximaCuotaHon+"/"+nHon,monto:montoEstaCuotaHon});
+  }
+  return [...itemsFijos,...itemsDeposito,...itemsHonorarios,...itemsSaldo];
+}
+
 function abrirContrato(cid){
   S.contratoActivo=S.contratos.find(x=>x._id===cid);
   if(!S.contratoActivo)return;
@@ -2475,59 +2512,10 @@ function abrirContrato(cid){
   S.itemsCobro=[];  // limpiar mientras carga
   // Gastos que corresponden este mes según frecuencia configurada
   const mesACobrar=S.form.mes||mesActual();
-  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
-    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
-  // Calcular saldo del mes anterior automáticamente
-  const mesPrev=mesPrevio(mesActual());
-  const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
-    .sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
-  const itemsSaldo=[];
-  if(pagoPrev){
-    const totalCobrado=pagoPrev.totalInquilino||pagoPrev.total||pagoPrev.monto||0;
-    const totalEsperado=pagoPrev.alquiler||0;
-    const itemsPrev=pagoPrev.itemsCobro||(pagoPrev.extras||[]).map(e=>({monto:+(e.monto||0)}));
-    const totalEsperadoConItems=totalEsperado+itemsPrev.reduce((s,it)=>s+(it.monto||0),0);
-    const diferencia=totalCobrado-totalEsperadoConItems;
-    if(Math.abs(diferencia)>1){
-      const signo=diferencia>0?"a favor del inquilino":"a favor de la agencia";
-      itemsSaldo.push({
-        tipo:"saldo",
-        desc:"Saldo "+mesNombre(mesPrev)+" ("+signo+")",
-        monto:diferencia>0?-diferencia:Math.abs(diferencia)*-1
-      });
-    }
-  }
-  // Cuota de depósito pendiente: se suma como item más del cobro del mes,
-  // sin importar si el origen fue el alta del contrato o una actualización por IPC.
-  const dep=c.deposito||{};
-  const depPend=dep.pendiente||0;
-  const itemsDeposito=[];
-  if(depPend>0){
-    const n=dep.cuotasTotales||dep.cuotas||1;
-    const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
-    const proximaCuota=yaPagadas+1;
-    const montoEstaCuota=Math.min(depPend,dep.montoCuota||depPend);
-    itemsDeposito.push({
-      tipo:"deposito",
-      desc:`Depósito cuota ${proximaCuota}/${n}`,
-      monto:montoEstaCuota
-    });
-  }
-  const hon=c.honorarios||{};
-  const itemsHonorarios=[];
-  if((hon.pendiente||0)>0){
-    const nHon=hon.cuotas||1;
-    const proximaCuotaHon=(hon.pagadas||0)+1;
-    const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.total||hon.pendiente)/nHon));
-    itemsHonorarios.push({tipo:"honorario",desc:"Honorarios cuota "+proximaCuotaHon+"/"+nHon,monto:montoEstaCuotaHon});
-  }
-  // Cargar gastos pendientes (sobrescriben si existen, sino usar fijos + saldo + depósito + honorarios)
+  // Cargar gastos pendientes (sobrescriben si existen, sino calcular para este mes)
   cargarGastosPendientes(cid).then(()=>{
     const itemsPend=(S_GPEND[cid]&&S_GPEND[cid].por_mes&&S_GPEND[cid].por_mes[mesACobrar])||[];
-    const pend=itemsPend.length>0
-      ? itemsPend
-      : [...itemsFijos,...itemsDeposito,...itemsHonorarios,...itemsSaldo];
-    S.itemsCobro=pend;
+    S.itemsCobro=itemsPend.length>0?itemsPend:calcularItemsParaMes(c,mesACobrar);
     render();
   });
 }
