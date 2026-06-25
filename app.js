@@ -2229,7 +2229,7 @@ document.addEventListener("input",e=>{
         const c=S.contratoActivo;
         const newMes=t.value;
         const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
-        S.itemsCobro=guardados.length>0?guardados:calcularItemsParaMes(c,newMes);
+        S.itemsCobro=itemsParaMesConGuardados(c,newMes,guardados);
         render();
       }
     }
@@ -2288,7 +2288,7 @@ document.addEventListener("change",e=>{
         const c=S.contratoActivo;
         const newMes=t.value;
         const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
-        S.itemsCobro=guardados.length>0?guardados:calcularItemsParaMes(c,newMes);
+        S.itemsCobro=itemsParaMesConGuardados(c,newMes,guardados);
       }
       render();
     }
@@ -2461,10 +2461,8 @@ window.closeModal=function(){S.modal=null;S.contratoActivo=null;S.ultimoPago=nul
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
 
-function calcularItemsParaMes(c,mesACobrar){
+function itemsAutomaticosParaMes(c,mesACobrar){
   const cid=c._id;
-  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
-    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
   const mesPrev=mesPrevio(mesACobrar);
   const pagoPrev=S.pagos.filter(p=>p.contratoId===cid&&p.mes===mesPrev&&!p._eliminado)
     .sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
@@ -2502,7 +2500,20 @@ function calcularItemsParaMes(c,mesACobrar){
     const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.total||hon.pendiente)/nHon));
     itemsHonorarios.push({tipo:"honorario",desc:"Honorarios cuota "+proximaCuotaHon+"/"+nHon,monto:montoEstaCuotaHon});
   }
-  return [...itemsFijos,...itemsDeposito,...itemsHonorarios,...itemsSaldo];
+  return [...itemsDeposito,...itemsHonorarios,...itemsSaldo];
+}
+
+function calcularItemsParaMes(c,mesACobrar){
+  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
+    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
+  return [...itemsFijos,...itemsAutomaticosParaMes(c,mesACobrar)];
+}
+
+function itemsParaMesConGuardados(c,mesACobrar,guardados){
+  if(!guardados||guardados.length===0) return calcularItemsParaMes(c,mesACobrar);
+  const automaticos=itemsAutomaticosParaMes(c,mesACobrar)
+    .filter(auto=>!guardados.some(g=>g.tipo===auto.tipo));
+  return [...guardados,...automaticos];
 }
 
 function abrirContrato(cid){
@@ -2527,7 +2538,7 @@ function abrirContrato(cid){
   // Cargar gastos pendientes (sobrescriben si existen, sino calcular para este mes)
   cargarGastosPendientes(cid).then(()=>{
     const itemsPend=(S_GPEND[cid]&&S_GPEND[cid].por_mes&&S_GPEND[cid].por_mes[mesACobrar])||[];
-    S.itemsCobro=itemsPend.length>0?itemsPend:calcularItemsParaMes(c,mesACobrar);
+    S.itemsCobro=itemsParaMesConGuardados(c,mesACobrar,itemsPend);
     render();
   });
 }
