@@ -2221,7 +2221,19 @@ document.addEventListener("input",e=>{
   // Alquiler cobro — actualizar resumen en tiempo real
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   // Campos de form modal
-  else if(action==="setForm"){const k=t.dataset.key;if(k)S.form[k]=t.value;}
+  else if(action==="setForm"){
+    const k=t.dataset.key;
+    if(k){
+      S.form[k]=t.value;
+      if(k==="mes"&&S.contratoActivo){
+        const c=S.contratoActivo;
+        const newMes=t.value;
+        const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
+        S.itemsCobro=guardados.length>0?guardados:calcularItemsParaMes(c,newMes);
+        render();
+      }
+    }
+  }
   // Extras del contrato
   else if(action==="matrizNombre"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].nombre=t.value;}}
   else if(action==="matrizMonto"){if(S.matrizTemp){const i=+t.dataset.idx;S.matrizTemp[i].monto=+(t.value||0);}}
