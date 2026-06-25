@@ -1354,9 +1354,10 @@ function renderModalRenovar(){
 function calcularDeposito(total, cuotasTotales){
   const n=Math.max(1,Math.min(3,+(cuotasTotales||1)));
   const montoCuota=Math.round(total/n);
-  // La primera cuota se considera pagada en el momento del alta/actualización.
-  const pagadoAcumulado=n===1?total:montoCuota;
-  const cuotasPagadas=1;
+  // 1 cuota: pago único al firmar, no pasa por cobros mensuales.
+  // 2+ cuotas: cada cuota se registra a través del flujo mensual (arranca en 0).
+  const cuotasPagadas=n===1?1:0;
+  const pagadoAcumulado=n===1?total:0;
   const pendiente=Math.max(0,total-pagadoAcumulado);
   return{
     total,
@@ -1436,7 +1437,7 @@ async function confirmarRenovacion(){
   const deposito=difDep>0
     ?calcularDepositoActualizacionIPC(alqBase,difDep,depCuotas)
     :{...calcularDeposito(alqBase,1),pendiente:0,completo:true};
-  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
+  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
 
   const upd={
     inicio:f.inicio,
@@ -2729,7 +2730,7 @@ async function guardarContrato(){
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
   const deposito=calcularDeposito(depTotal,depCuotas);
-  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:1,pagado:honCuotas===1?honTotal:Math.round(honTotal/2),pendiente:honCuotas===2?Math.round(honTotal/2):0,completo:honCuotas===1};
+  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios};
