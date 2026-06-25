@@ -3597,6 +3597,57 @@ function renderModalDetalle(){
     const btns=p.estado==="cobrado"?`<button class="btn sm" data-action="emitirINQ" data-id="${p._id}">📄 Inq</button>`:"";
     return `<tr><td>${mesNombre(p.mes)}</td><td>${moneda(p.alquiler||0)}</td><td>${badge(p.estado)}</td><td>${p.fechaCobro||"—"}</td><td style="display:flex;gap:4px">${btns}</td></tr>`;
   }).join("");
+  const pagoDelMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
+  const pagosDupMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).length;
+  let historicalViewHtml="";
+  if(pagoDelMes){
+    const ph=pagoDelMes;
+    const pItems=ph.itemsCobro||[];
+    const bColor={deposito:"#5ddb8a",honorario:"#5ddb8a",fijo:"var(--celeste)",variable:"var(--naranja)",saldo:"#ff7b6b",gestion:"#b48ef0"};
+    const bLabel={deposito:"DEP",honorario:"HON",fijo:"FIJO",variable:"VAR",saldo:"SALDO",gestion:"GEST"};
+    const alqP=ph.alquiler||0;
+    const totalInqP=ph.totalInquilino||ph.total||0;
+    const comP=ph.comision||Math.round(alqP*(ph.comisionAgencia||5)/100);
+    const netoPropP=ph.netoPropiertario||(alqP-comP);
+    const dupAlert=pagosDupMes>1?'<div style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--naranja)">⚠️ '+pagosDupMes+' pagos registrados para este mes — mostrando el más reciente</div>':'';
+    const alqRow='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--negro4)"><span style="font-size:12px;color:var(--gris3)">Alquiler</span><span style="font-size:12px;font-weight:600">'+moneda(alqP)+'</span></div>';
+    let itemRowsHtml="";
+    pItems.forEach(function(it){
+      const neg=(it.monto||0)<0;
+      const bc=bColor[it.tipo]||'var(--gris3)';
+      const bl=bLabel[it.tipo]||(it.tipo||"").toUpperCase().slice(0,4);
+      itemRowsHtml+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--negro4)">'
+        +'<span style="font-size:9px;font-weight:700;color:'+bc+';min-width:44px">'+bl+'</span>'
+        +'<span style="flex:1;font-size:12px;color:var(--gris3)">'+(it.desc||it.tipo||"")+'</span>'
+        +'<span style="font-size:12px;font-weight:600;color:'+(neg?"#ff7b6b":"var(--blanco)")+'">'+moneda(it.monto||0)+'</span>'
+        +'</div>';
+    });
+    historicalViewHtml='<div class="fsec"><div class="fsec-t">Pago del período</div>'
+      +'<div class="fg" style="margin-bottom:12px"><div><label class="fl">Período</label><input class="inp" style="width:100%" type="month" value="'+(f.mes||mesActual())+'" data-action="setForm" data-key="mes"></div></div>'
+      +dupAlert
+      +'<div style="background:rgba(39,174,96,.06);border:1px solid rgba(39,174,96,.2);border-radius:10px;padding:14px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+      +'<span style="font-size:20px">✅</span>'
+      +'<div><div style="font-weight:600;color:#5ddb8a;font-size:13px">Cobrado</div>'
+      +'<div style="font-size:11px;color:var(--gris3)">'+(ph.fechaCobro||"—")+(ph.comprobante?" · Cpto. #"+ph.comprobante:"")+'</div>'
+      +'</div></div>'
+      +alqRow
+      +itemRowsHtml
+      +'<div style="display:flex;justify-content:space-between;padding:8px 0 4px;margin-top:2px;border-top:1px solid var(--negro4)">'
+      +'<span style="font-size:13px;font-weight:700">Total inquilino</span>'
+      +'<span style="font-size:13px;font-weight:700">'+moneda(totalInqP)+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:2px 0;color:#ff7b6b">'
+      +'<span style="font-size:11px">Comisión ('+(ph.comisionAgencia||5)+'%)</span>'
+      +'<span style="font-size:11px">− '+moneda(comP)+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:2px 0">'
+      +'<span style="font-size:12px;font-weight:600;color:#5ddb8a">Neto propietario</span>'
+      +'<span style="font-size:12px;font-weight:600;color:#5ddb8a">'+moneda(netoPropP)+'</span></div>'
+      +'</div>'
+      +'<div class="fa" style="margin-top:12px;justify-content:flex-end">'
+      +'<button class="btn" style="background:rgba(75,200,232,.12);color:var(--celeste);border-color:rgba(75,200,232,.3)" data-action="emitirINQ" data-id="'+ph._id+'">📄 PDF Inquilino</button>'
+      +'</div>'
+      +'</div>';
+  }
   return `<div class="overlay"><div class="modal">
     <button class="mclose" data-action="closeModal">✕</button>
     <div class="mth"><div class="mth-ic">📋</div>${c.inquilino||""} — ${c.direccion||""}<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste);margin-left:auto;font-size:12px" data-action="matrizGastos" data-id="${c._id}">📊 Gastos fijos</button></div>
@@ -3646,7 +3697,8 @@ function renderModalDetalle(){
         return html;
       })()}
     </div>
-    <div class="fsec">
+    ${historicalViewHtml}
+    <div class="fsec" style="${pagoDelMes?'display:none':''}">
       <div class="fsec-t">Registrar pago del mes</div>
       <div class="fg">
         <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
@@ -3723,7 +3775,7 @@ function renderModalDetalle(){
     </div>`:""}
     ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}<div class="fa">
       <button class="btn" data-action="closeModal">Cerrar</button>
-      <button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button><button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>
+      <button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button>${pagoDelMes?'':'<button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>'}
     </div>
   </div></div>`;
 }
