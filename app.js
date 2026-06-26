@@ -2729,6 +2729,7 @@ async function actualizarAlquiler(cid){
 async function guardarContrato(){
   const f=S.form;
   if(!f.inquilino||!f.direccion||!f.inicio)return toast("Completá: Inquilino, Dirección e Inicio",false);
+  if(f.tieneDeposito!=="si"&&f.tieneDeposito!=="no")return toast("Elegí si el contrato lleva depósito de garantía o no",false);
   let propId="";
   if(f.propietarioNombre){
     let p=S.propietarios.find(x=>x.nombre===f.propietarioNombre);
@@ -2738,12 +2739,12 @@ async function guardarContrato(){
     propId=pr?._id||"";
   }
   const alqBase=+(f.alquilerBase||0);
-  const depTotal=alqBase;
-  const depCuotas=+(f.depCuotas||1);
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
-  const deposito=calcularDeposito(depTotal,depCuotas);
+  const deposito=f.tieneDeposito==="si"
+    ?calcularDeposito(alqBase,+(f.depCuotas||1))
+    :{total:0,cuotasTotales:1,cuotasPagadas:1,montoCuota:0,pagadoAcumulado:0,pendiente:0,completo:true,cuotas:1,pagadas:1,pagado:0};
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
@@ -3916,13 +3917,22 @@ function renderModal(){
     </div></div>
     <div class="fsec"><div class="fsec-t">Depósito y honorarios</div>
       <div class="fg">
-        <div><label class="fl">Depósito (= 1 mes alquiler)</label>
-          <select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">
-            <option value="1"${(f.depCuotas||1)==1?" selected":""}>1 cuota (pago completo al ingreso)</option>
-            <option value="2"${+(f.depCuotas||1)==2?" selected":""}>2 cuotas</option>
-            <option value="3"${+(f.depCuotas||1)==3?" selected":""}>3 cuotas</option>
+        <div><label class="fl">¿Lleva depósito de garantía? *</label>
+          <select class="inp" style="width:100%;${f.tieneDeposito?'':'border-color:var(--naranja)'}" data-action="setForm" data-key="tieneDeposito">
+            <option value=""${!f.tieneDeposito?" selected":""}>-- Elegir --</option>
+            <option value="si"${f.tieneDeposito==="si"?" selected":""}>Sí</option>
+            <option value="no"${f.tieneDeposito==="no"?" selected":""}>No</option>
           </select>
+          ${!f.tieneDeposito?'<div style="font-size:10px;color:var(--naranja);margin-top:3px">Obligatorio para guardar el contrato</div>':''}
         </div>
+        ${f.tieneDeposito==="si"
+          ?('<div><label class="fl">Depósito (= 1 mes alquiler)</label>'
+            +'<select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">'
+            +'<option value="1"'+(+(f.depCuotas||1)===1?' selected':'')+'>1 cuota (pago completo al ingreso)</option>'
+            +'<option value="2"'+(+(f.depCuotas||1)===2?' selected':'')+'>2 cuotas</option>'
+            +'<option value="3"'+(+(f.depCuotas||1)===3?' selected':'')+'>3 cuotas</option>'
+            +'</select></div>')
+          :''}
         <div><label class="fl">Honorarios inmobiliaria</label>
           <select class="inp" style="width:100%" data-action="setForm" data-key="honMonto">
             <option value="medio"${(f.honMonto||"medio")==="medio"?" selected":""}>Medio mes (habitual)</option>
