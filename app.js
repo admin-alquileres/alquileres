@@ -3364,10 +3364,10 @@ function renderInquilinos(){
         <div class="fg">
           <div style="background:${depComp?"rgba(39,174,96,.08)":depPend>0?"rgba(231,76,60,.08)":"var(--negro3)"};border:1px solid ${depComp?"rgba(39,174,96,.25)":depPend>0?"rgba(231,76,60,.25)":"var(--negro4)"};border-radius:8px;padding:10px">
             <div style="font-size:10px;color:var(--gris3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Depósito garantía</div>
-            <div style="font-size:13px;font-weight:600">${moneda(dep.total||c.alquilerBase)}</div>
+            ${dep.total?`<div style="font-size:13px;font-weight:600">${moneda(dep.total)}</div>
             <div style="font-size:11px;margin-top:3px;color:${depComp?"#5ddb8a":depPend>0?"#ff7b6b":"var(--gris3)"}">
               ${depComp?"✓ Completo":depPend>0?`⚠️ Falta ${moneda(depPend)}`:`Pagado: ${moneda(dep.pagado||0)}`}
-            </div>
+            </div>`:`<div style="font-size:13px;font-weight:600;color:var(--gris4)">Sin depósito</div>`}
             ${depPend>0?`<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Cobrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1}</button>`:""}
           </div>
           <div style="background:${honComp?"rgba(39,174,96,.08)":honPend>0?"rgba(231,76,60,.08)":"var(--negro3)"};border:1px solid ${honComp?"rgba(39,174,96,.25)":honPend>0?"rgba(231,76,60,.25)":"var(--negro4)"};border-radius:8px;padding:10px">
@@ -3971,7 +3971,6 @@ function renderModalDetalle(){
         const dep=c.deposito||{};
         const hon=c.honorarios||{};
         const alq=c.alquilerBase||0;
-        const depTotal=dep.total||alq;
         const depPag=dep.pagado||0;
         const depPend=dep.pendiente||0;
         const depComp=dep.completo||false;
@@ -3982,10 +3981,10 @@ function renderModalDetalle(){
         let html='<div class="fg">';
         html+=`<div class="fc" style="border-left:3px solid ${depComp?"var(--verde)":depPend>0?"var(--rojo)":"var(--gris4)"}">
           <div class="fc-l">Depósito garantía</div>
-          <div class="fc-v">${moneda(depTotal)} total &nbsp;·&nbsp; Pagado: ${moneda(depPag)}</div>
+          <div class="fc-v">${dep.total?moneda(dep.total)+" total &nbsp;·&nbsp; Pagado: "+moneda(depPag):"Sin depósito de garantía"}</div>
           ${depPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1} pendiente: ${moneda(Math.min(depPend,dep.montoCuota||depPend))}</div>
           <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Registrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de depósito</button>`:""}
-          ${depComp?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Depósito completo</div>`:""}
+          ${depComp&&dep.total?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Depósito completo</div>`:""}
         </div>`;
         html+=`<div class="fc" style="border-left:3px solid ${honComp?"var(--verde)":honPend>0?"var(--rojo)":"var(--gris4)"}">
           <div class="fc-l">Honorarios inmobiliaria</div>
