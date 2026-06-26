@@ -1754,7 +1754,7 @@ function propiedadLibre(pid){
   const nProp=normStr(prop.propietarioNombre);
   return !S.contratos.some(c=>
     (c.propiedadId===pid ||
-     (!c.propiedadId && normDireccion(c.direccion)===nDir && (normStr(c.propietarioNombre)===nProp||nProp===""))) &&
+     (normDireccion(c.direccion)===nDir && (normStr(c.propietarioNombre)===nProp||nProp===""))) &&
     (c.estado==="activo"||!c.estado) &&
     !c._eliminado
   );
@@ -3280,7 +3280,7 @@ function renderFichaPropietario(nombre, prop){
     const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     if(!S_HIST[pid]){cargarHistorialProp(pid).then(function(){renderHistPropInline(pid);});}
     const entradas=(S_HIST[pid]||[]).filter(function(e){return !e._eliminado;});
-    const cActivo=S.contratos.find(function(c){return((c.propiedadId&&c.propiedadId===p._id)||(!c.propiedadId&&normStr(c.propietarioNombre)===normStr(nombre)&&normDireccion(c.direccion)===normDireccion(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;});
+    const cActivo=S.contratos.find(function(c){return((c.propiedadId&&c.propiedadId===p._id)||(normStr(c.propietarioNombre)===normStr(nombre)&&normDireccion(c.direccion)===normDireccion(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;});
     const chip=cActivo
       ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:2px 8px;border-radius:10px">Ocupada: '+(cActivo.inquilino||"")+'</span>'
       :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>';
