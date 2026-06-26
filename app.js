@@ -29,6 +29,260 @@ const diasPara=fin=>Math.round((new Date(fin)-new Date())/86400000);
 const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
 const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
+// ── MANUAL DE USO ──────────────────────────────────────────────────────────
+const MANUAL_TEMAS = [
+  {
+    id: "primeros-pasos",
+    ic: "🚀",
+    titulo: "Primeros pasos",
+    html: `
+      <p>Este sistema reemplaza las planillas y los papeles para gestionar los alquileres de Eckerdt Negocios Inmobiliarios. Todo lo que cargás se guarda automáticamente en Firebase — no hay botón de "guardar todo", cada acción se confirma sola.</p>
+      <div class="manual-tip">
+        <strong>💡 Tip clave:</strong> si dos personas entran al mismo tiempo, el sistema avisa quién está conectado (mirá la barra "En línea ahora" abajo a la izquierda). Evitá editar el mismo contrato que otra persona está usando en simultáneo.
+      </div>
+      <h4>El menú de la izquierda</h4>
+      <p>Cada ítem del menú es una sección distinta. Las que vas a usar más seguido día a día son <strong>Contratos</strong> (para registrar cobros) y <strong>Dashboard</strong> (para ver qué necesita atención hoy).</p>
+      <h4>Buscador global</h4>
+      <p>Arriba de todo hay un buscador (🔍) que busca en TODO el sistema a la vez: inquilinos, propietarios, direcciones. Útil cuando no te acordás en qué sección está algo.</p>
+    `
+  },
+  {
+    id: "dashboard",
+    ic: "▦",
+    titulo: "Dashboard",
+    html: `
+      <p>Es la pantalla de inicio. Te muestra de un vistazo qué necesita tu atención <strong>hoy</strong>, sin tener que ir sección por sección a buscarlo.</p>
+      <h4>Las alertas (tarjetas con color)</h4>
+      <ul class="manual-list">
+        <li><strong>📋 Renovación / Contrato VENCIDO</strong> — un contrato está llegando a su fecha de fin (o ya pasó). Hay que decidir si se renueva, se modifica, o el inquilino se va.</li>
+        <li><strong>🔄 Actualizar próximo mes / Actualización VENCIDA</strong> — toca aplicar el ajuste de alquiler por IPC. <em>Si el contrato está cerca de vencer, esta alerta no aparece</em> — primero hay que resolver la renovación, ese contrato nuevo va a tener su propia fecha de actualización.</li>
+        <li><strong>🏦 Depósito pendiente / 💼 Honorarios pendientes</strong> — falta cobrar una cuota de depósito de garantía o de honorarios de la inmobiliaria.</li>
+        <li><strong>💸 Pago vencido</strong> — un inquilino tiene un cobro de un mes anterior que quedó sin marcar como cobrado.</li>
+      </ul>
+      <h4>Filtros de alertas</h4>
+      <p>Podés filtrar las alertas por tipo (IPC, Renovaciones, Pagos, Depósitos, Honorarios) y por plazo (30/60/90 días) para no marearte con todo junto.</p>
+      <h4>Las tarjetas de números</h4>
+      <p>Arriba de todo: contratos activos, cuántos inquilinos ya pagaron este mes, cuántos propietarios ya cobraron, comisiones del mes vs. objetivo, propietarios sin liquidar, e inmuebles disponibles para alquilar.</p>
+      <div class="manual-tip">
+        <strong>💡 Tip:</strong> la tarjeta "Inmuebles disponibles" y "Prop. sin liquidar" son clickeables — te llevan directo a Propietarios para resolver el tema.
+      </div>
+    `
+  },
+  {
+    id: "contratos",
+    ic: "◻",
+    titulo: "Contratos",
+    html: `
+      <p>Es la lista completa de contratos: activos, vencidos y finalizados. Hacé clic en cualquier fila para abrir el contrato y registrar un cobro.</p>
+      <h4>Buscar y filtrar</h4>
+      <p>Podés buscar por inquilino, propietario o domicilio (elegí qué buscar con el selector de la izquierda), y filtrar por estado (Todos / Activos / Vencidos / Finalizados).</p>
+      <p>Las columnas son clickeables para ordenar — por ejemplo, hacé clic en "Actualiz." para ver primero los contratos que antes necesitan ajuste de IPC.</p>
+      <div class="manual-tip">
+        <strong>⚠️ El ícono de alerta junto al inquilino</strong> significa que ese contrato tiene depósito u honorarios pendientes de cobrar.
+      </div>
+      <h4>Crear un contrato nuevo</h4>
+      <p>Botón "+ Nuevo contrato" arriba a la derecha. El formulario te pide, en orden:</p>
+      <ol class="manual-list">
+        <li><strong>Propietario y propiedad</strong> — si la propiedad ya está ocupada por otro contrato activo, no vas a poder seleccionarla (aparece marcada "Ocupada").</li>
+        <li><strong>Datos del inquilino</strong> — nombre es obligatorio, el resto es opcional pero recomendado.</li>
+        <li><strong>Condiciones económicas</strong> — alquiler y comisión de la agencia.</li>
+        <li><strong>Gastos a cargo del inquilino</strong> — si hay gastos fijos que el inquilino paga aparte (ej. expensas).</li>
+        <li><strong>Vigencia</strong> — fecha de inicio (obligatoria) y de fin.</li>
+        <li><strong>¿Lleva depósito de garantía?</strong> — <em>es obligatorio elegir Sí o No</em>, no se puede guardar el contrato sin responder esto. Si elegís "Sí", aparece la opción de pagarlo en 1, 2 o 3 cuotas.</li>
+        <li><strong>Honorarios de la inmobiliaria</strong> — medio mes o un mes completo, en 1 o 2 cuotas.</li>
+        <li><strong>Actualización</strong> — cada cuántos meses se ajusta el alquiler (3/4/6/12) y con qué índice.</li>
+        <li><strong>Gastos fijos</strong> — la matriz de gastos (TGI, Agua, Luz, etc.) que se van a cobrar mes a mes.</li>
+      </ol>
+    `
+  },
+  {
+    id: "registrar-cobro",
+    ic: "💵",
+    titulo: "Registrar un cobro mensual",
+    html: `
+      <p>Esta es la operación que vas a hacer más seguido. Se hace abriendo un contrato (desde Contratos, Cobranzas, o el Dashboard) y usando el bloque <strong>"Registrar pago del mes"</strong>.</p>
+      <h4>Paso a paso</h4>
+      <ol class="manual-list">
+        <li>Elegí el <strong>período</strong> (mes) que estás cobrando. El sistema recalcula automáticamente los ítems que corresponden a ese mes: gastos fijos, depósito pendiente, honorarios pendientes y saldo del mes anterior si lo hay.</li>
+        <li>Revisá el <strong>alquiler</strong> — viene precargado, pero podés ajustarlo si hace falta.</li>
+        <li>Completá los montos de los <strong>ítems fijos</strong> que tengan un campo vacío (ej. si el monto de Agua varía cada mes).</li>
+        <li>Si hace falta, agregá ítems con los botones <strong>+ Fijo</strong>, <strong>+ Variable</strong>, <strong>± Saldo</strong>, <strong>⏰ Mora</strong> o <strong>🏢 Gestión</strong>.</li>
+        <li>Mirá el <strong>Resumen del cobro</strong> al final — te muestra el total, la comisión de la agencia y el neto para el propietario.</li>
+        <li>Si todavía no vas a cobrar (por ejemplo, preparás el detalle un día antes), usá <strong>"Guardar gastos para cobrar después"</strong> — así no se pierde lo que armaste.</li>
+      </ol>
+      <div class="manual-tip">
+        <strong>💡 Importante sobre depósito y honorarios:</strong> aunque guardes gastos manuales para un mes (como un descuento puntual), el sistema siempre va a sumar la cuota de depósito u honorarios pendiente si corresponde — no hace falta agregarla a mano, y no se pierde por tener otros ítems guardados.
+      </div>
+      <h4>Botones de "Depósito y honorarios"</h4>
+      <p>Arriba del bloque de cobro vas a ver dos tarjetas: <strong>Depósito garantía</strong> y <strong>Honorarios inmobiliaria</strong>. Si dicen "Cuota pendiente", podés usar el botón "Registrar cuota X de depósito/honorarios" para marcarla cobrada directamente, sin pasar por el flujo completo de cobro mensual.</p>
+      <h4>El botón ⏰ Mora</h4>
+      <p>No se ingresa el monto a mano: el sistema calcula sola la mora (1% diario sobre el alquiler, contando los días de atraso desde el 1° del mes hasta la fecha de cobro que pusiste). Si el pago todavía está en plazo, te avisa que no corresponde mora en vez de agregar algo.</p>
+      <h4>El botón 🏢 Gestión</h4>
+      <p>Es un ítem que queda anotado en el detalle del cobro, pero <strong>no suma al total cobrado al inquilino ni afecta la comisión</strong> — usalo solo para dejar registrada una nota de gestión interna, no para cobrar algo extra.</p>
+      <h4>Comentarios temporales</h4>
+      <p>Podés dejar una nota rápida en el contrato (por ejemplo "Llamar para confirmar fecha de pago") que se borra cuando quieras. No queda guardada como historial permanente — para eso usá el historial de notas del inquilino o la propiedad.</p>
+    `
+  },
+  {
+    id: "cobranzas",
+    ic: "$",
+    titulo: "Cobranzas",
+    html: `
+      <p>Es el historial completo de todos los cobros registrados, con filtros por mes, propietario, estado y búsqueda por inquilino o dirección.</p>
+      <h4>Para qué sirve</h4>
+      <ul class="manual-list">
+        <li>Revisar qué se cobró en un mes puntual.</li>
+        <li>Emitir el <strong>PDF del recibo</strong> para el inquilino (botón 📄 Inq).</li>
+        <li>Eliminar un cobro mal registrado (🗑️) — esto NO borra el contrato, solo ese pago puntual.</li>
+      </ul>
+      <div class="manual-tip">
+        <strong>⚠️ Cuidado con eliminar pagos:</strong> si borrás un cobro por error, las cuotas de depósito/honorarios que se hayan marcado como pagadas en ese cobro no se revierten automáticamente. Si tenés dudas, mejor preguntale a Gastón antes de borrar.
+      </div>
+    `
+  },
+  {
+    id: "liquidaciones",
+    ic: "≡",
+    titulo: "Liquidaciones",
+    html: `
+      <p>Acá se calcula cuánto hay que transferirle a cada propietario por los alquileres que se cobraron en un mes.</p>
+      <h4>Cómo se calcula</h4>
+      <p>Para cada propietario, el sistema toma todos los cobros del mes seleccionado y resta la comisión de la agencia:</p>
+      <p class="manual-formula">Alquiler cobrado − Comisión de la agencia = Neto a transferir al propietario</p>
+      <p>Los gastos extra que el inquilino pagó (como TGI o Agua) se muestran aparte y no afectan la comisión — la comisión se calcula siempre solo sobre el alquiler.</p>
+      <h4>PDFs</h4>
+      <p>Cada tarjeta tiene dos botones: <strong>📄 PDF Propietario</strong> (el detalle de la liquidación) y <strong>📄 PDF Inquilino</strong> (el recibo de lo que pagó).</p>
+      <h4>Resumen del mes</h4>
+      <p>Si hay más de una liquidación en el mes seleccionado, aparece una tarjeta con el total general: todo lo cobrado, la comisión total de la agencia, y el total a transferir a todos los propietarios juntos.</p>
+    `
+  },
+  {
+    id: "ipc",
+    ic: "⟳",
+    titulo: "Actualización IPC",
+    html: `
+      <p>Acá se aplican los ajustes de alquiler según el índice de precios (IPC u otro índice configurado por contrato).</p>
+      <h4>Cómo funciona</h4>
+      <p>Los contratos se agrupan automáticamente según cada cuántos meses se actualizan (3, 4, 6 o 12 meses), y se muestran los que corresponden actualizar en el mes que tenés seleccionado en el selector de arriba (podés navegar mes a mes con las flechas ◀ ▶).</p>
+      <ol class="manual-list">
+        <li>Elegí el grupo (por ejemplo "Cada 6 meses").</li>
+        <li>Escribí el <strong>% de aumento</strong> en el campo correspondiente — el sistema calcula en vivo el nuevo monto para cada contrato del grupo.</li>
+        <li>Revisá la columna "Dif. dep. / cuotas" — si el contrato tiene depósito pendiente, te avisa ahí.</li>
+        <li>Usá <strong>"✓ Aplicar a todos"</strong> para confirmar el aumento — se aplica a TODOS los contratos de ese grupo a la vez, con el mismo porcentaje. No hay forma de aplicar un % distinto a un solo contrato del grupo desde esta pantalla; si necesitás un % diferente para uno en particular, hacelo desde la ficha de ese contrato.</li>
+        <li>El botón <strong>📱 WhatsApp</strong> (individual o "a todos") te abre un mensaje prearmado para avisarle al inquilino el nuevo monto.</li>
+      </ol>
+      <div class="manual-tip">
+        <strong>💡 Importante:</strong> si un contrato está por vencer antes de que llegue su próxima actualización, no va a aparecer en esta lista — primero hay que resolver la renovación (ver Dashboard).
+      </div>
+    `
+  },
+  {
+    id: "inquilinos",
+    ic: "◎",
+    titulo: "Inquilinos",
+    html: `
+      <p>Ficha de cada persona que alquila, con su historial completo más allá del contrato puntual.</p>
+      <h4>Qué vas a encontrar en la ficha</h4>
+      <ul class="manual-list">
+        <li>Datos de contacto (teléfono, email, DNI, garante).</li>
+        <li>Estado de depósito y honorarios de cada contrato activo, con botón para cobrar la cuota pendiente sin tener que ir al contrato.</li>
+        <li>Lista de contratos (activos e históricos).</li>
+        <li>Historial de notas (llamados, acuerdos — a diferencia de los "comentarios temporales" del contrato, esto sí queda guardado).</li>
+        <li>Historial de pagos de los últimos 12 meses.</li>
+      </ul>
+      <div class="manual-tip">
+        <strong>💡 Tip:</strong> si un inquilino tiene depósito u honorarios pendientes en algún contrato activo, vas a ver un chip rojo "dep./hon. pend." junto a su nombre en la lista general.
+      </div>
+    `
+  },
+  {
+    id: "propietarios",
+    ic: "◉",
+    titulo: "Propietarios",
+    html: `
+      <p>Ficha de cada propietario, con todas sus propiedades, estado de cobro, y cuenta corriente.</p>
+      <h4>Lista general</h4>
+      <p>Te muestra de un vistazo cuántas propiedades activas tiene cada uno, si tiene alguna disponible para alquilar, y el estado de cobro ("Al día" o "$X pendiente").</p>
+      <h4>Dentro de la ficha de un propietario</h4>
+      <ul class="manual-list">
+        <li><strong>Tarjetas de resumen</strong> — propiedades activas, disponibles, alquileres a liquidar, gastos extra, comisión y neto estimado.</li>
+        <li><strong>Cuenta corriente</strong> — para registrar ajustes manuales (a favor o en contra del propietario) que no son parte de una liquidación normal. Quedan pendientes hasta la próxima liquidación.</li>
+        <li><strong>Propiedades e historial</strong> — cada propiedad con su chip de "Ocupada: [inquilino]" o "Disponible", y un registro de eventos (reparaciones, arreglos) que persiste aunque cambie el inquilino.</li>
+      </ul>
+      <div class="manual-tip">
+        <strong>💡 Tip:</strong> el historial de eventos de una propiedad (gasista, arreglos, etc.) es independiente del inquilino — si se va uno y entra otro, esa historia queda guardada igual.
+      </div>
+    `
+  },
+  {
+    id: "caja",
+    ic: "💰",
+    titulo: "Caja agencia",
+    html: `
+      <p>El movimiento de plata de la agencia en sí — separado de lo que se les cobra a inquilinos o se les transfiere a propietarios.</p>
+      <h4>Tipos de movimiento</h4>
+      <ul class="manual-list">
+        <li><strong>+ Honorario</strong> — un ingreso de honorarios que no vino del flujo automático de comisiones.</li>
+        <li><strong>+ Gasto</strong> — un gasto de la agencia (insumos, servicios, etc.).</li>
+        <li><strong>+ Retiro Matías</strong> — dinero que retira el socio.</li>
+        <li><strong>+ Adelanto inquilino</strong> — plata que se le adelanta a un inquilino, que se marca como "Pendiente" hasta que se recupera.</li>
+      </ul>
+      <h4>El saldo disponible</h4>
+      <p class="manual-formula">Comisiones totales + Ingresos manuales − Gastos − Adelantos sin recuperar = Saldo disponible</p>
+      <p>Las comisiones se calculan solas en base a los cobros registrados — no hace falta cargarlas a mano.</p>
+    `
+  },
+  {
+    id: "puesta-a-punto",
+    ic: "⚙",
+    titulo: "Puesta a punto",
+    html: `
+      <p>Es la pantalla para revisar y completar datos de contratos existentes que quedaron incompletos — por ejemplo, contratos migrados de planillas viejas que no tenían toda la información.</p>
+      <h4>Las tarjetas de arriba</h4>
+      <p>Te dicen de un vistazo cuántos contratos activos hay, y cuántos tienen algún dato faltante: sin fecha de última actualización, sin teléfono, o sin depósito cargado.</p>
+      <h4>Cómo se usa</h4>
+      <p>Es una grilla editable: hacé clic en cualquier campo (alquiler, fechas, depósito, gastos, etc.) y escribí el dato correcto. Los cambios se guardan automáticamente en cuanto salís del campo — las filas que modificaste se marcan con un punto naranja (●) en la columna "Modificado".</p>
+      <div class="manual-tip">
+        <strong>💡 Tip:</strong> usá el buscador para encontrar un contrato puntual en vez de scrollear toda la lista.
+      </div>
+    `
+  },
+  {
+    id: "deudores",
+    ic: "⚠",
+    titulo: "Deudores",
+    html: `
+      <p>Lista de contratos con atraso real en el pago — útil para saber a quién hay que llamar.</p>
+      <h4>Cómo se calcula el atraso</h4>
+      <p>El sistema revisa, mes por mes, si hay un pago registrado como cobrado. Si pasaron más de 5 días del mes sin que haya un cobro registrado, ese mes se cuenta como atraso.</p>
+      <h4>Fecha de corte</h4>
+      <p>Arriba hay un selector de "Evaluar deudas desde" — todo lo anterior a esa fecha se considera saldado y no se cuenta como deuda, aunque no tenga un pago registrado en el sistema (típicamente se usa para no arrastrar deuda de antes de empezar a usar el sistema).</p>
+      <div class="manual-tip">
+        <strong>💡 Tip:</strong> el color de "Meses atraso" te da una pista visual rápida — amarillo es 1 mes, naranja 2, rojo 3 o más.
+      </div>
+    `
+  },
+  {
+    id: "preguntas-frecuentes",
+    ic: "❓",
+    titulo: "Preguntas frecuentes",
+    html: `
+      <h4>¿Por qué un contrato dice "Ocupada" pero el inquilino ya se fue?</h4>
+      <p>Revisá que el contrato viejo esté realmente marcado como "Finalizado" y no como "Activo". El sistema decide ocupado/disponible mirando si hay un contrato activo para esa dirección.</p>
+      <h4>¿Por qué no me deja seleccionar una propiedad al crear un contrato?</h4>
+      <p>Esa propiedad ya tiene un contrato activo. Primero hay que finalizar el contrato anterior.</p>
+      <h4>¿Qué hago si me equivoqué al cargar un cobro?</h4>
+      <p>Vas a Cobranzas, buscás el pago, y usás el botón 🗑️ para eliminarlo. Si el error involucra una cuota de depósito u honorarios ya marcada como pagada, avisale a Gastón para revisar que quede consistente.</p>
+      <h4>¿Cómo sé si alguien más está usando el sistema en este momento?</h4>
+      <p>Mirá abajo a la izquierda — si dice "En línea ahora" con nombres, hay otra persona conectada. Si dice "Sincronizado · Firebase", estás sola/o.</p>
+      <h4>¿Qué pasa si pierdo la conexión a internet?</h4>
+      <p>El sistema te avisa con "Sin conexión" en la esquina inferior izquierda. Esperá a que vuelva la conexión antes de seguir cargando datos, para no perder cambios.</p>
+    `
+  }
+];
+
+
+
 function toast(msg,ok=true){
   $("tmsg").textContent=msg;
   $("tdot").style.background=ok?"#4BC8E8":"#e74c3c";
@@ -2220,6 +2474,7 @@ document.addEventListener("input",e=>{
   if(action==="setupBuscar"){S.setupBuscar=t.value;renderParcial();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;renderParcial();}
   else if(action==="busqInput"){S.busqGlobal=t.value;renderParcial();}
+  else if(action==="manualBuscar"){S.manualBuscar=t.value;renderParcial();}
   else if(action==="setBuscar"){setFiltro("buscar",t.value);}
   // Alquiler cobro — actualizar resumen en tiempo real
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
@@ -2405,6 +2660,8 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
   else if(action==="registrarPago")registrarPago();
   else if(action==="doLogout")window.doLogout();
   else if(action==="nav")go(t.dataset.sec);
+  else if(action==="abrirManual"){S.modal="manual";S.manualTema=null;S.manualBuscar="";render();}
+  else if(action==="manualVerTema"){S.manualTema=t.dataset.id;render();}
   else if(action==="setFiltroEstado")setFiltro("estado",t.value);
   else if(action==="setFiltroTipo")setFiltro("buscarPor",t.value);
   else if(action==="setLiqMes")setLiqMes(t.value);
@@ -2802,6 +3059,10 @@ function renderDashboard(){
   activos.forEach(c=>{
     let diasParaFin=null;
     if(c.fin){diasParaFin=diasPara(c.fin);todas.push({tipo:"renovacion",col:diasParaFin<0?"var(--rojo)":diasParaFin<=60?"var(--naranja)":"var(--celeste)",ic:"📋",t:(diasParaFin<0?"Contrato VENCIDO: ":"Renovación: ")+(c.direccion||""),s:c.inquilino+" · "+(diasParaFin<0?"Venció":"Vence")+" el "+c.fin+(diasParaFin>=0?" (en "+diasParaFin+" días)":""),dias:diasParaFin});}
+    // Si el contrato vence pronto (misma zona naranja/roja que la alerta de Renovación,
+    // es decir <=60 días o ya vencido), no tiene sentido avisar de una actualización IPC:
+    // lo que corresponde primero es resolver la renovación o finalización del contrato.
+    // La cadencia de actualización se vuelve a definir en el contrato nuevo/renovado.
     const contratoProximoAVencer=diasParaFin!==null&&diasParaFin<=60;
     if(!contratoProximoAVencer){
       const prox=getProxActualizacion(c);
@@ -3864,6 +4125,43 @@ function renderModalMigracion(){
     +'<div style="padding:16px;overflow-y:auto;flex:1">'+body+'</div>'
   +'</div></div>';
 }
+function renderModalManual(){
+  const q=normStr(S.manualBuscar||"");
+  const temaActivoId=S.manualTema||MANUAL_TEMAS[0].id;
+  // Búsqueda simple: filtra temas cuyo título o contenido (sin tags HTML) incluya el texto buscado
+  const temaMatch=(t)=>{
+    if(!q) return true;
+    const textoPlano=t.html.replace(/<[^>]+>/g," ");
+    return normStr(t.titulo).includes(q)||normStr(textoPlano).includes(q);
+  };
+  const temasFiltrados=MANUAL_TEMAS.filter(temaMatch);
+  const temaActivo=MANUAL_TEMAS.find(t=>t.id===temaActivoId)||MANUAL_TEMAS[0];
+  const sideItems=temasFiltrados.map(t=>
+    '<div class="manual-tema-item'+(t.id===temaActivo.id?' on':'')+'" data-action="manualVerTema" data-id="'+t.id+'">'
+    +'<span class="ic">'+t.ic+'</span><span>'+t.titulo+'</span></div>'
+  ).join("");
+  const sideHtml=temasFiltrados.length
+    ? sideItems
+    : '<div class="manual-no-results">Sin resultados para "'+(S.manualBuscar||"")+'"</div>';
+  return '<div class="overlay"><div class="modal manual-modal">'
+    +'<div class="manual-head">'
+    +'<div class="manual-head-title"><span class="ic">📖</span>Manual de uso</div>'
+    +'<button data-action="closeModal" style="background:none;border:none;color:var(--gris3);font-size:16px;cursor:pointer">✕</button>'
+    +'</div>'
+    +'<div class="manual-body">'
+    +'<div class="manual-side">'
+    +'<div class="manual-search"><input placeholder="🔍 Buscar en el manual..." value="'+(S.manualBuscar||"")+'" data-action="manualBuscar"></div>'
+    +sideHtml
+    +'</div>'
+    +'<div class="manual-content">'
+    +(temasFiltrados.length
+      ? '<h3>'+temaActivo.ic+' '+temaActivo.titulo+'</h3>'+temaActivo.html
+      : '<div class="manual-empty">No encontramos nada con esa búsqueda.<br>Probá con otra palabra o navegá por los temas.</div>')
+    +'</div>'
+    +'</div>'
+    +'</div></div>';
+}
+
 function renderModal(){
   const extra=S.modalExtra==="grilla_gastos"?renderModalGrillaGastos():"";
   if(!S.modal)return extra;
@@ -3871,6 +4169,7 @@ function renderModal(){
   if(S.modal==="caja")return renderModalCaja()+extra;
   if(S.modal==="grilla_gastos")return renderModalGrillaGastos();if(S.modal==="renovar_contrato")return renderModalRenovar();if(S.modal==="editar_inquilino")return renderModalEditarInquilino();if(S.modal==="editar_propiedad")return renderModalEditarPropiedad();if(S.modal==="feriados")return renderModalFeriados();if(S.modal==="matriz_gastos")return renderModalMatrizGastos();if(S.modal==="editar_propietario")return renderModalEditarPropietario();
   if(S.modal==="migracion")return renderModalMigracion();
+  if(S.modal==="manual")return renderModalManual();
   if(S.modal==="editar_extras")return renderModalEditarExtras()+extra;
   const f=S.form;
   const inp=(k,type,val,ph)=>`<input class="inp" style="width:100%" type="${type||"text"}" value="${val!==undefined?val:(f[k]||"")}" placeholder="${ph||""}" data-action="setForm" data-key="${k}">`;
@@ -4072,6 +4371,7 @@ function render(){
       <ul class="nav">${NAVS.map(n=>`<li class="${S.sec===n.id?"on":""}" data-action="nav" data-sec="${n.id}"><span>${n.ic}</span>${n.lbl}</li>`).join("")}</ul>
       <div class="nav-user"><div><div style="font-size:10px;color:var(--gris4)">Usuario</div><strong>${userLabel}</strong></div><button class="logout-btn" data-action="doLogout">Salir</button></div>
       ${presenciaHtml}
+      <div class="manual-link" data-action="abrirManual"><span>📖</span>Manual de uso</div>
       <div class="sidebar-foot">© 2026 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
