@@ -2800,12 +2800,16 @@ function renderDashboard(){
   const pct=comObj>0?Math.round(comMes/comObj*100):0;
   const todas=[];
   activos.forEach(c=>{
-    if(c.fin){const d=diasPara(c.fin);todas.push({tipo:"renovacion",col:d<0?"var(--rojo)":d<=60?"var(--naranja)":"var(--celeste)",ic:"📋",t:(d<0?"Contrato VENCIDO: ":"Renovación: ")+(c.direccion||""),s:c.inquilino+" · "+(d<0?"Venció":"Vence")+" el "+c.fin+(d>=0?" (en "+d+" días)":""),dias:d});}
-    const prox=getProxActualizacion(c);
-    if(prox){const du=Math.round((prox-hoyD)/86400000);
-      if(du<0)todas.push({tipo:"ipc",col:"var(--rojo)",ic:"🔄",t:"Actualización VENCIDA: "+(c.direccion||""),s:c.inquilino+" · Hace "+Math.abs(du)+" días",dias:du});
-      else if(prox>=proxMesI&&prox<=proxMesF)todas.push({tipo:"ipc",col:"var(--amarillo)",ic:"🔄",t:"Actualizar próximo mes: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR"),dias:du});
-      else todas.push({tipo:"ipc",col:"var(--celeste)",ic:"🔄",t:"Actualización próxima: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR")+" (en "+du+" días)",dias:du});}
+    let diasParaFin=null;
+    if(c.fin){diasParaFin=diasPara(c.fin);todas.push({tipo:"renovacion",col:diasParaFin<0?"var(--rojo)":diasParaFin<=60?"var(--naranja)":"var(--celeste)",ic:"📋",t:(diasParaFin<0?"Contrato VENCIDO: ":"Renovación: ")+(c.direccion||""),s:c.inquilino+" · "+(diasParaFin<0?"Venció":"Vence")+" el "+c.fin+(diasParaFin>=0?" (en "+diasParaFin+" días)":""),dias:diasParaFin});}
+    const contratoProximoAVencer=diasParaFin!==null&&diasParaFin<=60;
+    if(!contratoProximoAVencer){
+      const prox=getProxActualizacion(c);
+      if(prox){const du=Math.round((prox-hoyD)/86400000);
+        if(du<0)todas.push({tipo:"ipc",col:"var(--rojo)",ic:"🔄",t:"Actualización VENCIDA: "+(c.direccion||""),s:c.inquilino+" · Hace "+Math.abs(du)+" días",dias:du});
+        else if(prox>=proxMesI&&prox<=proxMesF)todas.push({tipo:"ipc",col:"var(--amarillo)",ic:"🔄",t:"Actualizar próximo mes: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR"),dias:du});
+        else todas.push({tipo:"ipc",col:"var(--celeste)",ic:"🔄",t:"Actualización próxima: "+(c.direccion||""),s:c.inquilino+" · "+prox.toLocaleDateString("es-AR")+" (en "+du+" días)",dias:du});}
+    }
   });
   // Alertas depósito y honorarios pendientes
   S.contratos.filter(c=>c.estado==="activo"||!c.estado).forEach(c=>{
