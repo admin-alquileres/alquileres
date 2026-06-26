@@ -1550,13 +1550,14 @@ function renderModalRenovar(){
   if(!c)return"";
   const f=S.form;
   const inp=(k,type)=>`<input class="inp" style="width:100%" type="${type||"text"}" data-action="setForm" data-key="${k}" value="${f[k]||""}">`;
+  const teniaDepositoAntes=((c.deposito&&c.deposito.total)||0)>0;
   return `<div class="overlay"><div class="modal" style="max-width:560px">
     <button class="mclose" data-action="closeModal">✕</button>
     <div class="mth"><div class="mth-ic">🔄</div>Renovar contrato — ${c.inquilino||""}</div>
     <div style="background:rgba(75,200,232,.06);border:1px solid rgba(75,200,232,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--gris3)">
       📋 Propiedad: <strong style="color:var(--blanco)">${c.direccion||""}</strong> · 
       Propietario: <strong style="color:var(--blanco)">${c.propietarioNombre||""}</strong><br>
-      Contrato anterior: ${c.inicio||""} → ${c.fin||"S/F"} · Alquiler anterior: <strong style="color:var(--celeste)">${moneda(c.alquilerBase)}</strong>
+      Contrato anterior: ${c.inicio||""} → ${c.fin||"S/F"} · Alquiler anterior: <strong style="color:var(--celeste)">${moneda(c.alquilerBase)}</strong>${teniaDepositoAntes?"":' · <span style="color:var(--gris4)">Sin depósito de garantía</span>'}
     </div>
     <div class="fg">
       <div><label class="fl">Nueva fecha inicio *</label>${inp("inicio","date")}</div>
@@ -1573,13 +1574,22 @@ function renderModalRenovar(){
           ${["IPC","ICL","CVS","Acuerdo"].map(v=>`<option value="${v}"${(f.indiceActualizacion||"IPC")===v?" selected":""}>  ${v}</option>`).join("")}
         </select>
       </div>
-      <div><label class="fl">Depósito</label>
+      <div><label class="fl">¿Lleva depósito de garantía? *</label>
+        <select class="inp" style="width:100%;${f.tieneDepositoRenov?'':'border-color:var(--naranja)'}" data-action="setForm" data-key="tieneDepositoRenov">
+          <option value=""${!f.tieneDepositoRenov?" selected":""}>-- Elegir --</option>
+          <option value="si"${f.tieneDepositoRenov==="si"?" selected":""}>Sí</option>
+          <option value="no"${f.tieneDepositoRenov==="no"?" selected":""}>No</option>
+        </select>
+        ${!f.tieneDepositoRenov?'<div style="font-size:10px;color:var(--naranja);margin-top:3px">Obligatorio para confirmar la renovación</div>':''}
+      </div>
+      ${f.tieneDepositoRenov==="si"?`
+      <div><label class="fl">Depósito — cuotas para financiar la diferencia</label>
         <select class="inp" style="width:100%" data-action="setForm" data-key="depCuotas">
           <option value="1"${+(f.depCuotas||1)===1?" selected":""}>1 cuota (completo al ingreso)</option>
           <option value="2"${+(f.depCuotas||1)===2?" selected":""}>2 cuotas</option>
           <option value="3"${+(f.depCuotas||1)===3?" selected":""}>3 cuotas</option>
         </select>
-      </div>
+      </div>`:''}
       <div><label class="fl">Honorarios</label>
         <select class="inp" style="width:100%" data-action="setForm" data-key="honMonto">
           <option value="medio"${(f.honMonto||"medio")==="medio"?" selected":""}>Medio mes</option>
@@ -1680,17 +1690,28 @@ async function confirmarRenovacion(){
   if(!c)return;
   const f=S.form;
   if(!f.inicio||!f.alquilerBase){toast("Completá fecha inicio y alquiler",false);return;}
+  if(f.tieneDepositoRenov!=="si"&&f.tieneDepositoRenov!=="no"){toast("Elegí si el contrato renovado lleva depósito de garantía o no",false);return;}
 
   const alqBase=+(f.alquilerBase||0);
-  const depCuotas=+(f.depCuotas||1);
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
-  const depViejoTotal=(c.deposito&&c.deposito.total)?c.deposito.total:(c.alquilerBase||0);
-  const difDep=Math.max(0,alqBase-depViejoTotal);
-  const deposito=difDep>0
-    ?calcularDepositoActualizacionIPC(alqBase,difDep,depCuotas)
-    :{...calcularDeposito(alqBase,1),pendiente:0,completo:true};
+  let deposito;
+  if(f.tieneDepositoRenov==="no"){
+    // El propietario decidió no pedir depósito en esta renovación, sin importar
+    // si el contrato anterior tenía uno o no.
+    deposito={total:0,cuotasTotales:1,cuotasPagadas:1,montoCuota:0,pagadoAcumulado:0,pendiente:0,completo:true,cuotas:1,pagadas:1,pagado:0};
+  } else {
+    const depCuotas=+(f.depCuotas||1);
+    // depViejoTotal es lo que el contrato YA tenía como depósito (0 si nunca tuvo,
+    // sin asumir un mes de alquiler como antes). Solo se financia la diferencia
+    // contra ese valor real.
+    const depViejoTotal=(c.deposito&&c.deposito.total)||0;
+    const difDep=Math.max(0,alqBase-depViejoTotal);
+    deposito=difDep>0
+      ?calcularDepositoActualizacionIPC(alqBase,difDep,depCuotas)
+      :{...calcularDeposito(alqBase,1),pendiente:0,completo:true};
+  }
   const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
 
   const upd={
