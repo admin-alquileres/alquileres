@@ -2770,15 +2770,18 @@ function itemsAutomaticosParaMes(c,mesACobrar){
     const n=dep.cuotasTotales||dep.cuotas||1;
     const yaPagadas=dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0);
     const proximaCuota=yaPagadas+1;
-    const montoEstaCuota=Math.min(depPend,dep.montoCuota||depPend);
+    const esUltimaCuota=proximaCuota===n;
+    const montoEstaCuota=esUltimaCuota?depPend:Math.min(depPend,dep.montoCuota||depPend);
     itemsDeposito.push({tipo:"deposito",desc:"Depósito cuota "+proximaCuota+"/"+n,monto:montoEstaCuota});
   }
   const hon=c.honorarios||{};
   const itemsHonorarios=[];
   if((hon.pendiente||0)>0){
     const nHon=hon.cuotas||1;
-    const proximaCuotaHon=(hon.pagadas||0)+1;
-    const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.total||hon.pendiente)/nHon));
+    const pagadasHon=hon.pagadas||0;
+    const restantesHon=Math.max(1,nHon-pagadasHon);
+    const proximaCuotaHon=pagadasHon+1;
+    const montoEstaCuotaHon=Math.min(hon.pendiente,Math.round((hon.pendiente||0)/restantesHon));
     itemsHonorarios.push({tipo:"honorario",desc:"Honorarios cuota "+proximaCuotaHon+"/"+nHon,monto:montoEstaCuotaHon});
   }
   return [...itemsDeposito,...itemsHonorarios,...itemsSaldo];
@@ -2792,9 +2795,13 @@ function calcularItemsParaMes(c,mesACobrar){
 
 function itemsParaMesConGuardados(c,mesACobrar,guardados){
   if(!guardados||guardados.length===0) return calcularItemsParaMes(c,mesACobrar);
-  const automaticos=itemsAutomaticosParaMes(c,mesACobrar)
-    .filter(auto=>!guardados.some(g=>g.tipo===auto.tipo));
-  return [...guardados,...automaticos];
+  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
+    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
+  const obligatorios=itemsAutomaticosParaMes(c,mesACobrar)
+    .filter(auto=>auto.tipo==="deposito"||auto.tipo==="honorario"||auto.tipo==="saldo");
+  const tiposObligatorios=new Set(obligatorios.map(o=>o.tipo));
+  const guardadosFiltrados=guardados.filter(g=>g.tipo!=="fijo"&&!tiposObligatorios.has(g.tipo));
+  return [...itemsFijos,...obligatorios,...guardadosFiltrados];
 }
 
 function abrirContrato(cid){
