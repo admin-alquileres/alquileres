@@ -1846,6 +1846,7 @@ function abrirEditarPropietario(nombre){
   const prop=S.propietarios.find(x=>x.nombre===nombre)||{nombre};
   S.modal="editar_propietario";
   S.form={
+    _id:prop._id||"",
     nombre:prop.nombre||nombre,
     dni:prop.dni||"",
     telefono:prop.telefono||"",
@@ -1892,6 +1893,11 @@ function renderModalEditarPropietario(){
 async function guardarPropietario(){
   const f=S.form||{};
   if(!f.nombre){toast("El nombre es obligatorio",false);return;}
+  const normalizar=s=>(s||"").toLowerCase().trim().replace(/\s+/g," ");
+  const duplicado=S.propietarios.find(x=>normalizar(x.nombre)===normalizar(f.nombre)&&x._id!==(f._id||""));
+  if(duplicado){
+    if(!confirm("Ya existe un propietario llamado \""+duplicado.nombre+"\".\n¿Querés guardar uno nuevo de todas formas?"))return;
+  }
   const data={
     nombre:f.nombre,dni:f.dni||"",telefono:f.telefono||"",
     telefonoAlt:f.telefonoAlt||"",email:f.email||"",
@@ -1899,10 +1905,10 @@ async function guardarPropietario(){
     cbu:f.cbu||"",banco:f.banco||"",
     comisionAgencia:+(f.comisionAgencia||5),obs:f.obs||""
   };
-  const existente=S.propietarios.find(x=>x.nombre===f.nombre);
-  if(existente&&existente._id){
-    await fbUpd("propietarios",existente._id,data);
-    S.propietarios=S.propietarios.map(x=>x._id===existente._id?{...x,...data}:x);
+  const propio=f._id?S.propietarios.find(x=>x._id===f._id):null;
+  if(propio){
+    await fbUpd("propietarios",propio._id,data);
+    S.propietarios=S.propietarios.map(x=>x._id===propio._id?{...x,...data}:x);
   } else {
     const id=await fbAdd("propietarios",data);
     if(id) S.propietarios.push({...data,_id:id});
