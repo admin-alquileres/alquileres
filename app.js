@@ -3020,9 +3020,13 @@ async function registrarPago(){
       const montoHonPagado=+(itemHon.monto||0);
       const honNuevoPendiente=Math.max(0,(honActual.pendiente||0)-montoHonPagado);
       const honNuevoPagado=(honActual.pagado||0)+montoHonPagado;
-      const nuevoHon={...honActual,pagado:honNuevoPagado,pendiente:honNuevoPendiente,completo:honNuevoPendiente===0,pagadas:(honActual.pagadas||0)+1};
+      const cuotaNum=(honActual.pagadas||0)+1;
+      const nuevoHon={...honActual,pagado:honNuevoPagado,pendiente:honNuevoPendiente,completo:honNuevoPendiente===0,pagadas:cuotaNum};
       await fbUpd("contratos",c._id,{honorarios:nuevoHon});
       S.contratos=S.contratos.map(x=>x._id===c._id?{...x,honorarios:nuevoHon}:x);
+      const cajaData={tipo:"honorario",fecha:f.fechaCobro||hoy(),monto:montoHonPagado,concepto:"Honorarios — "+(c.inquilino||"")+(c.direccion?" ("+c.direccion+")":""),detalle:"Generado automáticamente al registrar cobro de "+mesNombre(f.mes),inquilino:c.inquilino||"",cuotas:honActual.cuotas||1,cuotaNum,recuperado:false};
+      const cajaId=await fbAdd("caja",cajaData);
+      if(cajaId) S_CAJA.movimientos.unshift({...cajaData,_id:cajaId});
     }
     toast("Pago registrado ✓");
     S.ultimoPago={...data,_id:id};
