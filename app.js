@@ -902,13 +902,25 @@ function renderCaja(){
     +'</div>'
     +'<button class="btn sm" data-action="cajaToggleDetalle" style="margin-bottom:8px;background:var(--negro3);color:var(--gris3)">'+(S_CAJA_DETALLE?'▲ Ocultar detalle del saldo':'▼ Ver detalle del saldo')+'</button>'
     +(S_CAJA_DETALLE
-      ?'<div style="background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:13px">'
-        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#5ddb8a"><span>Comisiones cobradas (histórico)</span><span style="font-weight:600">+'+moneda(comTotal)+'</span></div>'
-        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#5ddb8a"><span>Honorarios / ingresos manuales</span><span style="font-weight:600">+'+moneda(ingMan)+'</span></div>'
-        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Gastos y retiros</span><span style="font-weight:600">-'+moneda(egresos)+'</span></div>'
-        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Adelantos pendientes</span><span style="font-weight:600">-'+moneda(adelPend)+'</span></div>'
-        +'<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--negro4);font-weight:700;color:var(--celeste)"><span>Saldo disponible</span><span>'+moneda(saldo)+'</span></div>'
-        +'</div>'
+      ?(()=>{
+        const pagosCobrados=S.pagos.filter(p=>p.estado==="cobrado").slice().sort((a,b)=>(a.mes||"").localeCompare(b.mes||""));
+        const comisionesListH=pagosCobrados.map(p=>{
+          const com=p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100);
+          return '<div style="display:flex;justify-content:space-between;padding:3px 0 3px 12px;color:#5ddb8a;font-size:12px">'
+            +'<span>'+mesNombre(p.mes||"")+' — '+(p.inquilino||"(sin inquilino)")+'</span>'
+            +'<span style="font-weight:600">+'+moneda(com)+'</span></div>';
+        }).join("");
+        const comisionesBlockH='<div style="padding:4px 0;color:#5ddb8a;font-weight:600">Comisiones cobradas (histórico)</div>'
+          +(comisionesListH||'<div style="padding:3px 0 3px 12px;color:var(--gris3);font-size:12px">Sin comisiones cobradas</div>')
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0 4px 12px;border-top:1px solid var(--negro4);margin-top:4px;color:#5ddb8a;font-size:12px"><span>Subtotal</span><span style="font-weight:600">+'+moneda(comTotal)+'</span></div>';
+        return '<div style="background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:13px">'
+          +comisionesBlockH
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#5ddb8a"><span>Honorarios / ingresos manuales</span><span style="font-weight:600">+'+moneda(ingMan)+'</span></div>'
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Gastos y retiros</span><span style="font-weight:600">-'+moneda(egresos)+'</span></div>'
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Adelantos pendientes</span><span style="font-weight:600">-'+moneda(adelPend)+'</span></div>'
+          +'<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--negro4);font-weight:700;color:var(--celeste)"><span>Saldo disponible</span><span>'+moneda(saldo)+'</span></div>'
+          +'</div>';
+      })()
       :'')
     +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
     +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="honorario">+ Honorario</button>'
