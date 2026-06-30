@@ -787,6 +787,7 @@ async function eliminarPago(pid){
 
 // ── CAJA ────────────────────────────────────────────────────────────────────
 var S_CAJA={tab:"todos",movimientos:[],cargado:false};
+let S_CAJA_DETALLE=false;
 
 async function cargarCaja(limit=120){
   if(S_CAJA.cargado)return;
@@ -899,6 +900,16 @@ function renderCaja(){
     +'<div class="kcard"><div class="klbl">Comisiones '+mesNombre(mesHoy)+'</div><div class="kval" style="font-size:20px;color:#5ddb8a">'+moneda(comAuto)+'</div><div class="ksub">'+pctCom+'% del objetivo</div></div>'
     +'<div class="kcard"><div class="klbl">Adelantos pendientes</div><div class="kval" style="font-size:20px;color:#ff7b6b">'+moneda(adelPend)+'</div></div>'
     +'</div>'
+    +'<button class="btn sm" data-action="cajaToggleDetalle" style="margin-bottom:8px;background:var(--negro3);color:var(--gris3)">'+(S_CAJA_DETALLE?'▲ Ocultar detalle del saldo':'▼ Ver detalle del saldo')+'</button>'
+    +(S_CAJA_DETALLE
+      ?'<div style="background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:13px">'
+        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#5ddb8a"><span>Comisiones cobradas (histórico)</span><span style="font-weight:600">+'+moneda(comTotal)+'</span></div>'
+        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#5ddb8a"><span>Honorarios / ingresos manuales</span><span style="font-weight:600">+'+moneda(ingMan)+'</span></div>'
+        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Gastos y retiros</span><span style="font-weight:600">-'+moneda(egresos)+'</span></div>'
+        +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Adelantos pendientes</span><span style="font-weight:600">-'+moneda(adelPend)+'</span></div>'
+        +'<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--negro4);font-weight:700;color:var(--celeste)"><span>Saldo disponible</span><span>'+moneda(saldo)+'</span></div>'
+        +'</div>'
+      :'')
     +'<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
     +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="honorario">+ Honorario</button>'
     +'<button class="btn sm" data-action="cajaAbrirModal" data-tipo="gasto">+ Gasto</button>'
@@ -2665,6 +2676,7 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
     }else{S.sec="cobranzas";render();}
   }
   else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
+  else if(action==="cajaToggleDetalle"){S_CAJA_DETALLE=!S_CAJA_DETALLE;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
