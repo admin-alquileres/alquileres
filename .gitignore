@@ -1,0 +1,19 @@
+# Credenciales y secretos
+sa.json
+*-service-account.json
+*-firebase-adminsdk-*.json
+.env
+.env.*
+
+# Dependencias
+node_modules/
+
+# Sistema macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Archivos temporales del editor
+*.swp
+*.swo
+.vscode/
