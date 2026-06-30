@@ -758,9 +758,13 @@ async function cobrarCuotaHon(cid){
   const montoFaltante=hon.pendiente||0;
   if(!montoFaltante){toast("Los honorarios ya están completos",false);return;}
   if(!confirm(`¿Registrar 2da cuota honorarios de ${moneda(montoFaltante)} para ${c.inquilino}?`))return;
-  const nuevosHon={...hon,pagado:(hon.pagado||0)+montoFaltante,pendiente:0,pagadas:2,completo:true};
+  const cuotaNum=(hon.pagadas||0)+1;
+  const nuevosHon={...hon,pagado:(hon.pagado||0)+montoFaltante,pendiente:0,pagadas:cuotaNum,completo:true};
   await fbUpd("contratos",cid,{honorarios:nuevosHon});
   S.contratos=S.contratos.map(x=>x._id===cid?{...x,honorarios:nuevosHon}:x);
+  const cajaData={tipo:"honorario",fecha:hoy(),monto:montoFaltante,concepto:"Honorarios — "+(c.inquilino||"")+(c.direccion?" ("+c.direccion+")":""),detalle:"Generado automáticamente al registrar cuota de honorarios desde ficha de contrato",inquilino:c.inquilino||"",cuotas:hon.cuotas||1,cuotaNum,recuperado:false};
+  const cajaId=await fbAdd("caja",cajaData);
+  if(cajaId) S_CAJA.movimientos.unshift({...cajaData,_id:cajaId});
   toast("2da cuota honorarios registrada ✓");render();
 }
 
