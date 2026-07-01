@@ -2798,13 +2798,11 @@ function calcularItemsParaMes(c,mesACobrar){
 
 function itemsParaMesConGuardados(c,mesACobrar,guardados){
   if(!guardados||guardados.length===0) return calcularItemsParaMes(c,mesACobrar);
-  const itemsFijos=gastosQueCorresponden(c,mesACobrar)
-    .map(g=>({tipo:"fijo",desc:g.nombre,monto:+(g.monto||0)}));
   const obligatorios=itemsAutomaticosParaMes(c,mesACobrar)
     .filter(auto=>auto.tipo==="deposito"||auto.tipo==="honorario"||auto.tipo==="saldo");
   const tiposObligatorios=new Set(obligatorios.map(o=>o.tipo));
-  const guardadosFiltrados=guardados.filter(g=>g.tipo!=="fijo"&&!tiposObligatorios.has(g.tipo));
-  return [...itemsFijos,...obligatorios,...guardadosFiltrados];
+  const guardadosFiltrados=guardados.filter(g=>!tiposObligatorios.has(g.tipo));
+  return [...obligatorios,...guardadosFiltrados];
 }
 
 function alquilerParaMes(c,mes){
