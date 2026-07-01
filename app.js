@@ -501,7 +501,9 @@ function generarPDFInquilino(p){
   doc.setFont("helvetica","bold");doc.setFontSize(8);
   doc.text("TOTAL: "+moneda(totalInq),12,y);
   doc.text("Prop.: "+(cont.propietarioNombre||p.propietarioNombre||""),105,y);y+=5;
-
+  doc.setDrawColor(200,200,200);doc.setLineWidth(0.1);doc.line(12,y,198,y);y+=4;
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(100,100,100);
+  doc.text("Comisión agencia ("+(cont.comisionAgencia||5)+"%): "+moneda(com),12,y);y+=4;
 
   doc.save("Recibo-Inquilino-"+(p.inquilino||"").replace(/ /g,"_")+"-"+mesNombreMay(p.mes)+".pdf");
 }
