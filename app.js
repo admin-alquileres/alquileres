@@ -2836,23 +2836,25 @@ function abrirContrato(cid){
 
 // ── GASTOS PENDIENTES POR CONTRATO (persisten entre sesiones) ──────────────
 const S_GPEND = {};
-const S_GPEND_CARGANDO = {};
-async function cargarGastosPendientes(cid){
-  if(S_GPEND[cid]!==undefined) return;
-  if(S_GPEND_CARGANDO[cid]) return;
-  S_GPEND_CARGANDO[cid]=true;
-  try{
-    const snap=await getDocs(query(collection(db,"gastos_pendientes"),where("contratoId","==",cid)));
-    const docs=snap.docs.map(d=>({...d.data(),_id:d.id}));
-    S_GPEND[cid]={por_mes:(docs[0]&&docs[0].por_mes)||{},_docId:(docs[0]&&docs[0]._id)||null};
-  }catch(e){
+const S_GPEND_PROMISE = {};
+function cargarGastosPendientes(cid){
+  if(S_GPEND[cid]!==undefined) return Promise.resolve();
+  if(S_GPEND_PROMISE[cid]) return S_GPEND_PROMISE[cid];
+  S_GPEND_PROMISE[cid]=(async()=>{
     try{
-      const snap2=await getDocs(collection(db,"gastos_pendientes"));
-      const docs2=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>d.contratoId===cid);
-      S_GPEND[cid]={por_mes:(docs2[0]&&docs2[0].por_mes)||{},_docId:(docs2[0]&&docs2[0]._id)||null};
-    }catch(e2){ S_GPEND[cid]={por_mes:{},_docId:null}; }
-  }
-  S_GPEND_CARGANDO[cid]=false;
+      const snap=await getDocs(query(collection(db,"gastos_pendientes"),where("contratoId","==",cid)));
+      const docs=snap.docs.map(d=>({...d.data(),_id:d.id}));
+      S_GPEND[cid]={por_mes:(docs[0]&&docs[0].por_mes)||{},_docId:(docs[0]&&docs[0]._id)||null};
+    }catch(e){
+      try{
+        const snap2=await getDocs(collection(db,"gastos_pendientes"));
+        const docs2=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(d=>d.contratoId===cid);
+        S_GPEND[cid]={por_mes:(docs2[0]&&docs2[0].por_mes)||{},_docId:(docs2[0]&&docs2[0]._id)||null};
+      }catch(e2){ S_GPEND[cid]={por_mes:{},_docId:null}; }
+    }
+    delete S_GPEND_PROMISE[cid];
+  })();
+  return S_GPEND_PROMISE[cid];
 }
 async function guardarGastosPendientes(cid, mes, items){
   if(!cid||!mes) return;
