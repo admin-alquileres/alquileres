@@ -14,7 +14,7 @@ let S=window.S={
   propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
-  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,busqGlobal:"",_busqResults:[],editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",ultimoPago:null,
+  liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",ultimoPago:null,
   presencia:[]
 };
 
@@ -1447,28 +1447,6 @@ function renderDeudores(){
     +'<tbody>'+rows+'</tbody></table></div>';
 }
 
-function renderBusquedaGlobal(q){
-  if(!q||q.length<2) return "";
-  const ql=q.toLowerCase();
-  const results=[];
-  S.contratos.forEach(c=>{
-    const match=(c.inquilino||"").toLowerCase().includes(ql)||(c.direccion||"").toLowerCase().includes(ql)||(c.propietarioNombre||"").toLowerCase().includes(ql)||(c.dni||"").includes(ql)||(c.telefono||"").includes(ql);
-    if(match)results.push({tipo:"contrato",ic:"📋",titulo:c.inquilino||"",sub:(c.direccion||"")+" · "+(c.propietarioNombre||""),id:c._id,badge:badge(c.estado||"activo")});
-  });
-  S.pagos.filter(p=>!p._eliminado).slice(0,200).forEach(p=>{
-    const match=(p.inquilino||"").toLowerCase().includes(ql)||(p.direccion||"").toLowerCase().includes(ql);
-    if(match)results.push({tipo:"pago",ic:"💰",titulo:(p.inquilino||"")+" · "+mesNombre(p.mes),sub:(p.direccion||"")+" · "+moneda(p.totalInquilino||p.total||0),id:p._id,badge:badge(p.estado)});
-  });
-  if(!results.length)return '<div style="padding:20px;text-align:center;color:var(--gris3)">Sin resultados para "'+q+'"</div>';
-  S._busqResults=results;
-  const rows=results.slice(0,12).map((r,i)=>'<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-radius:8px" data-action="busqIr" data-idx="'+i+'" data-tipo="'+r.tipo+'" data-id="'+r.id+'">'
-    +'<span style="font-size:20px;pointer-events:none">'+r.ic+'</span>'
-    +'<div style="flex:1;pointer-events:none"><div style="font-size:13px;font-weight:500">'+r.titulo+'</div><div style="font-size:11px;color:var(--gris3)">'+r.sub+'</div></div>'
-    +r.badge
-    +'</div>').join("");
-  const mas=results.length>12?'<div style="padding:8px 14px;font-size:11px;color:var(--gris3)">+'+(results.length-12)+' más</div>':"";
-  return rows+mas;
-}
 
 function abrirGrillaGastos(cid){
   S.modalExtra="grilla_gastos";
@@ -2527,7 +2505,6 @@ document.addEventListener("input",e=>{
   // Buscadores — usar renderParcial para no perder foco
   if(action==="setupBuscar"){S.setupBuscar=t.value;renderParcial();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;renderParcial();}
-  else if(action==="busqInput"){S.busqGlobal=t.value;renderParcial();}
   else if(action==="manualBuscar"){S.manualBuscar=t.value;renderParcial();}
   else if(action==="setBuscar"){setFiltro("buscar",t.value);}
   // Alquiler cobro — actualizar resumen en tiempo real
@@ -2668,8 +2645,6 @@ document.addEventListener("click",e=>{
   else if(action==="setupDescartar"){S.setupCambios={};render();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="busqInput"){S.busqGlobal=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
-  else if(action==="busqEscape"){S.busqGlobal="";render();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
 else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
   else if(action==="emitirPDFInqPago"){if(S.ultimoPago)generarPDFInquilino(S.ultimoPago);}
@@ -2685,14 +2660,6 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
   else if(action==="eliminarPago"){eliminarPago(id);}
   else if(action==="cobranzasLimpiar"){S.filtros.cobranzaMes="";S.filtros.cobranzaProp="";S.filtros.cobranzaBuscar="";S.filtros.cobranzaEstado="todos";render();}
   else if(action==="finalizarContrato"){finalizarContrato(id);}
-  else if(action==="busqIr"){
-    S.busqGlobal="";
-    const tipo=t.dataset.tipo;const rid=t.dataset.id;
-    if(tipo==="contrato"){
-      const c=S.contratos.find(x=>x._id===rid);
-      if(c){S.sec="contratos";S.modal="contrato_detalle";S.contratoActivo=c;S.itemsCobro=(c.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));render();}
-    }else{S.sec="cobranzas";render();}
-  }
   else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaToggleDetalle"){S_CAJA_DETALLE=!S_CAJA_DETALLE;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
@@ -4444,8 +4411,8 @@ function render(){
       <div class="sidebar-foot">© 2026 Eckerdt Negocios Inmobiliarios</div>
     </aside>
     <main class="main">
-      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><input id="busq-global" class="inp" placeholder="🔍 Buscar..." value="${S.busqGlobal||''}" id="busq-global-inp" data-action="busqInput" style="width:200px;padding:6px 10px;font-size:12px" data-action="busqEscape"><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
-      ${S.busqGlobal?'<div style="position:fixed;top:56px;left:0;right:0;z-index:999;background:var(--negro2);border-bottom:1px solid var(--negro4);padding:8px 16px;max-height:60vh;overflow-y:auto">'+renderBusquedaGlobal(S.busqGlobal)+'</div>':""}${body}
+      <div class="ph"><div class="ph-left"><div class="ph-accent"></div><div><div class="pt">${pt}</div><div class="ps">${ps}</div><button onclick="toggleTema()" title="Cambiar tema" style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1"><span class="tema-btn-icon">🌙</span></button></div></div></div>
+      ${body}
     </main>
   </div>${renderModal()}`;
 }
