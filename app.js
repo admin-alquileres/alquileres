@@ -3527,9 +3527,21 @@ function renderPropietarios(){
     ).reduce((s,p)=>s+(p.alquiler||0),0);
     const comision=Math.round(totalPendiente*(prop.comisionAgencia||5)/100);
     const neto=totalPendiente-comision;
-    const estadoChip=totalPendiente>0
-      ?`<span style="background:rgba(245,166,35,.15);color:var(--naranja);font-size:10px;padding:3px 8px;border-radius:10px">💰 ${moneda(neto)} pendiente</span>`
-      :`<span style="background:rgba(39,174,96,.1);color:#5ddb8a;font-size:10px;padding:3px 8px;border-radius:10px">✓ Al día</span>`;
+    const n=activos.length;
+    const x=n-pendientes.length;
+    const sufijoLiq=totalPendiente>0?'<br><span style="font-size:9px;color:var(--naranja)">💰 '+moneda(neto)+' p/liquidar</span>':'';
+    let estadoChip;
+    if(n===0){
+      estadoChip='<span style="color:var(--gris3);font-size:10px">—</span>';
+    }else if(x===0){
+      estadoChip='<span style="background:rgba(231,76,60,.15);color:#ff7b6b;font-size:10px;padding:3px 8px;border-radius:10px">🔴 0 de '+n+' pagaron</span>'+sufijoLiq;
+    }else if(x<n){
+      estadoChip='<span style="background:rgba(245,166,35,.15);color:var(--naranja);font-size:10px;padding:3px 8px;border-radius:10px">🟠 '+x+' de '+n+' pagaron</span>'+sufijoLiq;
+    }else if(totalPendiente>0){
+      estadoChip='<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:3px 8px;border-radius:10px">🟢 '+n+' de '+n+' · Listo p/liquidar ('+moneda(neto)+')</span>';
+    }else{
+      estadoChip='<span style="background:rgba(39,174,96,.1);color:#5ddb8a;font-size:10px;padding:3px 8px;border-radius:10px">✓ Al día</span>';
+    }
     return `<tr class="cl" data-action="abrirPropietario" data-nombre="${prop.nombre}">
       <td class="tdm">${prop.nombre}${prop.telefono?`<br><span class="tds">${telLink(prop.telefono)}</span>`:""}</td>
       <td>${activos.length} propiedad${activos.length!==1?"es":""} activa${activos.length!==1?"s":""}${disponibles.length>0?`<br><span class="tds" style="color:var(--naranja)">⚠️ ${disponibles.length} disponible${disponibles.length!==1?"s":""} p/alquilar</span>`:""}</td>
