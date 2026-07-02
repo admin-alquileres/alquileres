@@ -3491,9 +3491,10 @@ function renderPropietarios(){
     cargarPropiedadesInmuebles().then(()=>render());
   }
   // Armar lista de propietarios únicos desde contratos
+  const nombresEliminados=new Set(S.propietarios.filter(p=>p._eliminado).map(p=>p.nombre));
   const propMap={};
   S.contratos.forEach(c=>{
-    if(!c.propietarioNombre)return;
+    if(!c.propietarioNombre||nombresEliminados.has(c.propietarioNombre))return;
     const n=c.propietarioNombre;
     if(!propMap[n])propMap[n]={nombre:n,contratos:[]};
     propMap[n].contratos.push(c);
@@ -4241,7 +4242,7 @@ function renderModal(){
     <div class="fsec"><div class="fsec-t">1. Elegir propietario</div>
       <select class="inp" style="width:100%" data-action="setPropietario">
         <option value="">-- Seleccionar propietario --</option>
-        ${[...new Set(S.contratos.map(c=>c.propietarioNombre).filter(Boolean))].concat(S.propietarios.filter(p=>!p._eliminado).map(p=>p.nombre)).filter((v,i,a)=>v&&a.indexOf(v)===i).sort().map(n=>'<option value="'+n+'"'+(f.propietarioNombre===n?' selected':'')+'>'+n+'</option>').join('')}
+        ${(()=>{const elimNombres=new Set(S.propietarios.filter(p=>p._eliminado).map(p=>p.nombre));return[...new Set(S.contratos.map(c=>c.propietarioNombre).filter(n=>n&&!elimNombres.has(n)))].concat(S.propietarios.filter(p=>!p._eliminado).map(p=>p.nombre)).filter((v,i,a)=>v&&a.indexOf(v)===i).sort().map(n=>'<option value="'+n+'"'+(f.propietarioNombre===n?' selected':'')+'>'+n+'</option>').join('');})()}
       </select>
     </div>
     <div class="fsec"><div class="fsec-t">2. Elegir propiedad</div>
