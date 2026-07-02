@@ -1260,7 +1260,7 @@ function updateResumen(){
   el.innerHTML=
     '<div class="rrow"><span>Alquiler</span><span>'+moneda(alq)+'</span></div>'
     +filas
-    +'<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>'+moneda(totalInq)+'</span></div>'
+    +'<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)"><span>Total inquilino</span><span>'+moneda(totalInq)+'</span></div>'
     +'<div style="height:6px"></div>'
     +'<div class="rrow" style="color:#ff7b6b"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div>'
     +'<div class="rrow" style="color:#5ddb8a;font-weight:600;font-size:13px"><span>Neto propietario</span><span>'+moneda(netoP)+'</span></div>';
@@ -2733,7 +2733,7 @@ function renderResumen(){
   el.innerHTML=
     `<div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>`+
     extras.map(e=>`<div class="rrow blue"><span>${e.desc}</span><span>${moneda(e.monto||0)}</span></div>`).join("")+
-    `<div class="rrow" style="font-weight:600;font-size:13px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>`+
+    `<div class="rrow" style="font-weight:600;font-size:13px;color:var(--naranja)"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>`+
     `<div style="height:6px"></div>`+
     `<div class="rrow red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>`+
     `<div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>`;
@@ -4110,7 +4110,7 @@ function renderModalDetalle(){
         <div id="cobro-resumen">
           <div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>
           ${S.itemsCobro.map(it=>{const neg=(it.monto||0)<0;const col=neg?"#ff7b6b":it.tipo==="saldo"?"var(--naranja)":"var(--celeste)";return `<div class="rrow" style="color:${col}"><span>${it.desc||it.tipo}</span><span>${neg?"":"+"}${moneda(it.monto||0)}</span></div>`;}).join("")}
-          <div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>
+          <div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>
           <div style="height:6px"></div>
           <div class="rrow red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>
           <div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>
