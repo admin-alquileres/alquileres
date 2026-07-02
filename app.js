@@ -1719,7 +1719,9 @@ async function confirmarRenovacion(){
       ?calcularDepositoActualizacionIPC(alqBase,difDep,depCuotas)
       :{...calcularDeposito(alqBase,1),pendiente:0,completo:true};
   }
-  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
+  const honorarios=honCuotas===0
+    ?{total:0,monto:"ninguno",cuotas:0,pagadas:0,pagado:0,pendiente:0,completo:true,sinCargo:true}
+    :{total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
 
   const upd={
     inicio:f.inicio,
@@ -3041,7 +3043,9 @@ async function guardarContrato(){
   const deposito=f.tieneDeposito==="si"
     ?calcularDeposito(alqBase,+(f.depCuotas||1))
     :{total:0,cuotasTotales:1,cuotasPagadas:1,montoCuota:0,pagadoAcumulado:0,pendiente:0,completo:true,cuotas:1,pagadas:1,pagado:0};
-  const honorarios={total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
+  const honorarios=honCuotas===0
+    ?{total:0,monto:"ninguno",cuotas:0,pagadas:0,pagado:0,pendiente:0,completo:true,sinCargo:true}
+    :{total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios};
@@ -3377,6 +3381,20 @@ function renderInquilinos(){
       const honComp=hon.completo||false;
       const depPend=dep.pendiente||0;
       const honPend=hon.pendiente||0;
+      const honCardHtml=hon.sinCargo
+        ?'<div style="background:var(--negro3);border:1px solid var(--negro4);border-radius:8px;padding:10px">'
+          +'<div style="font-size:10px;color:var(--gris3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Honorarios</div>'
+          +'<div style="font-size:13px;font-weight:600;color:var(--gris3)">Sin cargo — no se cobran honorarios</div>'
+          +'</div>'
+        :'<div style="background:'+(honComp?'rgba(39,174,96,.08)':honPend>0?'rgba(231,76,60,.08)':'var(--negro3)')
+          +';border:1px solid '+(honComp?'rgba(39,174,96,.25)':honPend>0?'rgba(231,76,60,.25)':'var(--negro4)')
+          +';border-radius:8px;padding:10px">'
+          +'<div style="font-size:10px;color:var(--gris3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Honorarios ('+(hon.monto==="mes"?'1 mes':'½ mes')+')</div>'
+          +'<div style="font-size:13px;font-weight:600">'+moneda(hon.total||Math.round(c.alquilerBase/2))+'</div>'
+          +'<div style="font-size:11px;margin-top:3px;color:'+(honComp?'#5ddb8a':honPend>0?'#ff7b6b':'var(--gris3)')+'">'+
+          (honComp?'✓ Completo':honPend>0?'⚠️ Falta '+moneda(honPend):'Pagado: '+moneda(hon.pagado||0))+'</div>'
+          +(honPend>0?'<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaHon" data-id="'+c._id+'">✓ Cobrar 2da cuota</button>':'')
+          +'</div>';
       return `<div class="lcard" style="padding:12px;margin-bottom:8px">
         <div style="font-weight:600;font-size:12px;margin-bottom:8px">${c.direccion||""} <span style="font-weight:400;color:var(--gris3)">· ${moneda(c.alquilerBase)}/mes</span></div>
         <div class="fg">
@@ -3388,14 +3406,7 @@ function renderInquilinos(){
             </div>`:`<div style="font-size:13px;font-weight:600;color:var(--gris4)">Sin depósito</div>`}
             ${depPend>0?`<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Cobrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1}</button>`:""}
           </div>
-          <div style="background:${honComp?"rgba(39,174,96,.08)":honPend>0?"rgba(231,76,60,.08)":"var(--negro3)"};border:1px solid ${honComp?"rgba(39,174,96,.25)":honPend>0?"rgba(231,76,60,.25)":"var(--negro4)"};border-radius:8px;padding:10px">
-            <div style="font-size:10px;color:var(--gris3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Honorarios (${hon.monto==="mes"?"1 mes":"½ mes"})</div>
-            <div style="font-size:13px;font-weight:600">${moneda(hon.total||Math.round(c.alquilerBase/2))}</div>
-            <div style="font-size:11px;margin-top:3px;color:${honComp?"#5ddb8a":honPend>0?"#ff7b6b":"var(--gris3)"}">
-              ${honComp?"✓ Completo":honPend>0?`⚠️ Falta ${moneda(honPend)}`:`Pagado: ${moneda(hon.pagado||0)}`}
-            </div>
-            ${honPend>0?`<button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaHon" data-id="${c._id}">✓ Cobrar 2da cuota</button>`:""}
-          </div>
+          ${honCardHtml}
         </div>
       </div>`;
     }).join("");
@@ -4004,13 +4015,20 @@ function renderModalDetalle(){
           <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Registrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de depósito</button>`:""}
           ${depComp&&dep.total?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Depósito completo</div>`:""}
         </div>`;
-        html+=`<div class="fc" style="border-left:3px solid ${honComp?"var(--verde)":honPend>0?"var(--rojo)":"var(--gris4)"}">
-          <div class="fc-l">Honorarios inmobiliaria</div>
-          <div class="fc-v">${moneda(honTotal)} (${hon.monto==="mes"?"1 mes":"½ mes"}) &nbsp;·&nbsp; Pagado: ${moneda(honPag)}</div>
-          ${honPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota pendiente: ${moneda(honPend)}</div>
-          <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaHon" data-id="${c._id}">✓ Registrar 2da cuota honorarios</button>`:""}
-          ${honComp?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Honorarios completos</div>`:""}
-        </div>`;
+        if(hon.sinCargo){
+          html+='<div class="fc" style="border-left:3px solid var(--gris4)">'
+            +'<div class="fc-l">Honorarios inmobiliaria</div>'
+            +'<div class="fc-v" style="color:var(--gris3)">Sin cargo — no se cobran honorarios</div>'
+            +'</div>';
+        }else{
+          html+=`<div class="fc" style="border-left:3px solid ${honComp?"var(--verde)":honPend>0?"var(--rojo)":"var(--gris4)"}">
+            <div class="fc-l">Honorarios inmobiliaria</div>
+            <div class="fc-v">${moneda(honTotal)} (${hon.monto==="mes"?"1 mes":"½ mes"}) &nbsp;·&nbsp; Pagado: ${moneda(honPag)}</div>
+            ${honPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota pendiente: ${moneda(honPend)}</div>
+            <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaHon" data-id="${c._id}">✓ Registrar 2da cuota honorarios</button>`:""}
+            ${honComp?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Honorarios completos</div>`:""}
+          </div>`;
+        }
         html+='</div>';
         return html;
       })()}
@@ -4282,8 +4300,9 @@ function renderModal(){
         </div>
         <div><label class="fl">Cuotas honorarios</label>
           <select class="inp" style="width:100%" data-action="setForm" data-key="honCuotas">
-            <option value="1"${(f.honCuotas||1)==1?" selected":""}>1 cuota (pago al ingreso)</option>
-            <option value="2"${+(f.honCuotas||1)==2?" selected":""}>2 cuotas (mitad al ingreso, mitad al mes sig.)</option>
+            <option value="0"${+(f.honCuotas||1)===0?" selected":""}>Sin honorarios (no se cobran)</option>
+            <option value="1"${+(f.honCuotas||1)===1?" selected":""}>1 cuota (pago al ingreso)</option>
+            <option value="2"${+(f.honCuotas||1)===2?" selected":""}>2 cuotas (mitad al ingreso, mitad al mes sig.)</option>
           </select>
         </div>
         <div style="background:rgba(75,200,232,.06);border:1px solid rgba(75,200,232,.2);border-radius:8px;padding:10px;font-size:11px;color:var(--gris2)">
