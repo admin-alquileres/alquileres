@@ -794,6 +794,7 @@ async function eliminarPago(pid){
 // ── CAJA ────────────────────────────────────────────────────────────────────
 var S_CAJA={tab:"todos",movimientos:[],cargado:false};
 let S_CAJA_DETALLE=false;
+let S_CAJA_DIF_DETALLE=false;
 
 async function cargarCaja(limit=120){
   if(S_CAJA.cargado)return;
@@ -869,6 +870,7 @@ window.guardarMovCaja=async function(){
 
 function renderCaja(){
   if(!S_CAJA.cargado){cargarCaja().then(()=>render());return '<div class="loading"><div class="spinner"></div>Cargando caja...</div>';}
+  if(!S_SALDO_PROP_TODOS)cargarTodosSaldosProp();
   const movs=S_CAJA.movimientos;
   const mesHoy=mesActual();
   const comAuto=S.pagos.filter(p=>p.estado==="cobrado"&&p.mes===mesHoy).reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
@@ -925,6 +927,46 @@ function renderCaja(){
           +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Gastos y retiros</span><span style="font-weight:600">-'+moneda(egresos)+'</span></div>'
           +'<div style="display:flex;justify-content:space-between;padding:4px 0;color:#ff7b6b"><span>Adelantos pendientes</span><span style="font-weight:600">-'+moneda(adelPend)+'</span></div>'
           +'<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--negro4);font-weight:700;color:var(--celeste)"><span>Saldo disponible</span><span>'+moneda(saldo)+'</span></div>'
+          +'</div>';
+      })()
+      :'')
+    +'<button class="btn sm" data-action="cajaDifToggle" style="margin-bottom:8px;background:var(--negro3);color:var(--gris3)">'+(S_CAJA_DIF_DETALLE?'▲ Ocultar diferencias de saldo':'▼ 🔄 Diferencias de saldo')+'</button>'
+    +(S_CAJA_DIF_DETALLE
+      ?(()=>{
+        const activos=S.contratos.filter(c=>c.estado==="activo"||!c.estado);
+        const difsInq=activos
+          .map(c=>({inquilino:c.inquilino,direccion:c.direccion,dif:diferenciaUltimoPago(c)}))
+          .filter(x=>x.dif!==0);
+        const totalDifInq=difsInq.reduce((s,x)=>s+x.dif,0);
+        const nombresProp=[...new Set(activos.map(c=>c.propietarioNombre).filter(Boolean))].sort();
+        const difsProps=nombresProp
+          .map(n=>({nombre:n,monto:(S_SALDO_PROP[n]&&S_SALDO_PROP[n].monto)||0}))
+          .filter(x=>x.monto!==0);
+        const totalDifProp=difsProps.reduce((s,x)=>s+x.monto,0);
+        const neto=totalDifInq+totalDifProp;
+        const rowInqH=difsInq.map(x=>
+          '<div style="display:flex;justify-content:space-between;padding:3px 0 3px 12px;font-size:12px">'
+          +'<span style="color:var(--gris3)">'+(x.inquilino||'—')+' <span style="font-size:10px;color:var(--gris4)">'+x.direccion+'</span></span>'
+          +'<span style="font-weight:600;color:'+(x.dif>0?'#5ddb8a':'#ff7b6b')+'">'+(x.dif>0?'+':'')+moneda(x.dif)+'</span></div>'
+        ).join('')||'<div style="padding:3px 0 3px 12px;color:var(--gris3);font-size:12px">Sin diferencias pendientes</div>';
+        const rowPropH=difsProps.map(x=>
+          '<div style="display:flex;justify-content:space-between;padding:3px 0 3px 12px;font-size:12px">'
+          +'<span style="color:var(--gris3)">'+x.nombre+'</span>'
+          +'<span style="font-weight:600;color:'+(x.monto>0?'#5ddb8a':'#ff7b6b')+'">'+(x.monto>0?'+':'')+moneda(x.monto)+'</span></div>'
+        ).join('')||'<div style="padding:3px 0 3px 12px;color:var(--gris3);font-size:12px">Sin saldos pendientes</div>';
+        const colorInq=totalDifInq>0?'#5ddb8a':totalDifInq<0?'#ff7b6b':'var(--gris3)';
+        const colorProp=totalDifProp>0?'#5ddb8a':totalDifProp<0?'#ff7b6b':'var(--gris3)';
+        const colorNeto=neto>0?'#5ddb8a':neto<0?'#ff7b6b':'var(--gris3)';
+        return '<div style="background:var(--negro2);border:1px solid var(--negro4);border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:13px">'
+          +'<div style="padding:4px 0;color:var(--celeste);font-weight:600">Diferencias de inquilinos</div>'
+          +'<div style="font-size:10px;color:var(--gris3);padding-bottom:6px">+ = pagó de más (plata en caja, se devuelve el mes siguiente) · − = pagó de menos</div>'
+          +rowInqH
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0 4px 12px;border-top:1px solid var(--negro4);margin-top:4px;font-size:12px"><span>Subtotal inquilinos</span><span style="font-weight:600;color:'+colorInq+'">'+(totalDifInq>=0?'+':'')+moneda(totalDifInq)+'</span></div>'
+          +'<div style="padding:4px 0;margin-top:8px;color:var(--celeste);font-weight:600">Saldos de propietarios</div>'
+          +'<div style="font-size:10px;color:var(--gris3);padding-bottom:6px">+ = la agencia les debe · − = nos deben</div>'
+          +rowPropH
+          +'<div style="display:flex;justify-content:space-between;padding:4px 0 4px 12px;border-top:1px solid var(--negro4);margin-top:4px;font-size:12px"><span>Subtotal propietarios</span><span style="font-weight:600;color:'+colorProp+'">'+(totalDifProp>=0?'+':'')+moneda(totalDifProp)+'</span></div>'
+          +'<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;border-top:1px solid var(--negro4);font-weight:700;color:'+colorNeto+'"><span>Neto diferencias <span style="font-size:10px;font-weight:400;color:var(--gris3)">· a compensar el mes siguiente</span></span><span>'+(neto>=0?'+':'')+moneda(neto)+'</span></div>'
           +'</div>';
       })()
       :'')
@@ -2666,6 +2708,7 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
   else if(action==="finalizarContrato"){finalizarContrato(id);}
   else if(action==="cobrarCuotaDep")cobrarCuotaDep(id);else if(action==="cobrarCuotaHon")cobrarCuotaHon(id);else if(action==="cajaTab"){S_CAJA.tab=t.dataset.tab;render();}
   else if(action==="cajaToggleDetalle"){S_CAJA_DETALLE=!S_CAJA_DETALLE;render();}
+  else if(action==="cajaDifToggle"){S_CAJA_DIF_DETALLE=!S_CAJA_DIF_DETALLE;render();}
   else if(action==="cajaEliminar"){eliminarMovCaja(id);}
   else if(action==="cajaRecuperar"){marcarRecuperado(id);}
   else if(action==="cajaMas"){cargarMasCaja();}else if(action==="cajaAbrirModal"){S.modal="caja";S.form={tipo:t.dataset.tipo,fecha:hoy(),monto:"",concepto:"",detalle:"",inquilino:"",cuotas:1,cuotaNum:1};render();}
@@ -2748,6 +2791,17 @@ function openModal(t){S.modal=t;S.form={comisionAgencia:5,estado:"activo",tipo:"
 window.closeModal=function(){S.modal=null;S.contratoActivo=null;S.ultimoPago=null;render();};
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
+
+function diferenciaUltimoPago(c){
+  const ultimo=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado")
+    .sort((a,b)=>(b.mes||"").localeCompare(a.mes||""))[0];
+  if(!ultimo)return 0;
+  const totalCobrado=ultimo.totalInquilino||ultimo.total||ultimo.monto||0;
+  const itemsPrev=ultimo.itemsCobro||(ultimo.extras||[]).map(e=>({monto:+(e.monto||0)}));
+  const totalEsperado=(ultimo.alquiler||0)+itemsPrev.reduce((s,it)=>s+(it.monto||0),0);
+  const dif=totalCobrado-totalEsperado;
+  return Math.abs(dif)>1?dif:0;
+}
 
 function itemsAutomaticosParaMes(c,mesACobrar){
   const cid=c._id;
@@ -2887,6 +2941,7 @@ async function limpiarGastosPendientes(cid, mes){
 // ── SALDO DE PROPIETARIO ENTRE LIQUIDACIONES ────────────────────────────────
 const S_SALDO_PROP = {};
 const S_SALDO_PROP_CARGANDO = {};
+let S_SALDO_PROP_TODOS=false;
 async function cargarSaldoProp(nombre){
   if(S_SALDO_PROP[nombre]!==undefined) return;
   if(S_SALDO_PROP_CARGANDO[nombre]) return;
@@ -2903,6 +2958,18 @@ async function cargarSaldoProp(nombre){
     }catch(e2){ S_SALDO_PROP[nombre]={monto:0,_docId:null}; }
   }
   S_SALDO_PROP_CARGANDO[nombre]=false;
+  render();
+}
+async function cargarTodosSaldosProp(){
+  if(S_SALDO_PROP_TODOS)return;
+  S_SALDO_PROP_TODOS=true;
+  try{
+    const snap=await getDocs(collection(db,"saldos_prop"));
+    snap.docs.forEach(d=>{
+      const data=d.data();
+      if(data.propietarioNombre)S_SALDO_PROP[data.propietarioNombre]={monto:data.monto||0,_docId:d.id};
+    });
+  }catch(e){S_SALDO_PROP_TODOS=false;}
   render();
 }
 async function guardarSaldoProp(nombre, monto){
