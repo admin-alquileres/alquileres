@@ -2918,7 +2918,7 @@ async function cargarTodosGastosPendientes(){
     const snap=await getDocs(collection(db,"gastos_pendientes"));
     snap.docs.forEach(d=>{
       const data=d.data();
-      if(data.contratoId&&S_GPEND[data.contratoId]===undefined)
+      if(data.contratoId)
         S_GPEND[data.contratoId]={por_mes:data.por_mes||{},_docId:d.id};
     });
   }catch(e){S_GPEND_TODOS=false;}
