@@ -801,7 +801,7 @@ async function cargarCaja(limit=120){
   try{
     // Cargar los últimos `limit` movimientos ordenados por fecha desc
     const snap=await getDocs(collection(db,"caja"));
-    S_CAJA.movimientos=snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+    S_CAJA.movimientos=snap.docs.map(d=>({...d.data(),_id:d.id})).filter(m=>!m._eliminado).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
     S_CAJA.total=snap.size;
     S_CAJA.cargado=true;
     S_CAJA.limit=limit;
@@ -809,7 +809,7 @@ async function cargarCaja(limit=120){
     // Fallback sin query compleja si falla el índice
     try{
       const snap2=await getDocs(collection(db,"caja"));
-      S_CAJA.movimientos=snap2.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,limit);
+      S_CAJA.movimientos=snap2.docs.map(d=>({...d.data(),_id:d.id})).filter(m=>!m._eliminado).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,limit);
       S_CAJA.total=snap2.size;
       S_CAJA.cargado=true;
       S_CAJA.limit=limit;
@@ -990,8 +990,12 @@ async function marcarRecuperado(id){
 
 async function eliminarMovCaja(id){
   if(!confirm("¿Eliminar este movimiento?"))return;
-  S_CAJA.movimientos=S_CAJA.movimientos.filter(m=>m._id!==id);
-  toast("Eliminado ✓");render();
+  try{
+    await fbUpd("caja",id,{_eliminado:true});
+    S_CAJA.movimientos=S_CAJA.movimientos.filter(m=>m._id!==id);
+    toast("Eliminado ✓");
+  }catch(e){toast("Error al eliminar: "+e.message,false);}
+  render();
 }
 
 // ── PUESTA A PUNTO ──────────────────────────────────────────────────────────
