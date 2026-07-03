@@ -871,6 +871,7 @@ window.guardarMovCaja=async function(){
 function renderCaja(){
   if(!S_CAJA.cargado){cargarCaja().then(()=>render());return '<div class="loading"><div class="spinner"></div>Cargando caja...</div>';}
   if(!S_SALDO_PROP_TODOS)cargarTodosSaldosProp();
+  if(!S_GPEND_TODOS)cargarTodosGastosPendientes();
   const movs=S_CAJA.movimientos;
   const mesHoy=mesActual();
   const comAuto=S.pagos.filter(p=>p.estado==="cobrado"&&p.mes===mesHoy).reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
@@ -935,7 +936,7 @@ function renderCaja(){
       ?(()=>{
         const activos=S.contratos.filter(c=>c.estado==="activo"||!c.estado);
         const difsInq=activos
-          .map(c=>({inquilino:c.inquilino,direccion:c.direccion,dif:diferenciaUltimoPago(c)}))
+          .map(c=>{const pend=saldosPendientesFuturos(c);const dif=pend!==0?pend:diferenciaUltimoPago(c);return{inquilino:c.inquilino,direccion:c.direccion,dif};})
           .filter(x=>x.dif!==0);
         const totalDifInq=difsInq.reduce((s,x)=>s+x.dif,0);
         const nombresProp=[...new Set(activos.map(c=>c.propietarioNombre).filter(Boolean))].sort();
@@ -2796,6 +2797,16 @@ window.closeModal=function(){S.modal=null;S.contratoActivo=null;S.ultimoPago=nul
 function addExtra(){S.formExtras.push({desc:"",monto:0});render();}
 function removeExtra(i){S.formExtras.splice(i,1);render();}
 
+function saldosPendientesFuturos(c){
+  const gp=S_GPEND[c._id];
+  if(!gp||!gp.por_mes)return 0;
+  let total=0;
+  Object.values(gp.por_mes).forEach(items=>{
+    (items||[]).forEach(it=>{if(it.tipo==="saldo")total+=(it.monto||0);});
+  });
+  return total;
+}
+
 function diferenciaUltimoPago(c){
   const ultimo=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado&&p.estado==="cobrado")
     .sort((a,b)=>(b.mes||"").localeCompare(a.mes||""))[0];
@@ -2899,6 +2910,20 @@ function abrirContrato(cid){
 // ── GASTOS PENDIENTES POR CONTRATO (persisten entre sesiones) ──────────────
 const S_GPEND = {};
 const S_GPEND_PROMISE = {};
+let S_GPEND_TODOS=false;
+async function cargarTodosGastosPendientes(){
+  if(S_GPEND_TODOS)return;
+  S_GPEND_TODOS=true;
+  try{
+    const snap=await getDocs(collection(db,"gastos_pendientes"));
+    snap.docs.forEach(d=>{
+      const data=d.data();
+      if(data.contratoId&&S_GPEND[data.contratoId]===undefined)
+        S_GPEND[data.contratoId]={por_mes:data.por_mes||{},_docId:d.id};
+    });
+  }catch(e){S_GPEND_TODOS=false;}
+  render();
+}
 function cargarGastosPendientes(cid){
   if(S_GPEND[cid]!==undefined) return Promise.resolve();
   if(S_GPEND_PROMISE[cid]) return S_GPEND_PROMISE[cid];
