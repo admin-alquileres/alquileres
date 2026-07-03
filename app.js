@@ -3664,7 +3664,7 @@ function renderFichaPropietario(nombre, prop){
   const totalPendBruto=pendLiq.reduce((s,p)=>s+(p.alquiler||0),0);
   const totalExtrasPend=pendLiq.reduce((s,p)=>{
     const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-    return s+items.reduce((si,it)=>si+(it.monto||0),0);
+    return s+items.reduce((si,it)=>(it.tipo==="gestion"||it.tipo==="honorario")?si:si+(it.monto||0),0);
   },0);
   const comPct=prop.comisionAgencia||5;
   const comBase=Math.round(totalPendBruto*comPct/100);
@@ -3685,7 +3685,7 @@ function renderFichaPropietario(nombre, prop){
   const totalSelBruto=pagosSel.reduce(function(s,p){return s+(p.alquiler||0);},0);
   const totalSelExtras=pagosSel.reduce(function(s,p){
     const items=p.itemsCobro||(p.extras||[]).map(function(e){return{tipo:"fijo",desc:e.desc,monto:+(e.monto||0)};});
-    return s+items.reduce(function(si,it){return si+(it.monto||0);},0);
+    return s+items.reduce(function(si,it){return(it.tipo==="gestion"||it.tipo==="honorario")?si:si+(it.monto||0);},0);
   },0);
   const comSel=Math.round(totalSelBruto*comPct/100);
   const netoSel=totalSelBruto+totalSelExtras-comSel;
@@ -3884,7 +3884,7 @@ async function generarLiquidacionProp(nombre){
     prop2.pagos.forEach(p=>{
       totalAlquileres+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.forEach(it=>{ if(it.tipo==="gestion")return; if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
+      items.forEach(it=>{ if(it.tipo==="gestion"||it.tipo==="honorario")return; if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
     });
   });
   const totalBruto=totalAlquileres+totalExtras;
@@ -3936,7 +3936,7 @@ async function generarLiquidacionProp(nombre){
       subtotal+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
       items.forEach(it=>{
-        if(it.tipo==="gestion")return;
+        if(it.tipo==="gestion"||it.tipo==="honorario")return;
         if((it.monto||0)===0)return;
         const neg=(it.monto||0)<0;
         doc.setTextColor(neg?180:60,neg?60:60,60);
