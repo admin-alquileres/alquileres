@@ -3664,7 +3664,7 @@ function renderFichaPropietario(nombre, prop){
   const totalPendBruto=pendLiq.reduce((s,p)=>s+(p.alquiler||0),0);
   const totalExtrasPend=pendLiq.reduce((s,p)=>{
     const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-    return s+items.reduce((si,it)=>(it.tipo==="gestion"||it.tipo==="honorario")?si:si+(it.monto||0),0);
+    return s+items.reduce((si,it)=>(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")?si:si+(it.monto||0),0);
   },0);
   const comPct=prop.comisionAgencia||5;
   const comBase=Math.round(totalPendBruto*comPct/100);
@@ -3685,7 +3685,7 @@ function renderFichaPropietario(nombre, prop){
   const totalSelBruto=pagosSel.reduce(function(s,p){return s+(p.alquiler||0);},0);
   const totalSelExtras=pagosSel.reduce(function(s,p){
     const items=p.itemsCobro||(p.extras||[]).map(function(e){return{tipo:"fijo",desc:e.desc,monto:+(e.monto||0)};});
-    return s+items.reduce(function(si,it){return(it.tipo==="gestion"||it.tipo==="honorario")?si:si+(it.monto||0);},0);
+    return s+items.reduce(function(si,it){return(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")?si:si+(it.monto||0);},0);
   },0);
   const comSel=Math.round(totalSelBruto*comPct/100);
   const netoSel=totalSelBruto+totalSelExtras-comSel;
@@ -3884,7 +3884,7 @@ async function generarLiquidacionProp(nombre){
     prop2.pagos.forEach(p=>{
       totalAlquileres+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.forEach(it=>{ if(it.tipo==="gestion"||it.tipo==="honorario")return; if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
+      items.forEach(it=>{ if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return; if((it.monto||0)!==0) totalExtras+=(it.monto||0); });
     });
   });
   const totalBruto=totalAlquileres+totalExtras;
@@ -3936,7 +3936,7 @@ async function generarLiquidacionProp(nombre){
       subtotal+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
       items.forEach(it=>{
-        if(it.tipo==="gestion"||it.tipo==="honorario")return;
+        if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;
         if((it.monto||0)===0)return;
         const neg=(it.monto||0)<0;
         doc.setTextColor(neg?180:60,neg?60:60,60);
@@ -4002,6 +4002,88 @@ async function generarLiquidacionProp(nombre){
 
   toast("Liquidacion generada — Neto: "+moneda(netoAEntregar));
   render();
+}
+
+async function reimprimirLiquidacion(ref, nombre){
+  const pagosSel=S.pagos.filter(p=>p.liquidacionRef===ref&&!p._eliminado);
+  if(!pagosSel.length){toast("No se encontraron pagos de esa liquidacion",false);return;}
+  const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
+  const comPct=prop.comisionAgencia||5;
+  const porPropiedad={};
+  pagosSel.forEach(p=>{
+    const dir=p.direccion||"Sin direccion";
+    if(!porPropiedad[dir])porPropiedad[dir]={direccion:dir,inquilino:p.inquilino||"",pagos:[]};
+    porPropiedad[dir].pagos.push(p);
+  });
+  const propiedades=Object.values(porPropiedad).sort((a,b)=>a.direccion.localeCompare(b.direccion));
+  const mesesSel=[...new Set(pagosSel.map(p=>p.mes).filter(Boolean))].sort();
+  let totalAlquileres=0,totalExtras=0;
+  propiedades.forEach(prop2=>{
+    prop2.pagos.forEach(p=>{
+      totalAlquileres+=(p.alquiler||0);
+      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+      items.forEach(it=>{if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;if((it.monto||0)!==0)totalExtras+=(it.monto||0);});
+    });
+  });
+  const totalBruto=totalAlquileres+totalExtras;
+  const comision=Math.round(totalAlquileres*comPct/100);
+  const netoAEntregar=totalBruto-comision;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  let y=14;
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(20,20,20);
+  doc.text("LIQUIDACION A PROPIETARIO",105,y,{align:"center"});y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(120,120,120);
+  doc.text("Documento no valido como factura",105,y,{align:"center"});y+=8;
+  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=7;
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
+  doc.text(nombre.toUpperCase(),12,y);
+  doc.setFont("helvetica","normal");doc.setFontSize(9);
+  doc.text("Periodo: "+mesesSel.map(mesNombreMay).join(", "),198,y,{align:"right"});y+=8;
+  propiedades.forEach(prop2=>{
+    if(y>260){doc.addPage();y=18;}
+    doc.setFillColor(240,240,240);doc.rect(12,y-4,186,7,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(30,30,30);
+    doc.text(prop2.direccion+"  ("+prop2.inquilino+")",14,y);y+=7;
+    let subtotal=0;
+    prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
+      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
+      doc.text("Alquiler "+mesNombre(p.mes),16,y);
+      doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
+      subtotal+=(p.alquiler||0);
+      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+      items.forEach(it=>{
+        if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;
+        if((it.monto||0)===0)return;
+        const neg=(it.monto||0)<0;
+        doc.setTextColor(neg?180:60,neg?60:60,60);
+        doc.text("  "+(it.desc||it.tipo),16,y);
+        doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=5.5;
+        subtotal+=(it.monto||0);
+        doc.setTextColor(60,60,60);
+      });
+      if(y>270){doc.addPage();y=18;}
+    });
+    doc.setDrawColor(200,200,200);doc.line(14,y,198,y);y+=1;
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
+    doc.text("Subtotal "+prop2.direccion,14,y+4);
+    doc.text(moneda(subtotal),198,y+4,{align:"right"});y+=10;
+  });
+  if(y>250){doc.addPage();y=18;}
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.4);doc.line(12,y,198,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
+  doc.text("Total general (alquileres + gastos)",12,y);doc.text(moneda(totalBruto),198,y,{align:"right"});y+=6;
+  doc.setTextColor(180,30,30);
+  doc.text("Comision agencia ("+comPct+"% s/ alquileres)",12,y);doc.text("- "+moneda(comision),198,y,{align:"right"});y+=6;
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
+  doc.text("NETO A ENTREGAR",12,y);
+  doc.setTextColor(20,120,60);doc.text(moneda(netoAEntregar),198,y,{align:"right"});y+=6;
+  doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("("+numeroALetras(netoAEntregar)+" pesos)",12,y);y+=10;
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
+  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
 }
 
 function renderModalDetalle(){
