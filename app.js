@@ -2697,6 +2697,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="eliminarLiquidacion"){eliminarLiquidacion(t.dataset.ref,t.dataset.nombre);}
 else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
   else if(action==="emitirPDFInqPago"){if(S.ultimoPago)generarPDFInquilino(S.ultimoPago);}
   else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
@@ -3697,7 +3698,7 @@ function renderFichaPropietario(nombre, prop){
   const histHtml=histLiq.slice(0,8).map(function(liq){
     const mesesStr=[...liq.meses].sort().reverse().map(m=>mesNombre(m)).join(", ");
     const com=Math.round(liq.total*comPct/100);
-    return '<tr><td style="font-size:11px;color:var(--gris3)">'+(liq.fecha||"—")+'</td><td style="font-size:12px">'+mesesStr+'</td><td>'+moneda(liq.total)+'</td><td style="color:#5ddb8a;font-weight:600">'+moneda(liq.total-com)+'</td><td><button class="btn sm" data-action="reimprimirLiq" data-ref="'+liq.ref+'" data-nombre="'+nombre+'">Reimprimir</button></td></tr>';
+    return '<tr><td style="font-size:11px;color:var(--gris3)">'+(liq.fecha||"—")+'</td><td style="font-size:12px">'+mesesStr+'</td><td>'+moneda(liq.total)+'</td><td style="color:#5ddb8a;font-weight:600">'+moneda(liq.total-com)+'</td><td style="display:flex;gap:6px"><button class="btn sm" data-action="reimprimirLiq" data-ref="'+liq.ref+'" data-nombre="'+nombre+'">Reimprimir</button><button class="btn sm" data-action="eliminarLiquidacion" data-ref="'+liq.ref+'" data-nombre="'+nombre+'" style="background:rgba(231,76,60,.15);color:#ff7b6b">✕</button></td></tr>';
   }).join("");
   // Propiedades e historial
   const propsInmuebles=propiedadesDelPropietario(nombre).filter(function(p){return !p._eliminado;});
@@ -4084,6 +4085,20 @@ async function reimprimirLiquidacion(ref, nombre){
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
   doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
   doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
+}
+
+async function eliminarLiquidacion(ref, nombre){
+  if(!confirm('¿Eliminar esta liquidación? Los pagos volverán a estado pendiente de liquidar.'))return;
+  const pagosRef=S.pagos.filter(p=>p.liquidacionRef===ref);
+  const ajustesRef=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.liquidacionRef===ref);
+  try{
+    await Promise.all(pagosRef.map(p=>fbUpd("pagos",p._id,{liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null})));
+    await Promise.all(ajustesRef.map(a=>fbUpd("ajustes_prop",a._id,{liquidacionRef:null,fechaLiquidacion:null})));
+    S.pagos=S.pagos.map(p=>p.liquidacionRef===ref?{...p,liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null}:p);
+    if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(a=>a.liquidacionRef===ref?{...a,liquidacionRef:null,fechaLiquidacion:null}:a);
+    toast('Liquidación eliminada — pagos vueltos a pendiente ✓');
+  }catch(e){toast('Error al eliminar: '+e.message,false);}
+  render();
 }
 
 function renderModalDetalle(){
