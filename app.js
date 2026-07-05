@@ -26,8 +26,8 @@ const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","
 const mesNombre=m=>{if(!m)return"";const p=m.split("-");if(p.length===2)return MESES[+p[1]-1]+" "+p[0];return m;};
 const mesNombreMay=m=>mesNombre(m).toUpperCase();
 const diasPara=fin=>Math.round((new Date(fin)-new Date())/86400000);
-const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
-const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
+const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"servicios",ic:"🧾",lbl:"Pago de servicios"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
+const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],servicios:["Pago de servicios","Carga masiva de gastos fijos por servicio"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
 
 // ── MANUAL DE USO ──────────────────────────────────────────────────────────
 const MANUAL_TEMAS = [
@@ -867,6 +867,73 @@ window.guardarMovCaja=async function(){
   const id=await fbAdd("caja",data);
   if(id){S_CAJA.movimientos.unshift({...data,_id:id});S.modal=null;render();toast("Registrado ✓");}
 };
+
+// ── PAGO DE SERVICIOS ──────────────────────────────────────────────────────
+function renderServicios(){
+  if(!S_GPEND_TODOS)cargarTodosGastosPendientes();
+  const activos=S.contratos.filter(c=>c.estado==="activo"||!c.estado);
+  const grupos={};
+  activos.forEach(c=>{
+    const gastos=gastosQueCorresponden(c,S_SERVICIOS_MES);
+    gastos.forEach(g=>{
+      const nombre=g.nombre||g.id;
+      if(!grupos[nombre])grupos[nombre]=[];
+      grupos[nombre].push({contrato:c,gasto:g});
+    });
+  });
+  const selectorH='<div style="margin-bottom:16px"><label class="fl">Período</label>'
+    +'<input class="inp" type="month" value="'+S_SERVICIOS_MES+'" data-action="serviciosMes" style="max-width:200px"></div>';
+  const gruposH=Object.keys(grupos).sort().map(function(nombreServicio){
+    const filas=grupos[nombreServicio].map(function(item){
+      const c=item.contrato;const g=item.gasto;
+      const key=c._id+"__"+g.id;
+      const valorActual=S_SERVICIOS_VALORES[key]||"";
+      return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--negro4)">'
+        +'<div style="flex:1;font-size:13px">'+(c.inquilino||"")
+        +' <span style="color:var(--gris3);font-size:11px">'+(c.direccion||"")+'</span></div>'
+        +'<input class="inp" type="number" placeholder="$" style="width:140px"'
+        +' data-action="serviciosMonto" data-key="'+key+'" value="'+valorActual+'">'
+        +'</div>';
+    }).join("");
+    return '<div style="margin-bottom:20px">'
+      +'<div style="font-weight:700;color:var(--celeste);margin-bottom:6px;font-size:14px">'+nombreServicio
+      +' <span style="color:var(--gris3);font-weight:400;font-size:12px">('+grupos[nombreServicio].length+')</span></div>'
+      +filas+'</div>';
+  }).join("");
+  const vacioH=Object.keys(grupos).length===0
+    ?'<div style="color:var(--gris3);padding:20px 0">No hay servicios configurados para este período.</div>':"";
+  return selectorH+gruposH+vacioH
+    +'<button class="btn naranja" data-action="serviciosGuardarTodos" style="margin-top:10px">💾 Guardar todos</button>';
+}
+async function serviciosGuardarTodos(){
+  const porContrato={};
+  Object.entries(S_SERVICIOS_VALORES).forEach(function(entry){
+    const key=entry[0];const valor=entry[1];
+    const monto=+valor;
+    if(!monto||monto<=0)return;
+    const sep=key.indexOf("__");
+    const cid=key.slice(0,sep);const gastoId=key.slice(sep+2);
+    if(!porContrato[cid])porContrato[cid]=[];
+    const c=S.contratos.find(function(x){return x._id===cid;});
+    if(!c)return;
+    const gastoInfo=gastosQueCorresponden(c,S_SERVICIOS_MES).find(function(g){return g.id===gastoId;});
+    porContrato[cid].push({tipo:"fijo",desc:(gastoInfo&&gastoInfo.nombre)||gastoId,monto});
+  });
+  const cids=Object.keys(porContrato);
+  if(!cids.length){toast("No hay montos cargados para guardar",false);return;}
+  try{
+    for(const cid of cids){
+      const existentes=(S_GPEND[cid]&&S_GPEND[cid].por_mes&&S_GPEND[cid].por_mes[S_SERVICIOS_MES])||[];
+      const nombresNuevos=new Set(porContrato[cid].map(function(it){return it.desc;}));
+      const conservados=existentes.filter(function(it){return!(it.tipo==="fijo"&&nombresNuevos.has(it.desc));});
+      const itemsFinales=[...conservados,...porContrato[cid]];
+      await guardarGastosPendientes(cid,S_SERVICIOS_MES,itemsFinales);
+    }
+    S_SERVICIOS_VALORES={};
+    toast("Servicios guardados ✓ ("+cids.length+" contratos)");
+    render();
+  }catch(e){toast("Error al guardar: "+e.message,false);}
+}
 
 function renderCaja(){
   if(!S_CAJA.cargado){cargarCaja().then(()=>render());return '<div class="loading"><div class="spinner"></div>Cargando caja...</div>';}
@@ -2698,6 +2765,9 @@ document.addEventListener("click",e=>{
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="eliminarLiquidacion"){eliminarLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="serviciosMes"){S_SERVICIOS_MES=t.value;S_SERVICIOS_VALORES={};render();}
+  else if(action==="serviciosMonto"){S_SERVICIOS_VALORES[t.dataset.key]=t.value;}
+  else if(action==="serviciosGuardarTodos"){serviciosGuardarTodos();}
 else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
   else if(action==="emitirPDFInqPago"){if(S.ultimoPago)generarPDFInquilino(S.ultimoPago);}
   else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
@@ -2912,6 +2982,8 @@ function abrirContrato(cid){
 const S_GPEND = {};
 const S_GPEND_PROMISE = {};
 let S_GPEND_TODOS=false;
+let S_SERVICIOS_MES=mesActual();
+let S_SERVICIOS_VALORES={};
 async function cargarTodosGastosPendientes(){
   if(S_GPEND_TODOS)return;
   S_GPEND_TODOS=true;
@@ -4621,7 +4693,7 @@ function render(){
   else if(S.sec==="dashboard")body=renderDashboard();
   else if(S.sec==="contratos")body=renderContratos();
   else if(S.sec==="cobranzas")body=renderCobranzas();
-  else if(S.sec==="liquidaciones")body=renderLiquidaciones();else if(S.sec==="ipc")body=renderIPC();
+  else if(S.sec==="liquidaciones")body=renderLiquidaciones();else if(S.sec==="ipc")body=renderIPC();else if(S.sec==="servicios")body=renderServicios();
   else if(S.sec==="inquilinos")body=renderInquilinos();
   else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();else if(S.sec==="deudores")body=renderDeudores();
   const userLabel=(S.usuario.email||"").split("@")[0];
