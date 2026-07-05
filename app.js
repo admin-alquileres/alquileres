@@ -890,7 +890,7 @@ function renderServicios(){
       const valorActual=S_SERVICIOS_VALORES[key]||"";
       return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--negro4)">'
         +'<div style="flex:1;font-size:13px">'+(c.inquilino||"")
-        +' <span style="color:var(--gris3);font-size:11px">'+(c.direccion||"")+'</span></div>'
+        +' <span style="color:var(--gris3);font-size:11px">'+(c.direccion||"")+(c.propietarioNombre?" · "+c.propietarioNombre:"")+'</span></div>'
         +'<input class="inp" type="number" placeholder="$" style="width:140px"'
         +' data-action="serviciosMonto" data-key="'+key+'" value="'+valorActual+'">'
         +'</div>';
