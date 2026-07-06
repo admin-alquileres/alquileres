@@ -707,6 +707,46 @@ window.calcularNuevosMontos=function(fr){
   });
 };
 
+let S_WA_COLA=[];
+let S_WA_INDICE=0;
+
+function waIpcMsgTexto(c,pct,nuevo,proxStr){
+  return "Hola "+(c.inquilino||"")+"! Te escribimos de Eckerdt Negocios Inmobiliarios para informarte que a partir de "+proxStr+" el alquiler de "+(c.direccion||"")+" se actualiza a "+moneda(nuevo)+" (+"+pct+"%). Cualquier consulta quedamos a disposición. Saludos!";
+}
+function waIpcDatosItem(item){
+  const c=item.c;const pct=item.pct;
+  const nuevo=Math.round((c.alquilerBase||0)*(1+pct/100));
+  const prox=getProxActualizacion(c);
+  const proxStr=prox?prox.toLocaleDateString("es-AR",{month:"long",year:"numeric"}):"próximo mes";
+  const tel=(c.telefono||"").replace(/\D/g,"").replace(/^0/,"");
+  return{nuevo,proxStr,tel,msg:waIpcMsgTexto(c,pct,nuevo,proxStr)};
+}
+window.abrirWhatsAppIPC=function(cid,pct){
+  if(!pct||isNaN(+pct)){toast("Ingresá un % primero",false);return;}
+  const c=S.contratos.find(function(x){return x._id===cid;});
+  if(!c)return;
+  const nuevo=Math.round((c.alquilerBase||0)*(1+(+pct)/100));
+  const prox=getProxActualizacion(c);
+  const proxStr=prox?prox.toLocaleDateString("es-AR",{month:"long",year:"numeric"}):"próximo mes";
+  const tel=(c.telefono||"").replace(/\D/g,"").replace(/^0/,"");
+  if(!tel){toast("Sin teléfono cargado",false);return;}
+  const msg=waIpcMsgTexto(c,pct,nuevo,proxStr);
+  window.open("https://wa.me/549"+tel+"?text="+encodeURIComponent(msg),"_blank");
+};
+window.abrirWhatsAppIPCMasivo=function(fr,pct){
+  const pctNum=parseFloat(pct);
+  if(!pctNum||isNaN(pctNum)){toast("Ingresá un % primero",false);return;}
+  const rows=document.querySelectorAll('.ipc-row[data-fr="'+fr+'"]');
+  const cola=[];
+  rows.forEach(function(row){
+    const cid=row.dataset.id;
+    const c=S.contratos.find(function(x){return x._id===cid;});
+    if(c&&c.telefono)cola.push({c:c,pct:pctNum});
+  });
+  if(!cola.length){toast("Ningún contrato del grupo tiene teléfono cargado",false);return;}
+  S_WA_COLA=cola;S_WA_INDICE=0;S.modalExtra="wa_ipc";render();
+};
+
 window.aplicarIPCGrupo=async function(fr){
   const inp=document.getElementById(`ipc-pct-${fr}`);
   if(!inp) return;
@@ -2768,6 +2808,9 @@ document.addEventListener("click",e=>{
   else if(action==="serviciosMes"){S_SERVICIOS_MES=t.value;S_SERVICIOS_VALORES={};render();}
   else if(action==="serviciosMonto"){S_SERVICIOS_VALORES[t.dataset.key]=t.value;}
   else if(action==="serviciosGuardarTodos"){serviciosGuardarTodos();}
+  else if(action==="waIpcAbrir"){const _wi=S_WA_COLA[S_WA_INDICE];if(_wi){const{tel,msg}=waIpcDatosItem(_wi);if(tel)window.open("https://wa.me/549"+tel+"?text="+encodeURIComponent(msg),"_blank");else toast("Sin teléfono cargado",false);}}
+  else if(action==="waIpcSiguiente"){S_WA_INDICE++;if(S_WA_INDICE>=S_WA_COLA.length){const _n=S_WA_COLA.length;S_WA_COLA=[];S_WA_INDICE=0;S.modalExtra=null;render();toast("✓ Recorriste los "+_n+" inquilinos del grupo");}else render();}
+  else if(action==="waIpcCerrar"){S_WA_COLA=[];S_WA_INDICE=0;S.modalExtra=null;render();}
 else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
   else if(action==="emitirPDFInqPago"){if(S.ultimoPago)generarPDFInquilino(S.ultimoPago);}
   else if(action==="ajustePropAgregar"){const _apNombre=S.propietarioActivo;const _apDesc=(document.getElementById("ajuste-desc-input")||{}).value?.trim()||"";const _apMonto=+((document.getElementById("ajuste-monto-input")||{}).value||0);if(!_apDesc){toast("Escribi una descripcion",false);return;}if(!_apMonto||isNaN(_apMonto)){toast("Ingresa un monto valido",false);return;}agregarAjusteProp(_apNombre,_apDesc,_apMonto).then(()=>toast("Ajuste agregado ✓"));}
@@ -4496,8 +4539,32 @@ function renderModalManual(){
     +'</div></div>';
 }
 
+function renderModalWAIpc(){
+  if(!S_WA_COLA.length)return"";
+  const total=S_WA_COLA.length;
+  const item=S_WA_COLA[S_WA_INDICE];
+  if(!item)return"";
+  const c=item.c;
+  const{nuevo,proxStr,msg}=waIpcDatosItem(item);
+  const esUltimo=S_WA_INDICE>=total-1;
+  const btnSig=esUltimo
+    ?'<button class="btn naranja" data-action="waIpcSiguiente">✓ Finalizar</button>'
+    :'<button class="btn naranja" data-action="waIpcSiguiente">Siguiente → ('+(S_WA_INDICE+2)+"/"+total+')</button>';
+  return '<div class="overlay"><div class="modal" style="max-width:520px">'
+    +'<button class="mclose" data-action="waIpcCerrar">x</button>'
+    +'<div class="mth"><div class="mth-ic">📱</div>WhatsApp IPC — '+(S_WA_INDICE+1)+' de '+total+'</div>'
+    +'<div style="margin-bottom:10px;font-size:13px;font-weight:600">'+(c.inquilino||"")
+    +' <span style="color:var(--gris3);font-weight:400;font-size:11px">'+(c.direccion||"")+'</span></div>'
+    +'<div style="background:var(--negro3);border-radius:8px;padding:12px;font-size:12px;color:var(--gris2);white-space:pre-wrap;margin-bottom:16px;line-height:1.5">'+msg+'</div>'
+    +'<div class="fa" style="gap:8px">'
+    +'<button class="btn" data-action="waIpcCerrar">Cerrar</button>'
+    +'<button class="btn" style="background:rgba(37,211,102,.15);color:#25d366" data-action="waIpcAbrir">📱 Abrir WhatsApp</button>'
+    +btnSig
+    +'</div></div></div>';
+}
+
 function renderModal(){
-  const extra=S.modalExtra==="grilla_gastos"?renderModalGrillaGastos():"";
+  const extra=S.modalExtra==="grilla_gastos"?renderModalGrillaGastos():S.modalExtra==="wa_ipc"?renderModalWAIpc():"";
   if(!S.modal)return extra;
   if(S.modal==="contrato_detalle")return renderModalDetalle()+extra;
   if(S.modal==="caja")return renderModalCaja()+extra;
