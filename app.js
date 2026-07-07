@@ -706,7 +706,20 @@ window.calcularNuevosMontos=function(fr){
 };
 
 function waIpcMsgTexto(c,pct,nuevo,proxStr){
-  return "Hola "+(c.inquilino||"")+"! Te escribimos de Eckerdt Negocios Inmobiliarios para informarte que a partir de "+proxStr+" el alquiler de "+(c.direccion||"")+" se actualiza a "+moneda(nuevo)+" (+"+pct+"%). Cualquier consulta quedamos a disposición. Saludos!";
+  const depViejo=(c.deposito&&c.deposito.total)||0;
+  const tieneDeposito=depViejo>0; // total===0 significa que el contrato nunca tuvo depósito (ver confirmarRenovacion)
+  const difDep=tieneDeposito?nuevo-depViejo:0;
+
+  let msg="[Mensaje automático]\n";
+  msg+="Hola "+(c.inquilino||"")+"! Te informamos que a partir de "+proxStr+" el alquiler de "+(c.direccion||"")+" se actualiza a "+moneda(nuevo)+" (+"+pct+"%).\n";
+
+  if(tieneDeposito&&difDep>0){
+    msg+="Además, el depósito en garantía se actualiza de "+moneda(depViejo)+" a "+moneda(nuevo)+" — la diferencia de "+moneda(difDep)+" se puede abonar el próximo mes en 1 o 2 cuotas, como prefieras.\n";
+  }
+
+  msg+="Cualquier duda o consulta, quedamos a disposición. Saludos!\n";
+  msg+="INMOBILIARIA ECKERDT";
+  return msg;
 }
 function waIpcDatosItem(item){
   const c=item.c;const pct=item.pct;
