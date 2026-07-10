@@ -1241,6 +1241,7 @@ window.setupGuardar=async function(){
 
 // ── HISTORIAL DE PROPIEDAD ──────────────────────────────────────────────────
 const S_HIST = {};  // cache: { propId: [{_id, fecha, desc, creadoEn}] }
+let S_HIST_PROMISE = null;  // carga compartida: evita fetches/pushes concurrentes duplicados
 
 function propId(c){
   // Usamos la dirección como ID de propiedad (normalizada)
@@ -1249,22 +1250,34 @@ function propId(c){
 
 async function cargarHistorialProp(pid){
   if(S_HIST[pid]) return;
-  try{
-    const snap = await getDocs(collection(db,"historial_prop"));
-    const todos = snap.docs.map(d=>({...d.data(),_id:d.id}));
-    // Agrupar por propiedadId en el cache
-    todos.forEach(e=>{
-      const k=e.propiedadId;
-      if(!S_HIST[k]) S_HIST[k]=[];
-      S_HIST[k].push(e);
-    });
-    // Asegurar que el pid buscado quede inicializado aunque no tenga entradas
-    if(!S_HIST[pid]) S_HIST[pid]=[];
-    // Ordenar cada grupo por fecha desc
-    Object.keys(S_HIST).forEach(k=>{
-      S_HIST[k].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
-    });
-  }catch(e){ S_HIST[pid]=[]; }
+  if(!S_HIST_PROMISE){
+    S_HIST_PROMISE=(async()=>{
+      try{
+        const snap = await getDocs(collection(db,"historial_prop"));
+        const todos = snap.docs.map(d=>({...d.data(),_id:d.id}));
+        // Agrupar por propiedadId en un objeto local: recién al final se
+        // vuelca a S_HIST de una sola vez, para que una carga a medio
+        // terminar nunca quede pisando/duplicando el cache real.
+        const grupos={};
+        todos.forEach(e=>{
+          const k=e.propiedadId;
+          if(!grupos[k]) grupos[k]=[];
+          grupos[k].push(e);
+        });
+        Object.keys(grupos).forEach(k=>{
+          grupos[k].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+        });
+        Object.assign(S_HIST, grupos);
+      }catch(e){
+        // no seteamos nada: la próxima llamada reintenta la carga completa
+      }finally{
+        S_HIST_PROMISE=null;
+      }
+    })();
+  }
+  await S_HIST_PROMISE;
+  // Asegurar que el pid buscado quede inicializado aunque no tenga entradas
+  if(!S_HIST[pid]) S_HIST[pid]=[];
 }
 
 async function agregarHistorialProp(pid){
