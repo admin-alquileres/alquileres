@@ -26,8 +26,8 @@ const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","
 const mesNombre=m=>{if(!m)return"";const p=m.split("-");if(p.length===2)return MESES[+p[1]-1]+" "+p[0];return m;};
 const mesNombreMay=m=>mesNombre(m).toUpperCase();
 const diasPara=fin=>Math.round((new Date(fin)-new Date())/86400000);
-const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"servicios",ic:"🧾",lbl:"Pago de servicios"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"}];
-const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],servicios:["Pago de servicios","Carga masiva de gastos fijos por servicio"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"]};
+const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"servicios",ic:"🧾",lbl:"Pago de servicios"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"},{id:"puntualidad",ic:"⏱",lbl:"Puntualidad"}];
+const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],servicios:["Pago de servicios","Carga masiva de gastos fijos por servicio"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"],puntualidad:["Puntualidad de pago","Ranking de días de pago respecto al plazo"]};
 
 // ── MANUAL DE USO ──────────────────────────────────────────────────────────
 const MANUAL_TEMAS = [
@@ -1606,6 +1606,106 @@ function renderDeudores(){
     +'<tbody>'+rows+'</tbody></table></div>';
 }
 
+// ── PUNTUALIDAD DE PAGO ──────────────────────────────────────────────────────
+let S_PUNT_PLAZO=10; // día límite de pago, configurable desde la UI
+
+function renderPuntualidad(){
+  const plazo=S_PUNT_PLAZO;
+  const pagos=S.pagos.filter(p=>p.estado==="cobrado"&&p.fechaCobro&&!p._eliminado);
+  const grupos={};
+  pagos.forEach(p=>{
+    const key=p.contratoId||("sin_contrato__"+(p.inquilino||""));
+    if(!grupos[key]) grupos[key]={inquilino:p.inquilino||"(sin nombre)",direccion:p.direccion||"",dias:[]};
+    const partes=p.fechaCobro.split("-");
+    const dia=parseInt(partes[2],10);
+    if(!isNaN(dia)) grupos[key].dias.push(dia);
+  });
+  const filas=Object.values(grupos).filter(g=>g.dias.length>0).map(g=>{
+    const total=g.dias.length;
+    const suma=g.dias.reduce((a,b)=>a+b,0);
+    const diaProm=Math.round((suma/total)*10)/10;
+    const tardios=g.dias.filter(d=>d>plazo).length;
+    return{...g,totalPagos:total,diaPromedio:diaProm,pagosTardios:tardios};
+  });
+  filas.sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diaPromedio-a.diaPromedio);
+
+  const totalContratos=filas.length;
+  const totalPagos=pagos.length;
+  const totalTardios=filas.reduce((s,f)=>s+f.pagosTardios,0);
+  const pctCumplimiento=totalContratos?Math.round(((totalContratos-filas.filter(f=>f.pagosTardios>0).length)/totalContratos)*100):100;
+
+  const plazoSel='<div style="display:flex;align-items:center;gap:10px;background:var(--negro3);border:1px solid var(--negro4);border-radius:8px;padding:10px 14px;margin-bottom:16px">'
+    +'<span style="font-size:13px">⏱</span>'
+    +'<div style="flex:1"><div style="font-size:12px;font-weight:600">Plazo límite de pago</div>'
+    +'<div style="font-size:11px;color:var(--gris3)">Día del mes a partir del cual un pago se considera tardío</div></div>'
+    +'<input type="number" min="1" max="28" class="inp" id="punt-plazo-input" value="'+plazo+'" style="width:80px" data-action="puntPlazo">'
+    +'</div>';
+
+  if(!totalContratos){
+    return plazoSel+'<div class="empty" style="padding:60px 0;font-size:16px">Sin pagos cobrados registrados todavía</div>';
+  }
+
+  // Histograma: días 1..plazo+5 individual, resto agrupado en "+"
+  const maxDiaIndividual=plazo+5;
+  const buckets={};
+  for(let d=1;d<=maxDiaIndividual;d++) buckets[d]=0;
+  buckets["+"]=0;
+  filas.forEach(f=>{
+    f.dias.forEach(d=>{
+      if(d<=maxDiaIndividual) buckets[d]=(buckets[d]||0)+1;
+      else buckets["+"]=(buckets["+"]||0)+1;
+    });
+  });
+  const maxCount=Math.max(1,...Object.values(buckets));
+  const histH=Object.keys(buckets).map(k=>{
+    const count=buckets[k];
+    const pct=Math.round((count/maxCount)*100);
+    const esTarde=k==="+"||parseInt(k,10)>plazo;
+    const color=esTarde?"var(--rojo)":"var(--celeste)";
+    const label=k==="+"?(maxDiaIndividual+1)+"+":k;
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
+      +'<div style="width:28px;font-size:10px;color:var(--gris3);text-align:right">'+label+'</div>'
+      +'<div style="flex:1;background:var(--negro3);border-radius:3px;height:14px;position:relative">'
+        +'<div style="width:'+Math.max(pct,count>0?3:0)+'%;background:'+color+';height:100%;border-radius:3px"></div>'
+      +'</div>'
+      +'<div style="width:24px;font-size:10px;color:var(--gris3)">'+count+'</div>'
+      +'</div>';
+  }).join("");
+
+  const dentroDePlazo=filas.filter(f=>f.diaPromedio<=plazo).sort((a,b)=>a.diaPromedio-b.diaPromedio);
+  const excedidos=filas.filter(f=>f.diaPromedio>plazo).sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diaPromedio-a.diaPromedio);
+
+  const tablaDentroH=dentroDePlazo.length
+    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Día prom.</th></tr></thead><tbody>'
+      +dentroDePlazo.map(f=>{
+          const cerca=f.diaPromedio>=plazo-1;
+          const style=cerca?' style="color:var(--naranja)"':'';
+          return '<tr'+style+'><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+f.diaPromedio+'</td></tr>';
+        }).join("")
+      +'</tbody></table></div>'
+    : '<p style="color:var(--gris3);padding:12px 0">Sin datos dentro de plazo.</p>';
+
+  const tablaExcedidosH=excedidos.length
+    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Día prom.</th><th>Tardíos</th></tr></thead><tbody>'
+      +excedidos.map(f=>'<tr><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+f.diaPromedio+'</td><td style="color:var(--rojo);font-weight:600">'+f.pagosTardios+'</td></tr>').join("")
+      +'</tbody></table></div>'
+    : '<p style="color:var(--gris3);padding:12px 0">Nadie excede el plazo 🎉</p>';
+
+  return plazoSel
+    +'<div class="kgrid">'
+      +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Contratos analizados</div><div class="kval">'+totalContratos+'</div></div>'
+      +'<div class="kcard" style="border-top-color:var(--gris4)"><div class="klbl">Pagos considerados</div><div class="kval">'+totalPagos+'</div></div>'
+      +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Pagos tardíos</div><div class="kval" style="color:var(--rojo)">'+totalTardios+'</div></div>'
+      +'<div class="kcard" style="border-top-color:var(--verde)"><div class="klbl">Cumplimiento</div><div class="kval">'+pctCumplimiento+'%</div></div>'
+    +'</div>'
+    +'<div style="font-weight:600;margin-bottom:8px">Distribución por día de pago</div>'
+    +histH
+    +'<div style="font-weight:600;margin:20px 0 8px">Ranking — dentro del plazo (ordenado por día de pago)</div>'
+    +tablaDentroH
+    +'<div style="font-weight:600;margin:20px 0 8px">Exceden el plazo (día > '+plazo+')</div>'
+    +tablaExcedidosH;
+}
+
 
 function abrirGrillaGastos(cid){
   S.modalExtra="grilla_gastos";
@@ -2710,6 +2810,7 @@ document.addEventListener("change",e=>{
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
   else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
+  else if(action==="puntPlazo"){S_PUNT_PLAZO=+(t.value||10);render();}
   else if(action==="setDepCuotasCobro"){
     S.depCuotasCobro=+t.value;
     const dep=(S.contratoActivo||{}).deposito||{};
@@ -4739,7 +4840,7 @@ function render(){
   else if(S.sec==="cobranzas")body=renderCobranzas();
   else if(S.sec==="liquidaciones")body=renderLiquidaciones();else if(S.sec==="ipc")body=renderIPC();else if(S.sec==="servicios")body=renderServicios();
   else if(S.sec==="inquilinos")body=renderInquilinos();
-  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();else if(S.sec==="deudores")body=renderDeudores();
+  else if(S.sec==="propietarios")body=renderPropietarios();else if(S.sec==="caja")body=renderCaja();else if(S.sec==="setup")body=renderSetup();else if(S.sec==="deudores")body=renderDeudores();else if(S.sec==="puntualidad")body=renderPuntualidad();
   const userLabel=(S.usuario.email||"").split("@")[0];
   const presenciaHtml=S.presencia.length?
     `<div class="presence-bar"><div style="font-size:10px;color:var(--gris4);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px">En línea ahora</div><div class="presence-list">${S.presencia.map(u=>`<div class="presence-item"><div class="presence-dot"></div>${u.nombre}</div>`).join("")}</div></div>`:
