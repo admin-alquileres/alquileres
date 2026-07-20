@@ -2294,6 +2294,11 @@ function normStr(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 function normDireccion(s){
   return normStr(s).replace(/\bn[º°ş]?\.?\s*(?=\d)/g,"n ").replace(/\s+/g," ").trim();
 }
+function contratoActivoDeProp(p,nombrePropietario){
+  return S.contratos.find(function(c){
+    return((c.propiedadId&&c.propiedadId===p._id)||(normStr(c.propietarioNombre)===normStr(nombrePropietario)&&normDireccion(c.direccion)===normDireccion(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;
+  });
+}
 function propiedadLibre(pid){
   const prop=S.propiedades.find(p=>p._id===pid);
   if(!prop) return true;
@@ -3830,7 +3835,7 @@ function renderPropietarios(){
   const rows=listaFiltrada.map(prop=>{
     const activos=prop.contratos.filter(c=>c.estado==="activo"||!c.estado);
     const propsTotales=propiedadesDelPropietario(prop.nombre).filter(p=>!p._eliminado);
-    const disponibles=propsTotales.filter(p=>!activos.some(c=>normDireccion(c.direccion)===normDireccion(p.direccion)));
+    const disponibles=propsTotales.filter(p=>!contratoActivoDeProp(p,prop.nombre));
     const pagosDelMes=S.pagos.filter(p=>p.propietarioNombre===prop.nombre&&p.mes===mesHoy&&p.estado==="cobrado");
     const pendientes=activos.filter(c=>!pagosDelMes.some(p=>p.contratoId===c._id));
     // Meses sin liquidar (cobros de inquilinos registrados pero no liquidados al prop)
@@ -3923,7 +3928,7 @@ function renderFichaPropietario(nombre, prop){
     const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     if(!S_HIST[pid]){cargarHistorialProp(pid).then(function(){renderHistPropInline(pid);});}
     const entradas=(S_HIST[pid]||[]).filter(function(e){return !e._eliminado;});
-    const cActivo=S.contratos.find(function(c){return((c.propiedadId&&c.propiedadId===p._id)||(normStr(c.propietarioNombre)===normStr(nombre)&&normDireccion(c.direccion)===normDireccion(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;});
+    const cActivo=contratoActivoDeProp(p,nombre);
     const chip=cActivo
       ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:2px 8px;border-radius:10px">Ocupada: '+(cActivo.inquilino||"")+'</span>'
       :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>';
@@ -3986,7 +3991,7 @@ function renderFichaPropietario(nombre, prop){
   html+=(function(){
     const todasLasProps=propiedadesDelPropietario(nombre).filter(function(p){return !p._eliminado;});
     const disponibles=todasLasProps.filter(function(p){
-      return !S.contratos.some(function(c){return normStr(c.propietarioNombre)===normStr(nombre)&&normDireccion(c.direccion)===normDireccion(p.direccion)&&(c.estado==="activo"||!c.estado);});
+      return !contratoActivoDeProp(p,nombre);
     });
     return '<div class="kgrid" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">'
       +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Propiedades activas</div><div class="kval">'+activos.length+'</div></div>'
