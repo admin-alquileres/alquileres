@@ -1609,25 +1609,37 @@ function renderDeudores(){
 // ── PUNTUALIDAD DE PAGO ──────────────────────────────────────────────────────
 let S_PUNT_PLAZO=10; // día límite de pago, configurable desde la UI
 
+function diasRespectoVencimiento(p,plazo){
+  // p.mes: "YYYY-MM" (período que se está pagando)
+  // p.fechaCobro: "YYYY-MM-DD" (fecha real en que se cobró)
+  const[anio,mesNum]=p.mes.split("-").map(Number);
+  const vencimiento=new Date(anio,mesNum-1,plazo); // ej. 2026-07-10
+  const cobro=new Date(p.fechaCobro+"T00:00:00");
+  const diffMs=cobro-vencimiento;
+  return Math.round(diffMs/86400000); // negativo = anticipado, positivo = tarde
+}
+
+function fmtDiasVenc(d){ return (d>0?"+":"")+d; }
+
 function renderPuntualidad(){
   const plazo=S_PUNT_PLAZO;
   const pagos=S.pagos.filter(p=>p.estado==="cobrado"&&p.fechaCobro&&!p._eliminado);
   const grupos={};
   pagos.forEach(p=>{
+    if(!p.mes||!/^\d{4}-\d{2}$/.test(p.mes)) return; // sin período válido: excluir del cálculo, no romper
     const key=p.contratoId||("sin_contrato__"+(p.inquilino||""));
     if(!grupos[key]) grupos[key]={inquilino:p.inquilino||"(sin nombre)",direccion:p.direccion||"",dias:[]};
-    const partes=p.fechaCobro.split("-");
-    const dia=parseInt(partes[2],10);
-    if(!isNaN(dia)) grupos[key].dias.push(dia);
+    const d=diasRespectoVencimiento(p,plazo);
+    if(!isNaN(d)) grupos[key].dias.push(d);
   });
   const filas=Object.values(grupos).filter(g=>g.dias.length>0).map(g=>{
     const total=g.dias.length;
     const suma=g.dias.reduce((a,b)=>a+b,0);
-    const diaProm=Math.round((suma/total)*10)/10;
-    const tardios=g.dias.filter(d=>d>plazo).length;
-    return{...g,totalPagos:total,diaPromedio:diaProm,pagosTardios:tardios};
+    const diasProm=Math.round((suma/total)*10)/10;
+    const tardios=g.dias.filter(d=>d>0).length;
+    return{...g,totalPagos:total,diasPromedio:diasProm,pagosTardios:tardios};
   });
-  filas.sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diaPromedio-a.diaPromedio);
+  filas.sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diasPromedio-a.diasPromedio);
 
   const totalContratos=filas.length;
   const totalPagos=pagos.length;
@@ -1645,26 +1657,27 @@ function renderPuntualidad(){
     return plazoSel+'<div class="empty" style="padding:60px 0;font-size:16px">Sin pagos cobrados registrados todavía</div>';
   }
 
-  // Histograma: días 1..plazo+5 individual, resto agrupado en "+"
-  const maxDiaIndividual=plazo+5;
-  const buckets={};
-  for(let d=1;d<=maxDiaIndividual;d++) buckets[d]=0;
-  buckets["+"]=0;
+  // Histograma: días respecto al vencimiento, de -15 a +15, con overflow a los extremos
+  const RANGO_HIST=15;
+  const N_HIST=RANGO_HIST*2+1; // 0=underflow (<=-15), 1..29 = -14..14, 30=overflow (>=+15)
+  const counts=new Array(N_HIST).fill(0);
   filas.forEach(f=>{
     f.dias.forEach(d=>{
-      if(d<=maxDiaIndividual) buckets[d]=(buckets[d]||0)+1;
-      else buckets["+"]=(buckets["+"]||0)+1;
+      if(d<=-RANGO_HIST) counts[0]++;
+      else if(d>=RANGO_HIST) counts[N_HIST-1]++;
+      else counts[d+RANGO_HIST]++;
     });
   });
-  const maxCount=Math.max(1,...Object.values(buckets));
-  const histH=Object.keys(buckets).map(k=>{
-    const count=buckets[k];
+  const maxCount=Math.max(1,...counts);
+  const histH=counts.map((count,i)=>{
     const pct=Math.round((count/maxCount)*100);
-    const esTarde=k==="+"||parseInt(k,10)>plazo;
+    const isUnder=i===0,isOver=i===N_HIST-1;
+    const dVal=isUnder||isOver?null:i-RANGO_HIST;
+    const esTarde=isOver||(dVal!==null&&dVal>0);
     const color=esTarde?"var(--rojo)":"var(--celeste)";
-    const label=k==="+"?(maxDiaIndividual+1)+"+":k;
+    const label=isUnder?"≤-"+RANGO_HIST:isOver?"≥+"+RANGO_HIST:fmtDiasVenc(dVal);
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
-      +'<div style="width:28px;font-size:10px;color:var(--gris3);text-align:right">'+label+'</div>'
+      +'<div style="width:34px;font-size:10px;color:var(--gris3);text-align:right">'+label+'</div>'
       +'<div style="flex:1;background:var(--negro3);border-radius:3px;height:14px;position:relative">'
         +'<div style="width:'+Math.max(pct,count>0?3:0)+'%;background:'+color+';height:100%;border-radius:3px"></div>'
       +'</div>'
@@ -1672,22 +1685,22 @@ function renderPuntualidad(){
       +'</div>';
   }).join("");
 
-  const dentroDePlazo=filas.filter(f=>f.diaPromedio<=plazo).sort((a,b)=>a.diaPromedio-b.diaPromedio);
-  const excedidos=filas.filter(f=>f.diaPromedio>plazo).sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diaPromedio-a.diaPromedio);
+  const dentroDePlazo=filas.filter(f=>f.diasPromedio<=0).sort((a,b)=>a.diasPromedio-b.diasPromedio);
+  const excedidos=filas.filter(f=>f.diasPromedio>0).sort((a,b)=>b.pagosTardios!==a.pagosTardios?b.pagosTardios-a.pagosTardios:b.diasPromedio-a.diasPromedio);
 
   const tablaDentroH=dentroDePlazo.length
-    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Día prom.</th></tr></thead><tbody>'
+    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Días vs. vencimiento</th></tr></thead><tbody>'
       +dentroDePlazo.map(f=>{
-          const cerca=f.diaPromedio>=plazo-1;
+          const cerca=f.diasPromedio>=-1;
           const style=cerca?' style="color:var(--naranja)"':'';
-          return '<tr'+style+'><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+f.diaPromedio+'</td></tr>';
+          return '<tr'+style+'><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+fmtDiasVenc(f.diasPromedio)+'</td></tr>';
         }).join("")
       +'</tbody></table></div>'
     : '<p style="color:var(--gris3);padding:12px 0">Sin datos dentro de plazo.</p>';
 
   const tablaExcedidosH=excedidos.length
-    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Día prom.</th><th>Tardíos</th></tr></thead><tbody>'
-      +excedidos.map(f=>'<tr><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+f.diaPromedio+'</td><td style="color:var(--rojo);font-weight:600">'+f.pagosTardios+'</td></tr>').join("")
+    ? '<div class="tw"><table><thead><tr><th>Inquilino</th><th>Dirección</th><th>Pagos</th><th>Días vs. vencimiento</th><th>Tardíos</th></tr></thead><tbody>'
+      +excedidos.map(f=>'<tr><td class="tdm">'+f.inquilino+'</td><td style="color:var(--gris3);font-size:11px">'+f.direccion+'</td><td>'+f.totalPagos+'</td><td>'+fmtDiasVenc(f.diasPromedio)+'</td><td style="color:var(--rojo);font-weight:600">'+f.pagosTardios+'</td></tr>').join("")
       +'</tbody></table></div>'
     : '<p style="color:var(--gris3);padding:12px 0">Nadie excede el plazo 🎉</p>';
 
@@ -1698,11 +1711,11 @@ function renderPuntualidad(){
       +'<div class="kcard" style="border-top-color:var(--rojo)"><div class="klbl">Pagos tardíos</div><div class="kval" style="color:var(--rojo)">'+totalTardios+'</div></div>'
       +'<div class="kcard" style="border-top-color:var(--verde)"><div class="klbl">Cumplimiento</div><div class="kval">'+pctCumplimiento+'%</div></div>'
     +'</div>'
-    +'<div style="font-weight:600;margin-bottom:8px">Distribución por día de pago</div>'
+    +'<div style="font-weight:600;margin-bottom:8px">Distribución de días respecto al vencimiento</div>'
     +histH
-    +'<div style="font-weight:600;margin:20px 0 8px">Ranking — dentro del plazo (ordenado por día de pago)</div>'
+    +'<div style="font-weight:600;margin:20px 0 8px">Ranking — dentro del plazo (ordenado por días respecto al vencimiento)</div>'
     +tablaDentroH
-    +'<div style="font-weight:600;margin:20px 0 8px">Exceden el plazo (día > '+plazo+')</div>'
+    +'<div style="font-weight:600;margin:20px 0 8px">Exceden el plazo (pagados después del vencimiento)</div>'
     +tablaExcedidosH;
 }
 
@@ -2880,7 +2893,7 @@ document.addEventListener("click",e=>{
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
-  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="renovarContrato"){abrirRenovacion(id);}else if(action==="confirmarRenovacion"){confirmarRenovacion();}else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){
+  else if(action==="actualizarAlq")actualizarAlquiler(id);else if(action==="guardarMontoMesParcial")guardarMontoMesParcial(id);else if(action==="renovarContrato"){abrirRenovacion(id);}else if(action==="confirmarRenovacion"){confirmarRenovacion();}else if(action==="setupEditarExtras"){S.editarExtrasId=id;S._extrasTemp=null;S._extrasTempId=null;S.modal="editar_extras";render();}else if(action==="extrasAgregar"){
     // Sincronizar valores actuales del DOM antes de re-render
     const rows2=document.querySelectorAll(".extra-row");
     if(!S._extrasTemp)S._extrasTemp=[];
@@ -3101,6 +3114,7 @@ function itemsParaMesConGuardados(c,mesACobrar,guardados){
 function alquilerParaMes(c,mes){
   const base=c.alquilerBase||0;
   if(!c.inicio||mes!==c.inicio.substring(0,7))return base;
+  if(c.montoMedioMesForzado>0) return c.montoMedioMesForzado;
   const[_y,_m,_d]=c.inicio.split('-').map(Number);
   if(_d<=1)return base;
   const diasEnMes=new Date(_y,_m,0).getDate();
@@ -3342,6 +3356,18 @@ async function actualizarAlquiler(cid){
   toast("Alquiler actualizado a "+moneda(nuevo));render();
 }
 
+async function guardarMontoMesParcial(cid){
+  const c=S.contratos.find(x=>x._id===cid);if(!c)return;
+  const inp=document.getElementById("monto-mes-parcial-"+cid);
+  if(!inp)return;
+  const monto=+(inp.value||0)||null;
+  const upd={montoMedioMesForzado:monto};
+  await fbUpd("contratos",cid,upd);
+  S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
+  toast(monto?"Monto del mes parcial guardado: "+moneda(monto):"Monto del mes parcial borrado, vuelve a prorratear por días");
+  render();
+}
+
 async function guardarContrato(){
   const f=S.form;
   if(!f.inquilino||!f.direccion||!f.inicio)return toast("Completá: Inquilino, Dirección e Inicio",false);
@@ -3366,7 +3392,7 @@ async function guardarContrato(){
     :{total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
-  const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios};
+  const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios,montoMedioMesForzado:+(f.montoMedioMesForzado||0)||null};
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
 }
@@ -4421,6 +4447,20 @@ function renderModalDetalle(){
         ${extras.length?`<div class="fc" style="grid-column:1/-1"><div class="fc-l">Gastos inquilino</div><div class="fc-v">${extras.map(e=>`<span class="tag">${e.desc}: ${moneda(e.monto)}</span>`).join("")}</div></div>`:""}
       </div>
       <button class="btn sm" data-action="actualizarAlq" data-id="${c._id}">⟳ Aplicar aumento ${c.indiceActualizacion||"IPC"}</button>
+      ${(()=>{
+        if(!c.inicio) return '';
+        const _p=c.inicio.split('-').map(Number);
+        if(!_p[2]||_p[2]<=1) return '';
+        if(mesActual()!==c.inicio.substring(0,7)) return '';
+        return '<div style="margin-top:10px;background:var(--negro3);border:1px solid var(--negro4);border-radius:8px;padding:10px 14px">'
+          +'<div style="font-size:12px;font-weight:600;margin-bottom:6px">Monto acordado para el mes parcial de ingreso</div>'
+          +'<div style="display:flex;gap:8px;align-items:center">'
+          +'<input class="inp" type="number" id="monto-mes-parcial-'+c._id+'" placeholder="Dejar vacío para prorratear por días" value="'+(c.montoMedioMesForzado||"")+'" style="max-width:220px">'
+          +'<button class="btn sm primary" data-action="guardarMontoMesParcial" data-id="'+c._id+'">Guardar</button>'
+          +'</div>'
+          +'<div style="font-size:11px;color:var(--gris3);margin-top:4px">Se usa para prellenar el campo Alquiler ($) al registrar el pago de este mes; no afecta pagos ya cobrados.</div>'
+          +'</div>';
+      })()}
     </div>
     <div class="fsec">
       <div class="fsec-t">Depósito y honorarios</div>
@@ -4701,6 +4741,14 @@ function renderModal(){
     <div class="fsec"><div class="fsec-t">Vigencia</div><div class="fg">
       <div><label class="fl">Fecha inicio *</label>${inp("inicio","date")}</div>
       <div><label class="fl">Fecha fin</label>${inp("fin","date")}</div>
+      ${(()=>{
+        if(!f.inicio) return '';
+        const _p=f.inicio.split('-').map(Number);
+        if(!_p[2]||_p[2]<=1) return '';
+        return '<div style="grid-column:1/-1"><label class="fl">Monto acordado para el mes parcial (opcional)</label>'
+          +inp("montoMedioMesForzado","number",undefined,"Dejar vacío para prorratear automáticamente por días")
+          +'<div style="font-size:11px;color:var(--gris3);margin-top:2px">Si no se completa, se calcula el prorrateo exacto por días.</div></div>';
+      })()}
     </div></div>
     <div class="fsec"><div class="fsec-t">Depósito y honorarios</div>
       <div class="fg">
