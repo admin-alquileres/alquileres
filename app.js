@@ -421,7 +421,7 @@ function generarPDFInquilino(p){
   const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
   const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=p.totalInquilino||alq+totalItems;
-  const com=p.comision||Math.round(alq*(cont.comisionAgencia||5)/100);
+  const com=p.comision||Math.round(alq*(cont.comisionAgencia??5)/100);
   const fecha=p.fechaCobro||new Date().toLocaleDateString("es-AR");
   const hora=new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
   let y=membretePDF(doc,nro);
@@ -503,7 +503,7 @@ function generarPDFInquilino(p){
   doc.text("Prop.: "+(cont.propietarioNombre||p.propietarioNombre||""),105,y);y+=5;
   doc.setDrawColor(200,200,200);doc.setLineWidth(0.1);doc.line(12,y,198,y);y+=4;
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(100,100,100);
-  doc.text("Comisión agencia ("+(cont.comisionAgencia||5)+"%): "+moneda(com),12,y);y+=4;
+  doc.text("Comisión agencia ("+(cont.comisionAgencia??5)+"%): "+moneda(com),12,y);y+=4;
 
   doc.save("Recibo-Inquilino-"+(p.inquilino||"").replace(/ /g,"_")+"-"+mesNombreMay(p.mes)+".pdf");
 }
@@ -519,7 +519,7 @@ function generarPDFPropietario(p){
   const itemsFijos=items.filter(it=>it.tipo==="fijo"&&(it.monto||0)>0);
   const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=p.totalInquilino||alq+totalItems;
-  const com=p.comision||Math.round(alq*(cont.comisionAgencia||5)/100);
+  const com=p.comision||Math.round(alq*(cont.comisionAgencia??5)/100);
   const neto=p.netoPropiertario||(alq-com);
   const fecha=p.fechaCobro||new Date().toLocaleDateString("es-AR");
   const hora=new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
@@ -558,7 +558,7 @@ function generarPDFPropietario(p){
 
   // Comisión
   doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(180,30,30);
-  doc.text("Retencion honorarios administracion ("+(cont.comisionAgencia||5)+"%): ",12,y);
+  doc.text("Retencion honorarios administracion ("+(cont.comisionAgencia??5)+"%): ",12,y);
   doc.text("- "+moneda(com),198,y,{align:"right"});y+=8;
 
   // Neto
@@ -971,13 +971,13 @@ function renderCaja(){
   if(!S_GPEND_TODOS)cargarTodosGastosPendientes();
   const movs=S_CAJA.movimientos;
   const mesHoy=mesActual();
-  const comAuto=S.pagos.filter(p=>p.estado==="cobrado"&&p.mes===mesHoy).reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
-  const comTotal=S.pagos.filter(p=>p.estado==="cobrado").reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
+  const comAuto=S.pagos.filter(p=>p.estado==="cobrado"&&p.mes===mesHoy).reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia??5)/100)),0);
+  const comTotal=S.pagos.filter(p=>p.estado==="cobrado").reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia??5)/100)),0);
   const ingMan=movs.filter(m=>m.tipo==="honorario"||m.tipo==="ingreso").reduce((s,m)=>s+(m.monto||0),0);
   const egresos=movs.filter(m=>m.tipo==="gasto"||m.tipo==="retiro").reduce((s,m)=>s+(m.monto||0),0);
   const adelPend=movs.filter(m=>m.tipo==="adelanto"&&!m.recuperado).reduce((s,m)=>s+(m.monto||0),0);
   const saldo=comTotal+ingMan-egresos-adelPend;
-  const comObj=S.contratos.filter(c=>c.estado==="activo"||!c.estado).reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia||5)/100),0);
+  const comObj=S.contratos.filter(c=>c.estado==="activo"||!c.estado).reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia??5)/100),0);
   const pctCom=comObj>0?Math.round(comAuto/comObj*100):0;
   const tab=S_CAJA.tab||"todos";
   const fil=tab==="todos"?movs:movs.filter(m=>m.tipo===tab);
@@ -1011,7 +1011,7 @@ function renderCaja(){
       ?(()=>{
         const pagosCobrados=S.pagos.filter(p=>p.estado==="cobrado").slice().sort((a,b)=>(a.mes||"").localeCompare(b.mes||""));
         const comisionesListH=pagosCobrados.map(p=>{
-          const com=p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100);
+          const com=p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia??5)/100);
           return '<div style="display:flex;justify-content:space-between;padding:3px 0 3px 12px;color:#5ddb8a;font-size:12px">'
             +'<span>'+mesNombre(p.mes||"")+' — '+(p.inquilino||"(sin inquilino)")+'</span>'
             +'<span style="font-weight:600">+'+moneda(com)+'</span></div>';
@@ -1138,7 +1138,7 @@ function renderSetup(){
       // Propietario + comisión
       +'<td><div style="font-size:11px;color:var(--gris3);margin-bottom:4px">'+(c.propietarioNombre||"")+'</div>'
       +'<div style="font-size:10px;color:var(--gris4)">Comisión %</div>'
-      +'<input type="number" value="'+(comV||5)+'" oninput="setupMarcar(\''+c._id+'\',\'comisionAgencia\',+this.value,this)" style="'+iS+';width:60px">'
+      +'<input type="number" value="'+(comV??5)+'" oninput="setupMarcar(\''+c._id+'\',\'comisionAgencia\',+this.value,this)" style="'+iS+';width:60px">'
       +'</td>'
       // Alquiler
       +'<td><input type="number" value="'+(alqV||"")+'" oninput="setupMarcar(\''+c._id+'\',\'alquilerBase\',+this.value,this)" style="'+iS+'">'
@@ -1407,7 +1407,7 @@ function updateResumen(){
   const alq=+(S.form.alquiler||0);
   const totalItems=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalItems;
-  const com=Math.round(alq*(c.comisionAgencia||5)/100);
+  const com=Math.round(alq*(c.comisionAgencia??5)/100);
   const netoP=alq-com;
   const filas=S.itemsCobro.map(it=>{
     const neg=(it.monto||0)<0;
@@ -1419,7 +1419,7 @@ function updateResumen(){
     +filas
     +'<div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)"><span>Total inquilino</span><span>'+moneda(totalInq)+'</span></div>'
     +'<div style="height:6px"></div>'
-    +'<div class="rrow" style="color:#ff7b6b"><span>Comisión ('+(c.comisionAgencia||5)+'%)</span><span>− '+moneda(com)+'</span></div>'
+    +'<div class="rrow" style="color:#ff7b6b"><span>Comisión ('+(c.comisionAgencia??5)+'%)</span><span>− '+moneda(com)+'</span></div>'
     +'<div class="rrow" style="color:#5ddb8a;font-weight:600;font-size:13px"><span>Neto propietario</span><span>'+moneda(netoP)+'</span></div>';
 }
 
@@ -1810,7 +1810,7 @@ function abrirRenovacion(cid){
     inicio:hoy(),
     fin:"",
     alquilerBase:c.alquilerBase||0,
-    comisionAgencia:c.comisionAgencia||5,
+    comisionAgencia:c.comisionAgencia??5,
     frecActualizacion:c.frecActualizacion||6,
     indiceActualizacion:c.indiceActualizacion||"IPC",
     depCuotas:1,
@@ -1997,7 +1997,7 @@ async function confirmarRenovacion(){
     inicio:f.inicio,
     fin:f.fin||"",
     alquilerBase:alqBase,
-    comisionAgencia:+(f.comisionAgencia||5),
+    comisionAgencia:+(f.comisionAgencia??5),
     frecActualizacion:+(f.frecActualizacion||6),
     indiceActualizacion:f.indiceActualizacion||"IPC",
     notasActualizacion:f.notasActualizacion||"",
@@ -2135,7 +2135,7 @@ function abrirEditarPropietario(nombre){
     localidad:prop.localidad||"",
     cbu:prop.cbu||"",
     banco:prop.banco||"",
-    comisionAgencia:prop.comisionAgencia||5,
+    comisionAgencia:prop.comisionAgencia??5,
     obs:prop.obs||""
   };
   render();
@@ -2182,7 +2182,7 @@ async function guardarPropietario(){
     telefonoAlt:f.telefonoAlt||"",email:f.email||"",
     direccionPart:f.direccionPart||"",localidad:f.localidad||"",
     cbu:f.cbu||"",banco:f.banco||"",
-    comisionAgencia:+(f.comisionAgencia||5),obs:f.obs||""
+    comisionAgencia:+(f.comisionAgencia??5),obs:f.obs||""
   };
   const propio=f._id?S.propietarios.find(x=>x._id===f._id):null;
   if(propio){
@@ -3009,14 +3009,14 @@ function renderResumen(){
   const extras=(c.extras||[]);
   const totalExtras=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalExtras;
-  const com=Math.round(alq*(c.comisionAgencia||5)/100);
+  const com=Math.round(alq*(c.comisionAgencia??5)/100);
   const netoP=alq-com;
   el.innerHTML=
     `<div class="rrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>`+
     extras.map(e=>`<div class="rrow blue"><span>${e.desc}</span><span>${moneda(e.monto||0)}</span></div>`).join("")+
     `<div class="rrow" style="font-weight:600;font-size:13px;color:var(--naranja)"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>`+
     `<div style="height:6px"></div>`+
-    `<div class="rrow red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>`+
+    `<div class="rrow red"><span>Comisión (${c.comisionAgencia??5}%)</span><span>− ${moneda(com)}</span></div>`+
     `<div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>`;
 }
 
@@ -3298,10 +3298,10 @@ async function registrarPago(){
   const items=S.itemsCobro.map(it=>({tipo:it.tipo,desc:it.desc,monto:+(it.monto||0)}));
   const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalItems;
-  const com=Math.round(alq*(c.comisionAgencia||5)/100);
+  const com=Math.round(alq*(c.comisionAgencia??5)/100);
   const neto=alq-com;
   const nro=f.comprobante||nroRecibo();
-  const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia||5};
+  const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia??5};
   const id=await fbAdd("pagos",data);
   if(id){
     S.pagos.unshift({...data,_id:id});
@@ -3392,7 +3392,7 @@ async function guardarContrato(){
     :{total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
-  const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia||5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios,montoMedioMesForzado:+(f.montoMedioMesForzado||0)||null};
+  const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia??5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios,montoMedioMesForzado:+(f.montoMedioMesForzado||0)||null};
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
 }
@@ -3436,8 +3436,8 @@ function renderDashboard(){
   const inqPag=new Set(pagosMes.map(p=>p.contratoId));
   const propCob=new Set(pagosMes.map(p=>p.propietarioNombre).filter(Boolean));
   const propTotal=new Set(activos.map(c=>c.propietarioNombre).filter(Boolean)).size;
-  const comMes=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia||5)/100)),0);
-  const comObj=activos.reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia||5)/100),0);
+  const comMes=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia??5)/100)),0);
+  const comObj=activos.reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia??5)/100),0);
   // Propietarios con cobros registrados pero sin liquidar
   const pagosNoLiq=S.pagos.filter(p=>p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
   const propSinLiq=new Set(pagosNoLiq.map(p=>p.propietarioNombre).filter(Boolean));
@@ -3655,7 +3655,7 @@ function renderLiquidaciones(){
   const pagosMes=S.pagos.filter(p=>p.mes===mes&&p.estado==="cobrado");
   const cards=pagosMes.map(p=>{
     const alq=p.alquiler||p.monto||0;
-    const com=p.comision||Math.round(alq*(p.comisionAgencia||5)/100);
+    const com=p.comision||Math.round(alq*(p.comisionAgencia??5)/100);
     const neto=p.netoPropiertario||(alq-com);
     const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:'fijo',desc:e.desc,monto:+(e.monto||0)}));
     const extH=items.filter(it=>(it.monto||0)!==0).map(it=>{const neg=(it.monto||0)<0;return '<div class="lrow '+(neg?'lrow-red':'lrow-blue')+'"><span>'+(it.desc||it.tipo)+'</span><span>'+(neg?'':'')+moneda(it.monto||0)+'</span></div>';}).join("");
@@ -3668,7 +3668,7 @@ function renderLiquidaciones(){
       <div class="lrow"><span>Alquiler</span><span>${moneda(alq)}</span></div>
       ${extH}
       <div class="lrow"><span><strong>Total cobrado al inquilino</strong></span><span><strong>${moneda(p.totalInquilino||alq+((p.extras||[]).reduce((s,e)=>s+(+(e.monto||0)),0)))}</strong></span></div>
-      <div class="lrow lrow-red"><span>Comisión agencia (${p.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>
+      <div class="lrow lrow-red"><span>Comisión agencia (${p.comisionAgencia??5}%)</span><span>− ${moneda(com)}</span></div>
       <div class="lrow tot"><span>A transferir al propietario</span><span class="lrow-green">${moneda(neto)}</span></div>
       <div style="margin-top:10px;display:flex;gap:6px">
         <button class="btn sm" data-action="emitirPROP" data-id="${p._id}">📄 PDF Propietario</button>
@@ -3677,7 +3677,7 @@ function renderLiquidaciones(){
     </div>`;
   }).join("");
   const totAlq=pagosMes.reduce((s,p)=>s+(p.alquiler||p.monto||0),0);
-  const totCom=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||p.monto||0)*(p.comisionAgencia||5)/100)),0);
+  const totCom=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||p.monto||0)*(p.comisionAgencia??5)/100)),0);
   const totExtras=pagosMes.reduce((s,p)=>{const items=p.itemsCobro||(p.extras||[]).map(e=>({monto:+(e.monto||0)}));return s+items.reduce((si,it)=>si+(it.monto||0),0);},0);
   const resumen=pagosMes.length>1?`<div class="lcard" style="border-color:var(--celeste);background:rgba(75,200,232,.04)">
     <div class="lrow"><span>Total alquileres</span><span>${moneda(totAlq)}</span></div>
@@ -3870,7 +3870,7 @@ function renderPropietarios(){
       p.estado==="cobrado"&&
       !p.liquidadoProp
     ).reduce((s,p)=>s+(p.alquiler||0),0);
-    const comision=Math.round(totalPendiente*(prop.comisionAgencia||5)/100);
+    const comision=Math.round(totalPendiente*(prop.comisionAgencia??5)/100);
     const neto=totalPendiente-comision;
     const n=activos.length;
     const x=n-pendientes.length;
@@ -3915,7 +3915,7 @@ function renderFichaPropietario(nombre, prop){
     const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
     return s+items.reduce((si,it)=>(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")?si:si+(it.monto||0),0);
   },0);
-  const comPct=prop.comisionAgencia||5;
+  const comPct=prop.comisionAgencia??5;
   const comBase=Math.round(totalPendBruto*comPct/100);
   const neto=totalPendBruto+totalExtrasPend-comBase;
   const seleccion=S.liqSeleccion[nombre]||{};
@@ -4114,7 +4114,7 @@ async function generarLiquidacionProp(nombre){
   if(!pagosSel.length){toast("No hay meses seleccionados para liquidar",false);return;}
 
   const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
-  const comPct=prop.comisionAgencia||5;
+  const comPct=prop.comisionAgencia??5;
 
   // Agrupar por propiedad (dirección), no por mes — así sale el formato pedido:
   // una propiedad, todo lo que dejó ese inquilino, subtotal; siguiente propiedad, etc.
@@ -4257,7 +4257,7 @@ async function reimprimirLiquidacion(ref, nombre){
   const pagosSel=S.pagos.filter(p=>p.liquidacionRef===ref&&!p._eliminado);
   if(!pagosSel.length){toast("No se encontraron pagos de esa liquidacion",false);return;}
   const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
-  const comPct=prop.comisionAgencia||5;
+  const comPct=prop.comisionAgencia??5;
   const porPropiedad={};
   pagosSel.forEach(p=>{
     const dir=p.direccion||"Sin direccion";
@@ -4372,7 +4372,7 @@ function renderModalDetalle(){
   const extras=(c.extras||[]);
   const totalExtras=S.itemsCobro.reduce((s,it)=>s+(it.monto||0),0);
   const totalInq=alq+totalExtras;
-  const com=Math.round(alq*(c.comisionAgencia||5)/100);
+  const com=Math.round(alq*(c.comisionAgencia??5)/100);
   const netoP=alq-com;
   const prox=getProxActualizacion(c);
   const proxStr=prox?prox.toLocaleDateString("es-AR"):"—";
@@ -4391,7 +4391,7 @@ function renderModalDetalle(){
     const bLabel={deposito:"DEP",honorario:"HON",fijo:"FIJO",variable:"VAR",saldo:"SALDO",gestion:"GEST"};
     const alqP=ph.alquiler||0;
     const totalInqP=ph.totalInquilino||ph.total||0;
-    const comP=ph.comision||Math.round(alqP*(ph.comisionAgencia||5)/100);
+    const comP=ph.comision||Math.round(alqP*(ph.comisionAgencia??5)/100);
     const netoPropP=ph.netoPropiertario||(alqP-comP);
     const dupAlert=pagosDupMes>1?'<div style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:var(--naranja)">⚠️ '+pagosDupMes+' pagos registrados para este mes — mostrando el más reciente</div>':'';
     const alqRow='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--negro4)"><span style="font-size:12px;color:var(--gris3)">Alquiler</span><span style="font-size:12px;font-weight:600">'+moneda(alqP)+'</span></div>';
@@ -4421,7 +4421,7 @@ function renderModalDetalle(){
       +'<span style="font-size:13px;font-weight:700">Total inquilino</span>'
       +'<span style="font-size:13px;font-weight:700">'+moneda(totalInqP)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;padding:2px 0;color:#ff7b6b">'
-      +'<span style="font-size:11px">Comisión ('+(ph.comisionAgencia||5)+'%)</span>'
+      +'<span style="font-size:11px">Comisión ('+(ph.comisionAgencia??5)+'%)</span>'
       +'<span style="font-size:11px">− '+moneda(comP)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;padding:2px 0">'
       +'<span style="font-size:12px;font-weight:600;color:#5ddb8a">Neto propietario</span>'
@@ -4440,7 +4440,7 @@ function renderModalDetalle(){
       <div class="fc-grid">
         <div class="fc"><div class="fc-l">Propietario</div><div class="fc-v">${c.propietarioNombre||"—"}</div></div>
         <div class="fc"><div class="fc-l">Alquiler actual</div><div class="fc-v big">${moneda(c.alquilerBase)}</div></div>
-        <div class="fc"><div class="fc-l">Comisión agencia</div><div class="fc-v">${c.comisionAgencia||5}%</div></div>
+        <div class="fc"><div class="fc-l">Comisión agencia</div><div class="fc-v">${c.comisionAgencia??5}%</div></div>
         <div class="fc"><div class="fc-l">Vigencia</div><div class="fc-v">${c.inicio||""} → ${c.fin||"S/F"}</div></div>
         <div class="fc"><div class="fc-l">Próx. actualización ${c.indiceActualizacion||"IPC"}</div><div class="fc-v">${proxStr}</div></div>
         <div class="fc"><div class="fc-l">Garante</div><div class="fc-v">${c.garante||"—"}</div></div>
@@ -4567,7 +4567,7 @@ function renderModalDetalle(){
           ${S.itemsCobro.map(it=>{const neg=(it.monto||0)<0;const col=neg?"#ff7b6b":it.tipo==="saldo"?"var(--naranja)":"var(--celeste)";return `<div class="rrow" style="color:${col}"><span>${it.desc||it.tipo}</span><span>${neg?"":"+"}${moneda(it.monto||0)}</span></div>`;}).join("")}
           <div class="rrow" style="font-weight:600;font-size:13px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)"><span>Total inquilino</span><span>${moneda(totalInq)}</span></div>
           <div style="height:6px"></div>
-          <div class="rrow red"><span>Comisión (${c.comisionAgencia||5}%)</span><span>− ${moneda(com)}</span></div>
+          <div class="rrow red"><span>Comisión (${c.comisionAgencia??5}%)</span><span>− ${moneda(com)}</span></div>
           <div class="rrow green" style="font-weight:600;font-size:13px"><span>Neto propietario</span><span>${moneda(netoP)}</span></div>
         </div>
       </div>
