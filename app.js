@@ -2828,6 +2828,7 @@ document.addEventListener("change",e=>{
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
   else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
+  else if(action==="serviciosMes"){S_SERVICIOS_MES=t.value;S_SERVICIOS_VALORES={};render();}
   else if(action==="puntPlazo"){S_PUNT_PLAZO=+(t.value||10);render();}
   else if(action==="setDepCuotasCobro"){
     S.depCuotasCobro=+t.value;
@@ -2927,7 +2928,6 @@ document.addEventListener("click",e=>{
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="eliminarLiquidacion"){eliminarLiquidacion(t.dataset.ref,t.dataset.nombre);}
-  else if(action==="serviciosMes"){S_SERVICIOS_MES=t.value;S_SERVICIOS_VALORES={};render();}
   else if(action==="serviciosMonto"){S_SERVICIOS_VALORES[t.dataset.key]=t.value;}
   else if(action==="serviciosGuardarTodos"){serviciosGuardarTodos();}
 else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoActivo=null;render();}
