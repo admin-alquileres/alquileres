@@ -912,9 +912,23 @@ function renderServicios(){
     });
   });
   const selectorH='<div style="margin-bottom:16px"><label class="fl">Período</label>'
-    +'<input class="inp" type="month" value="'+S_SERVICIOS_MES+'" data-action="serviciosMes" style="max-width:200px"></div>';
-  const gruposH=Object.keys(grupos).sort().map(function(nombreServicio){
-    const filas=grupos[nombreServicio].map(function(item){
+    +'<input class="inp" type="month" value="'+S_SERVICIOS_MES+'" data-action="serviciosMes" style="max-width:200px"></div>'
+    +'<div style="margin-bottom:16px"><label class="fl">Buscar inquilino</label>'
+    +'<input class="inp" type="text" placeholder="Nombre, dirección o propietario..." value="'+S_SERVICIOS_BUSCAR+'" data-action="serviciosBuscar" style="max-width:320px"></div>';
+  const busq=normStr(S_SERVICIOS_BUSCAR);
+  const gruposFiltrados={};
+  Object.keys(grupos).forEach(function(nombreServicio){
+    const filasFiltradas=busq
+      ?grupos[nombreServicio].filter(function(item){
+          const c=item.contrato;
+          const texto=normStr((c.inquilino||"")+" "+(c.direccion||"")+" "+(c.propietarioNombre||""));
+          return texto.indexOf(busq)!==-1;
+        })
+      :grupos[nombreServicio];
+    if(filasFiltradas.length>0)gruposFiltrados[nombreServicio]=filasFiltradas;
+  });
+  const gruposH=Object.keys(gruposFiltrados).sort().map(function(nombreServicio){
+    const filas=gruposFiltrados[nombreServicio].map(function(item){
       const c=item.contrato;const g=item.gasto;
       const key=c._id+"__"+g.id;
       const valorActual=S_SERVICIOS_VALORES[key]||"";
@@ -927,11 +941,12 @@ function renderServicios(){
     }).join("");
     return '<div style="margin-bottom:20px">'
       +'<div style="font-weight:700;color:var(--celeste);margin-bottom:6px;font-size:14px">'+nombreServicio
-      +' <span style="color:var(--gris3);font-weight:400;font-size:12px">('+grupos[nombreServicio].length+')</span></div>'
+      +' <span style="color:var(--gris3);font-weight:400;font-size:12px">('+gruposFiltrados[nombreServicio].length+')</span></div>'
       +filas+'</div>';
   }).join("");
-  const vacioH=Object.keys(grupos).length===0
-    ?'<div style="color:var(--gris3);padding:20px 0">No hay servicios configurados para este período.</div>':"";
+  const vacioH=Object.keys(gruposFiltrados).length===0
+    ?(busq?'<div style="color:var(--gris3);padding:20px 0">Sin resultados para esa búsqueda.</div>':'<div style="color:var(--gris3);padding:20px 0">No hay servicios configurados para este período.</div>')
+    :"";
   return selectorH+gruposH+vacioH
     +'<button class="btn naranja" data-action="serviciosGuardarTodos" style="margin-top:10px">💾 Guardar todos</button>';
 }
@@ -2786,6 +2801,7 @@ document.addEventListener("input",e=>{
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;renderParcial();}
   else if(action==="manualBuscar"){S.manualBuscar=t.value;renderParcial();}
   else if(action==="setBuscar"){setFiltro("buscar",t.value);}
+  else if(action==="serviciosBuscar"){S_SERVICIOS_BUSCAR=t.value;renderParcial();}
   // Alquiler cobro — actualizar resumen en tiempo real
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
   // Campos de form modal
@@ -3147,6 +3163,7 @@ const S_GPEND_PROMISE = {};
 let S_GPEND_TODOS=false;
 let S_SERVICIOS_MES=mesActual();
 let S_SERVICIOS_VALORES={};
+let S_SERVICIOS_BUSCAR="";
 async function cargarTodosGastosPendientes(){
   if(S_GPEND_TODOS)return;
   S_GPEND_TODOS=true;
