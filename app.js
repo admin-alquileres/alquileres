@@ -818,6 +818,38 @@ async function eliminarPago(pid){
   if(!confirm(`¿Eliminar pago de ${mesNombre(p.mes)} de ${p.inquilino||""}?`))return;
   await fbUpd("pagos",pid,{_eliminado:true});
   S.pagos=S.pagos.filter(x=>x._id!==pid);
+
+  const c=S.contratos.find(x=>x._id===p.contratoId);
+  if(c){
+    const itemDep=(p.itemsCobro||[]).find(it=>it.tipo==="deposito");
+    if(itemDep && c.deposito){
+      const dep=c.deposito;
+      const montoRevertir=+(itemDep.monto||0);
+      const yaPagadas=(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0));
+      const nuevoPendiente=Math.min((dep.total||0),(dep.pendiente||0)+montoRevertir);
+      const nuevoPagado=Math.max(0,(dep.total||0)-nuevoPendiente);
+      const nuevasPagadas=Math.max(0,yaPagadas-1);
+      const nuevoDeposito={...dep,pagado:nuevoPagado,pagadoAcumulado:nuevoPagado,pendiente:nuevoPendiente,completo:nuevoPendiente===0,cuotasPagadas:nuevasPagadas,pagadas:nuevasPagadas};
+      await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
+      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
+    }
+    const itemHon=(p.itemsCobro||[]).find(it=>it.tipo==="honorario");
+    if(itemHon && c.honorarios){
+      const hon=c.honorarios;
+      const montoRevertir=+(itemHon.monto||0);
+      const nuevoPendiente=Math.min((hon.total||0),(hon.pendiente||0)+montoRevertir);
+      const nuevoPagado=Math.max(0,(hon.pagado||0)-montoRevertir);
+      const nuevasPagadas=Math.max(0,(hon.pagadas||0)-1);
+      const nuevoHon={...hon,pagado:nuevoPagado,pendiente:nuevoPendiente,completo:nuevoPendiente===0,pagadas:nuevasPagadas};
+      await fbUpd("contratos",c._id,{honorarios:nuevoHon});
+      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,honorarios:nuevoHon}:x);
+      // NOTA: registrarPago crea un movimiento en "caja" (tipo:"honorario") al cobrar
+      // una cuota de honorarios. Ese movimiento no se revierte acá — no hay un ID
+      // que lo vincule directamente al pago, así que puede quedar un movimiento de
+      // caja "huérfano" tras borrar un pago con honorarios. Ver con Gastón si hace
+      // falta buscarlo y marcarlo _eliminado también.
+    }
+  }
   toast("Pago eliminado ✓");render();
 }
 
