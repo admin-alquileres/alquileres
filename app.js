@@ -4528,7 +4528,7 @@ function renderModalDetalle(){
         html+=`<div class="fc" style="border-left:3px solid ${depComp?"var(--verde)":depPend>0?"var(--rojo)":"var(--gris4)"}">
           <div class="fc-l">Depósito garantía</div>
           <div class="fc-v">${dep.total?moneda(dep.total)+" total &nbsp;·&nbsp; Pagado: "+moneda(depPag):"Sin depósito de garantía"}</div>
-          ${depPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1} pendiente: ${moneda(Math.min(depPend,dep.montoCuota||depPend))}</div>
+          ${(depPend>0 && (!c.inicio || f.mes>=c.inicio.substring(0,7)))?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de ${dep.cuotasTotales||dep.cuotas||1} pendiente: ${moneda(Math.min(depPend,dep.montoCuota||depPend))}</div>
           <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaDep" data-id="${c._id}">✓ Registrar cuota ${(dep.cuotasPagadas!==undefined?dep.cuotasPagadas:(dep.pagadas||0))+1} de depósito</button>`:""}
           ${depComp&&dep.total?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Depósito completo</div>`:""}
         </div>`;
@@ -4541,7 +4541,7 @@ function renderModalDetalle(){
           html+=`<div class="fc" style="border-left:3px solid ${honComp?"var(--verde)":honPend>0?"var(--rojo)":"var(--gris4)"}">
             <div class="fc-l">Honorarios inmobiliaria</div>
             <div class="fc-v">${moneda(honTotal)} (${hon.monto==="mes"?"1 mes":"½ mes"}) &nbsp;·&nbsp; Pagado: ${moneda(honPag)}</div>
-            ${honPend>0?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota pendiente: ${moneda(honPend)}</div>
+            ${(honPend>0 && (!c.inicio || f.mes>=c.inicio.substring(0,7)))?`<div style="color:var(--rojo);font-size:11px;margin-top:4px">⚠️ Cuota pendiente: ${moneda(honPend)}</div>
             <button class="btn sm" style="margin-top:6px;background:rgba(39,174,96,.15);color:#5ddb8a" data-action="cobrarCuotaHon" data-id="${c._id}">✓ Registrar 2da cuota honorarios</button>`:""}
             ${honComp?`<div style="color:var(--verde);font-size:11px;margin-top:4px">✓ Honorarios completos</div>`:""}
           </div>`;
