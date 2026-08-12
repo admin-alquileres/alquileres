@@ -383,8 +383,9 @@ function numeroALetras(n){
     let base=c[cc];if(cc===1&&r>0)base="ciento";
     return base+(r?" "+m1000(r):"");
   }
+  if(n<0)return"menos "+numeroALetras(-n);
   if(n===0)return"cero";
-  if(n>=1000000){const mm=Math.floor(n/1000000),r=n%1000000;return(mm===1?"un millón":m1000(mm)+" millones")+(r?" "+m1000(r):"");}
+  if(n>=1000000){const mm=Math.floor(n/1000000),r=n%1000000;return(mm===1?"un millón":m1000(mm)+" millones")+(r?" "+numeroALetras(r):"");}
   if(n>=1000){const mm=Math.floor(n/1000),r=n%1000;return(mm===1?"mil":m1000(mm)+" mil")+(r?" "+m1000(r):"");}
   return m1000(n);
 }
@@ -857,6 +858,7 @@ async function eliminarPago(pid){
 var S_CAJA={tab:"todos",movimientos:[],cargado:false};
 let S_CAJA_DETALLE=false;
 let S_CAJA_DIF_DETALLE=false;
+let S_GUARDANDO_PAGO=false;
 
 async function cargarCaja(limit=120){
   if(S_CAJA.cargado)return;
@@ -3339,58 +3341,65 @@ async function cobrarPago(pid){
 }
 
 async function registrarPago(){
+  if(S_GUARDANDO_PAGO)return;
   const c=S.contratoActivo;if(!c)return;
   const f=S.form;
   if(!f.mes)return toast("Ingresá el período",false);
-  syncItemsFromDOM();
-  const alq=+(S.form.alquiler||c.alquilerBase||0);
-  const items=S.itemsCobro.map(it=>({tipo:it.tipo,desc:it.desc,monto:+(it.monto||0)}));
-  const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
-  const totalInq=alq+totalItems;
-  const com=Math.round(alq*(c.comisionAgencia??5)/100);
-  const neto=alq-com;
-  const nro=f.comprobante||nroRecibo();
-  const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia??5};
-  const id=await fbAdd("pagos",data);
-  if(id){
-    S.pagos.unshift({...data,_id:id});
-    // Limpiar gastos pendientes después de registrar el pago
-    if(c._id) limpiarGastosPendientes(c._id, f.mes);
-    // Si el cobrador dejó el item de depósito en el cobro, avanzar la cuota en el contrato.
-    // Si lo borró a mano (decidió no cobrarla este mes), no se toca el contrato.
-    const itemDep=items.find(it=>it.tipo==="deposito");
-    if(itemDep){
-      const depActual=c.deposito||{};
-      const montoPagado=+(itemDep.monto||0);
-      const nuevoPendiente=Math.max(0,(depActual.pendiente||0)-montoPagado);
-      const nuevoPagado=(depActual.total||0)-nuevoPendiente;
-      const yasPagadas=(depActual.cuotasPagadas!==undefined?depActual.cuotasPagadas:(depActual.pagadas||0));
-      const nuevoDeposito={
-        ...depActual,
-        pagado:nuevoPagado,pagadoAcumulado:nuevoPagado,
-        pendiente:nuevoPendiente,completo:nuevoPendiente===0,
-        cuotasPagadas:yasPagadas+1,pagadas:yasPagadas+1
-      };
-      await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
-      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
+  const yaExiste=S.pagos.some(p=>p.contratoId===c._id&&p.mes===f.mes);
+  if(yaExiste&&!confirm("Ya hay un pago registrado para este período, ¿registrar de todos modos?"))return;
+  S_GUARDANDO_PAGO=true;renderParcial();
+  try{
+    syncItemsFromDOM();
+    const alq=+(S.form.alquiler||c.alquilerBase||0);
+    const items=S.itemsCobro.map(it=>({tipo:it.tipo,desc:it.desc,monto:+(it.monto||0)}));
+    const totalItems=items.reduce((s,it)=>s+(it.monto||0),0);
+    const totalInq=alq+totalItems;
+    const com=Math.round(alq*(c.comisionAgencia??5)/100);
+    const neto=alq-com;
+    const nro=f.comprobante||nroRecibo();
+    const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia??5};
+    const id=await fbAdd("pagos",data);
+    if(id){
+      S.pagos.unshift({...data,_id:id});
+      // Limpiar gastos pendientes después de registrar el pago
+      if(c._id) limpiarGastosPendientes(c._id, f.mes);
+      // Si el cobrador dejó el item de depósito en el cobro, avanzar la cuota en el contrato.
+      // Si lo borró a mano (decidió no cobrarla este mes), no se toca el contrato.
+      const itemDep=items.find(it=>it.tipo==="deposito");
+      if(itemDep){
+        const depActual=c.deposito||{};
+        const montoPagado=+(itemDep.monto||0);
+        const nuevoPendiente=Math.max(0,(depActual.pendiente||0)-montoPagado);
+        const nuevoPagado=(depActual.total||0)-nuevoPendiente;
+        const yasPagadas=(depActual.cuotasPagadas!==undefined?depActual.cuotasPagadas:(depActual.pagadas||0));
+        const nuevoDeposito={
+          ...depActual,
+          pagado:nuevoPagado,pagadoAcumulado:nuevoPagado,
+          pendiente:nuevoPendiente,completo:nuevoPendiente===0,
+          cuotasPagadas:yasPagadas+1,pagadas:yasPagadas+1
+        };
+        await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
+        S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
+      }
+      const itemHon=items.find(it=>it.tipo==="honorario");
+      if(itemHon){
+        const honActual=c.honorarios||{};
+        const montoHonPagado=+(itemHon.monto||0);
+        const honNuevoPendiente=Math.max(0,(honActual.pendiente||0)-montoHonPagado);
+        const honNuevoPagado=(honActual.pagado||0)+montoHonPagado;
+        const cuotaNum=(honActual.pagadas||0)+1;
+        const nuevoHon={...honActual,pagado:honNuevoPagado,pendiente:honNuevoPendiente,completo:honNuevoPendiente===0,pagadas:cuotaNum};
+        await fbUpd("contratos",c._id,{honorarios:nuevoHon});
+        S.contratos=S.contratos.map(x=>x._id===c._id?{...x,honorarios:nuevoHon}:x);
+        const cajaData={tipo:"honorario",fecha:f.fechaCobro||hoy(),monto:montoHonPagado,concepto:"Honorarios — "+(c.inquilino||"")+(c.direccion?" ("+c.direccion+")":""),detalle:"Generado automáticamente al registrar cobro de "+mesNombre(f.mes),inquilino:c.inquilino||"",cuotas:honActual.cuotas||1,cuotaNum,recuperado:false};
+        const cajaId=await fbAdd("caja",cajaData);
+        if(cajaId) S_CAJA.movimientos.unshift({...cajaData,_id:cajaId});
+      }
+      toast("Pago registrado ✓");
+      S.ultimoPago={...data,_id:id};
     }
-    const itemHon=items.find(it=>it.tipo==="honorario");
-    if(itemHon){
-      const honActual=c.honorarios||{};
-      const montoHonPagado=+(itemHon.monto||0);
-      const honNuevoPendiente=Math.max(0,(honActual.pendiente||0)-montoHonPagado);
-      const honNuevoPagado=(honActual.pagado||0)+montoHonPagado;
-      const cuotaNum=(honActual.pagadas||0)+1;
-      const nuevoHon={...honActual,pagado:honNuevoPagado,pendiente:honNuevoPendiente,completo:honNuevoPendiente===0,pagadas:cuotaNum};
-      await fbUpd("contratos",c._id,{honorarios:nuevoHon});
-      S.contratos=S.contratos.map(x=>x._id===c._id?{...x,honorarios:nuevoHon}:x);
-      const cajaData={tipo:"honorario",fecha:f.fechaCobro||hoy(),monto:montoHonPagado,concepto:"Honorarios — "+(c.inquilino||"")+(c.direccion?" ("+c.direccion+")":""),detalle:"Generado automáticamente al registrar cobro de "+mesNombre(f.mes),inquilino:c.inquilino||"",cuotas:honActual.cuotas||1,cuotaNum,recuperado:false};
-      const cajaId=await fbAdd("caja",cajaData);
-      if(cajaId) S_CAJA.movimientos.unshift({...cajaData,_id:cajaId});
-    }
-    toast("Pago registrado ✓");
-    S.ultimoPago={...data,_id:id};
-    renderParcial();
+  }finally{
+    S_GUARDANDO_PAGO=false;renderParcial();
   }
 }
 
@@ -4432,6 +4441,7 @@ function renderModalDetalle(){
   }).join("");
   const pagoDelMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
   const pagosDupMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).length;
+  const btnRegistrarPago=pagoDelMes?"":(S_GUARDANDO_PAGO?'<button class="btn" disabled style="background:#8a8a8a;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #6b6b6b;cursor:not-allowed;opacity:.7">⏳ Guardando...</button>':'<button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>');
   let historicalViewHtml="";
   if(pagoDelMes){
     const ph=pagoDelMes;
@@ -4628,7 +4638,7 @@ function renderModalDetalle(){
     </div>`:""}
     ${(()=>{const dc=c.fin?diasPara(c.fin):null;if(dc===null)return"";if(dc<0)return`<div style="background:rgba(231,76,60,.08);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">⚠️</span><div><div style="font-weight:600;color:var(--rojo)">Contrato vencido hace ${Math.abs(dc)} día${Math.abs(dc)!==1?"s":""}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Renovar o finalizar</div></div></div>`;if(dc<=60)return`<div style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">📅</span><div><div style="font-weight:600;color:var(--naranja)">Vence en ${dc} día${dc!==1?"s":""} — ${c.fin}</div><div style="font-size:11px;color:var(--gris3);margin-top:2px">Recordá gestionar la renovación</div></div></div>`;return"";})()}<div class="fa">
       <button class="btn" data-action="closeModal">Cerrar</button>
-      <button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button>${pagoDelMes?'':'<button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>'}
+      <button class="btn" style="background:rgba(39,174,96,.12);color:#5ddb8a;border-color:rgba(39,174,96,.3)" data-action="renovarContrato" data-id="${S.contratoActivo._id}">🔄 Renovar contrato</button><button class="btn" style="background:rgba(231,76,60,.1);color:#ff7b6b;border-color:rgba(231,76,60,.3)" data-action="finalizarContrato" data-id="${S.contratoActivo._id}">⛔ Finalizar</button>${btnRegistrarPago}
     </div>
   </div></div>`;
 }
