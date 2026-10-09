@@ -3163,6 +3163,9 @@ function itemsParaMesConGuardados(c,mesACobrar,guardados){
 
 function alquilerParaMes(c,mes){
   const base=c.alquilerBase||0;
+  if(c.alquilerVigenteDesde && c.alquilerBaseAnterior!=null && mes<c.alquilerVigenteDesde){
+    return c.alquilerBaseAnterior;
+  }
   if(!c.inicio||mes!==c.inicio.substring(0,7))return base;
   if(c.montoMedioMesForzado>0) return c.montoMedioMesForzado;
   const[_y,_m,_d]=c.inicio.split('-').map(Number);
@@ -3408,10 +3411,18 @@ async function actualizarAlquiler(cid){
   const pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");
   if(!pct||isNaN(+pct))return;
   const nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));
-  const upd={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:+pct};
+  const fechaVigencia=getProxActualizacion(c); // fecha en que correspondía ESTE aumento, calculada antes de pisar ultimaActualizacion
+  const mesVigencia=fechaVigencia?(fechaVigencia.getFullYear()+"-"+String(fechaVigencia.getMonth()+1).padStart(2,"0")):null;
+  const upd={
+    alquilerBase:nuevo,
+    ultimaActualizacion:hoy(),
+    pctUltimaActualizacion:+pct,
+    alquilerBaseAnterior:c.alquilerBase,
+    alquilerVigenteDesde:mesVigencia
+  };
   await fbUpd("contratos",cid,upd);
   S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
-  toast("Alquiler actualizado a "+moneda(nuevo));render();
+  toast("Alquiler actualizado a "+moneda(nuevo)+(mesVigencia?" (vigente desde "+mesNombre(mesVigencia)+")":""));render();
 }
 
 async function guardarMontoMesParcial(cid){
@@ -4161,6 +4172,97 @@ function renderFichaPropietario(nombre, prop){
 // el inquilino dejó para él (TGI, agua, internet, diferencia de depósito, etc.).
 // La comisión de la agencia (5%) se calcula UNICAMENTE sobre la suma de alquileres,
 // nunca sobre los extras — esos ya son plata del propietario, no de la agencia.
+//
+// Dibuja el PDF de liquidación. Usado tanto por generarLiquidacionProp (primera
+// impresión) como por reimprimirLiquidacion — para que ambas salidas sean
+// idénticas en formato, hay que cambiar esta única función.
+// datos: {nombre, mesesSel, propiedades, totalBruto, comPct, comision,
+//         saldoAnterior, saldoAnteriorDesconocido, ajustes, netoAEntregar,
+//         montoEntregado, nuevoSaldo}
+function dibujarPDFLiquidacion(datos){
+  const{nombre,mesesSel,propiedades,totalBruto,comPct,comision,saldoAnterior,
+    saldoAnteriorDesconocido,ajustes,netoAEntregar,montoEntregado,nuevoSaldo}=datos;
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  let y=14;
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(20,20,20);
+  doc.text("LIQUIDACION A PROPIETARIO",105,y,{align:"center"});y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(120,120,120);
+  doc.text("Documento no valido como factura",105,y,{align:"center"});y+=8;
+  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=7;
+
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
+  doc.text(nombre.toUpperCase(),12,y);
+  doc.setFont("helvetica","normal");doc.setFontSize(9);
+  doc.text("Periodo: "+mesesSel.map(mesNombreMay).join(", "),198,y,{align:"right"});y+=8;
+
+  propiedades.forEach(prop2=>{
+    if(y>260){doc.addPage();y=18;}
+    doc.setFillColor(240,240,240);doc.rect(12,y-4,186,7,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(30,30,30);
+    doc.text(prop2.direccion+"  ("+prop2.inquilino+")",14,y);y+=7;
+
+    let subtotal=0;
+    prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
+      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
+      doc.text("Alquiler "+mesNombre(p.mes),16,y);
+      doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
+      subtotal+=(p.alquiler||0);
+      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
+      items.forEach(it=>{
+        if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;
+        if((it.monto||0)===0)return;
+        const neg=(it.monto||0)<0;
+        doc.setTextColor(neg?180:60,neg?60:60,60);
+        doc.text("  "+(it.desc||it.tipo),16,y);
+        doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=5.5;
+        subtotal+=(it.monto||0);
+        doc.setTextColor(60,60,60);
+      });
+      if(y>270){doc.addPage();y=18;}
+    });
+    doc.setDrawColor(200,200,200);doc.line(14,y,198,y);y+=1;
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
+    doc.text("Subtotal "+prop2.direccion,14,y+4);
+    doc.text(moneda(subtotal),198,y+4,{align:"right"});y+=10;
+  });
+
+  if(y>250){doc.addPage();y=18;}
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.4);doc.line(12,y,198,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
+  doc.text("Total general (alquileres + gastos)",12,y);doc.text(moneda(totalBruto),198,y,{align:"right"});y+=6;
+  doc.setTextColor(180,30,30);
+  doc.text("Comision agencia ("+comPct+"% s/ alquileres)",12,y);doc.text("- "+moneda(comision),198,y,{align:"right"});y+=6;
+  if(!saldoAnteriorDesconocido&&saldoAnterior!==0){
+    doc.setTextColor(saldoAnterior>0?20:180,saldoAnterior>0?120:30,saldoAnterior>0?60:30);
+    doc.text("Saldo mes anterior ("+(saldoAnterior>0?"a favor":"en contra")+")",12,y);
+    doc.text((saldoAnterior>0?"+ ":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
+  }
+  (ajustes||[]).forEach(function(a){
+    if(y>265){doc.addPage();y=18;}
+    var neg=(a.monto||0)<0;
+    doc.setTextColor(neg?180:20,neg?30:120,neg?30:60);
+    doc.text((a.descripcion||"Ajuste").substring(0,65),12,y);
+    doc.text((neg?"- ":"+ ")+moneda(Math.abs(a.monto||0)),198,y,{align:"right"});y+=6;
+  });
+  doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
+  doc.text("NETO A ENTREGAR",12,y);
+  doc.setTextColor(20,120,60);doc.text(moneda(netoAEntregar),198,y,{align:"right"});y+=6;
+  doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("("+numeroALetras(netoAEntregar)+" pesos)",12,y);y+=10;
+
+  if(montoEntregado!=null&&nuevoSaldo!=null&&nuevoSaldo!==0){
+    doc.setFont("helvetica","normal");doc.setFontSize(8.5);
+    doc.setTextColor(nuevoSaldo>0?20:180,nuevoSaldo>0?120:30,nuevoSaldo>0?60:30);
+    doc.text("Entregado: "+moneda(montoEntregado)+" — Queda "+(nuevoSaldo>0?"a favor":"en contra")+" del propietario: "+moneda(Math.abs(nuevoSaldo))+" para el proximo mes",12,y);y+=8;
+  }
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
+  doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
+
+  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
+}
+
 async function generarLiquidacionProp(nombre){
   const seleccion=S.liqSeleccion[nombre]||{};
   const pagos=S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
@@ -4215,91 +4317,18 @@ async function generarLiquidacionProp(nombre){
   await guardarSaldoProp(nombre,nuevoSaldo);
 
   // ── PDF ──────────────────────────────────────────────────────────────────
-  const{jsPDF}=window.jspdf;
-  const doc=new jsPDF({unit:"mm",format:"a4"});
-  let y=14;
-  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(20,20,20);
-  doc.text("LIQUIDACION A PROPIETARIO",105,y,{align:"center"});y+=6;
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(120,120,120);
-  doc.text("Documento no valido como factura",105,y,{align:"center"});y+=8;
-  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=7;
-
-  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
-  doc.text(nombre.toUpperCase(),12,y);
-  doc.setFont("helvetica","normal");doc.setFontSize(9);
-  doc.text("Periodo: "+mesesSel.map(mesNombreMay).join(", "),198,y,{align:"right"});y+=8;
-
-  propiedades.forEach(prop2=>{
-    if(y>260){doc.addPage();y=18;}
-    doc.setFillColor(240,240,240);doc.rect(12,y-4,186,7,"F");
-    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(30,30,30);
-    doc.text(prop2.direccion+"  ("+prop2.inquilino+")",14,y);y+=7;
-
-    let subtotal=0;
-    prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
-      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
-      doc.text("Alquiler "+mesNombre(p.mes),16,y);
-      doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
-      subtotal+=(p.alquiler||0);
-      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.forEach(it=>{
-        if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;
-        if((it.monto||0)===0)return;
-        const neg=(it.monto||0)<0;
-        doc.setTextColor(neg?180:60,neg?60:60,60);
-        doc.text("  "+(it.desc||it.tipo),16,y);
-        doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=5.5;
-        subtotal+=(it.monto||0);
-        doc.setTextColor(60,60,60);
-      });
-      if(y>270){doc.addPage();y=18;}
-    });
-    doc.setDrawColor(200,200,200);doc.line(14,y,198,y);y+=1;
-    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
-    doc.text("Subtotal "+prop2.direccion,14,y+4);
-    doc.text(moneda(subtotal),198,y+4,{align:"right"});y+=10;
+  dibujarPDFLiquidacion({
+    nombre,mesesSel,propiedades,totalBruto,comPct,comision,
+    saldoAnterior,saldoAnteriorDesconocido:false,ajustes:ajustesPendLiq,
+    netoAEntregar,montoEntregado,nuevoSaldo
   });
-
-  if(y>250){doc.addPage();y=18;}
-  doc.setDrawColor(20,20,20);doc.setLineWidth(0.4);doc.line(12,y,198,y);y+=6;
-  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
-  doc.text("Total general (alquileres + gastos)",12,y);doc.text(moneda(totalBruto),198,y,{align:"right"});y+=6;
-  doc.setTextColor(180,30,30);
-  doc.text("Comision agencia ("+comPct+"% s/ alquileres)",12,y);doc.text("- "+moneda(comision),198,y,{align:"right"});y+=6;
-  if(saldoAnterior!==0){
-    doc.setTextColor(saldoAnterior>0?20:180,saldoAnterior>0?120:30,saldoAnterior>0?60:30);
-    doc.text("Saldo mes anterior ("+(saldoAnterior>0?"a favor":"en contra")+")",12,y);
-    doc.text((saldoAnterior>0?"+ ":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
-  }
-  ajustesPendLiq.forEach(function(a){
-    if(y>265){doc.addPage();y=18;}
-    var neg=(a.monto||0)<0;
-    doc.setTextColor(neg?180:20,neg?30:120,neg?30:60);
-    doc.text((a.descripcion||"Ajuste").substring(0,65),12,y);
-    doc.text((neg?"- ":"+ ")+moneda(Math.abs(a.monto||0)),198,y,{align:"right"});y+=6;
-  });
-  doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
-  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
-  doc.text("NETO A ENTREGAR",12,y);
-  doc.setTextColor(20,120,60);doc.text(moneda(netoAEntregar),198,y,{align:"right"});y+=6;
-  doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(90,90,90);
-  doc.text("("+numeroALetras(netoAEntregar)+" pesos)",12,y);y+=10;
-
-  if(nuevoSaldo!==0){
-    doc.setFont("helvetica","normal");doc.setFontSize(8.5);
-    doc.setTextColor(nuevoSaldo>0?20:180,nuevoSaldo>0?120:30,nuevoSaldo>0?60:30);
-    doc.text("Entregado: "+moneda(montoEntregado)+" — Queda "+(nuevoSaldo>0?"a favor":"en contra")+" del propietario: "+moneda(Math.abs(nuevoSaldo))+" para el proximo mes",12,y);y+=8;
-  }
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
-  doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
-
-  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
 
   // ── Marcar pagos como liquidados y registrar la referencia ───────────────
   const ref=nombre+"_"+mesesSel.join("-")+"_"+Date.now();
   const fechaLiq=hoy();
-  await Promise.all(pagosSel.map(p=>fbUpd("pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq})));
-  S.pagos=S.pagos.map(p=>pagosSel.some(ps=>ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq}:p);
+  const liqSnap={saldoAnterior,montoEntregado,nuevoSaldo};
+  await Promise.all(pagosSel.map(p=>fbUpd("pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap})));
+  S.pagos=S.pagos.map(p=>pagosSel.some(ps=>ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:p);
   if(ajustesPendLiq.length){
     await Promise.all(ajustesPendLiq.map(function(a){return fbUpd("ajustes_prop",a._id,{liquidacionRef:ref,fechaLiquidacion:fechaLiq});}));
     if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(function(a){
@@ -4334,63 +4363,37 @@ async function reimprimirLiquidacion(ref, nombre){
   });
   const totalBruto=totalAlquileres+totalExtras;
   const comision=Math.round(totalAlquileres*comPct/100);
-  const netoAEntregar=totalBruto-comision;
-  const{jsPDF}=window.jspdf;
-  const doc=new jsPDF({unit:"mm",format:"a4"});
-  let y=14;
-  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(20,20,20);
-  doc.text("LIQUIDACION A PROPIETARIO",105,y,{align:"center"});y+=6;
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(120,120,120);
-  doc.text("Documento no valido como factura",105,y,{align:"center"});y+=8;
-  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=7;
-  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
-  doc.text(nombre.toUpperCase(),12,y);
-  doc.setFont("helvetica","normal");doc.setFontSize(9);
-  doc.text("Periodo: "+mesesSel.map(mesNombreMay).join(", "),198,y,{align:"right"});y+=8;
-  propiedades.forEach(prop2=>{
-    if(y>260){doc.addPage();y=18;}
-    doc.setFillColor(240,240,240);doc.rect(12,y-4,186,7,"F");
-    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(30,30,30);
-    doc.text(prop2.direccion+"  ("+prop2.inquilino+")",14,y);y+=7;
-    let subtotal=0;
-    prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
-      doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
-      doc.text("Alquiler "+mesNombre(p.mes),16,y);
-      doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
-      subtotal+=(p.alquiler||0);
-      const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
-      items.forEach(it=>{
-        if(it.tipo==="gestion"||it.tipo==="honorario"||it.tipo==="saldo")return;
-        if((it.monto||0)===0)return;
-        const neg=(it.monto||0)<0;
-        doc.setTextColor(neg?180:60,neg?60:60,60);
-        doc.text("  "+(it.desc||it.tipo),16,y);
-        doc.text((neg?"- ":"")+moneda(Math.abs(it.monto||0)),198,y,{align:"right"});y+=5.5;
-        subtotal+=(it.monto||0);
-        doc.setTextColor(60,60,60);
-      });
-      if(y>270){doc.addPage();y=18;}
-    });
-    doc.setDrawColor(200,200,200);doc.line(14,y,198,y);y+=1;
-    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
-    doc.text("Subtotal "+prop2.direccion,14,y+4);
-    doc.text(moneda(subtotal),198,y+4,{align:"right"});y+=10;
+
+  // Ajustes de cuenta corriente que se incluyeron en ESTA liquidación (quedaron
+  // marcados con liquidacionRef al generarla) — se recuperan igual que en eliminarLiquidacion.
+  await cargarAjustesProp(nombre);
+  const ajustes=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.liquidacionRef===ref&&!a._eliminado);
+  const totalAjustes=ajustes.reduce((s,a)=>s+(a.monto||0),0);
+
+  // Saldo anterior / monto entregado / nuevo saldo: no se pueden recalcular
+  // (S_SALDO_PROP ya fue pisado por liquidaciones posteriores), así que se
+  // leen de la "foto" guardada en los pagos al generar la liquidación.
+  const pagoConSnap=pagosSel.find(p=>p.liqSnap);
+  const liqSnap=pagoConSnap&&pagoConSnap.liqSnap;
+  const saldoAnteriorDesconocido=!liqSnap;
+  const saldoAnterior=liqSnap?(liqSnap.saldoAnterior||0):0;
+  const montoEntregado=liqSnap?liqSnap.montoEntregado:null;
+  const nuevoSaldo=liqSnap?liqSnap.nuevoSaldo:null;
+
+  // Misma fórmula que en generarLiquidacionProp. Si el saldo anterior es
+  // desconocido (liquidación vieja, previa al arreglo) no se suma — y se avisa,
+  // para no mostrar en silencio un neto que puede diferir del original.
+  const netoAEntregar=totalBruto-comision+(saldoAnteriorDesconocido?0:saldoAnterior)+totalAjustes;
+
+  dibujarPDFLiquidacion({
+    nombre,mesesSel,propiedades,totalBruto,comPct,comision,
+    saldoAnterior,saldoAnteriorDesconocido,ajustes,
+    netoAEntregar,montoEntregado,nuevoSaldo
   });
-  if(y>250){doc.addPage();y=18;}
-  doc.setDrawColor(20,20,20);doc.setLineWidth(0.4);doc.line(12,y,198,y);y+=6;
-  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(40,40,40);
-  doc.text("Total general (alquileres + gastos)",12,y);doc.text(moneda(totalBruto),198,y,{align:"right"});y+=6;
-  doc.setTextColor(180,30,30);
-  doc.text("Comision agencia ("+comPct+"% s/ alquileres)",12,y);doc.text("- "+moneda(comision),198,y,{align:"right"});y+=6;
-  doc.setDrawColor(20,20,20);doc.setLineWidth(0.6);doc.line(12,y,198,y);y+=7;
-  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(20,20,20);
-  doc.text("NETO A ENTREGAR",12,y);
-  doc.setTextColor(20,120,60);doc.text(moneda(netoAEntregar),198,y,{align:"right"});y+=6;
-  doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(90,90,90);
-  doc.text("("+numeroALetras(netoAEntregar)+" pesos)",12,y);y+=10;
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
-  doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
-  doc.save("Liquidacion-"+nombre.replace(/ /g,"_")+"-"+mesesSel[mesesSel.length-1]+".pdf");
+
+  if(saldoAnteriorDesconocido){
+    toast("Liquidación anterior al arreglo: el saldo del mes anterior no está registrado y no se incluye",false);
+  }
 }
 
 async function eliminarLiquidacion(ref, nombre){
@@ -4398,9 +4401,9 @@ async function eliminarLiquidacion(ref, nombre){
   const pagosRef=S.pagos.filter(p=>p.liquidacionRef===ref);
   const ajustesRef=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.liquidacionRef===ref);
   try{
-    await Promise.all(pagosRef.map(p=>fbUpd("pagos",p._id,{liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null})));
+    await Promise.all(pagosRef.map(p=>fbUpd("pagos",p._id,{liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null})));
     await Promise.all(ajustesRef.map(a=>fbUpd("ajustes_prop",a._id,{liquidacionRef:null,fechaLiquidacion:null})));
-    S.pagos=S.pagos.map(p=>p.liquidacionRef===ref?{...p,liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null}:p);
+    S.pagos=S.pagos.map(p=>p.liquidacionRef===ref?{...p,liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null}:p);
     if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(a=>a.liquidacionRef===ref?{...a,liquidacionRef:null,fechaLiquidacion:null}:a);
     toast('Liquidación eliminada — pagos vueltos a pendiente ✓');
   }catch(e){toast('Error al eliminar: '+e.message,false);}
