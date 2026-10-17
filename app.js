@@ -25,6 +25,15 @@ const mesActual=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getM
 const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const mesNombre=m=>{if(!m)return"";const p=m.split("-");if(p.length===2)return MESES[+p[1]-1]+" "+p[0];return m;};
 const mesNombreMay=m=>mesNombre(m).toUpperCase();
+function mesStr(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function mesMasN(mes,n){const [y,m]=mes.split("-").map(Number);return mesStr(new Date(y,m-1+n,1));}
+// mes en que rige un aumento cargado hoy: el mes siguiente (hora local, no UTC)
+function mesVigenciaCarga(){return mesMasN(mesStr(new Date()),1);}
+function camposAumentoAlquiler(c,nuevo,pct){
+  const mesVig=mesVigenciaCarga();
+  return {alquilerBase:nuevo,ultimaActualizacion:mesVig+"-01",pctUltimaActualizacion:+pct,
+          alquilerBaseAnterior:c.alquilerBase,alquilerVigenteDesde:mesVig};
+}
 const diasPara=fin=>Math.round((new Date(fin)-new Date())/86400000);
 const NAVS=[{id:"dashboard",ic:"▦",lbl:"Dashboard"},{id:"contratos",ic:"◻",lbl:"Contratos"},{id:"cobranzas",ic:"$",lbl:"Cobranzas"},{id:"liquidaciones",ic:"≡",lbl:"Liquidaciones"},{id:"ipc",ic:"⟳",lbl:"Actualiz. IPC"},{id:"servicios",ic:"🧾",lbl:"Pago de servicios"},{id:"inquilinos",ic:"◎",lbl:"Inquilinos"},{id:"propietarios",ic:"◉",lbl:"Propietarios"},{id:"caja",ic:"💰",lbl:"Caja"},{id:"setup",ic:"⚙",lbl:"Puesta a punto"},{id:"deudores",ic:"⚠",lbl:"Deudores"},{id:"puntualidad",ic:"⏱",lbl:"Puntualidad"}];
 const TITLES={dashboard:["Dashboard","Resumen general de la cartera"],contratos:["Contratos","Clic en un contrato para ver detalles y registrar pagos"],cobranzas:["Cobranzas","Historial de cobros"],liquidaciones:["Liquidaciones","Liquidación mensual a propietarios"],ipc:["Actualiz. IPC","Contratos a actualizar en los próximos 60 días"],servicios:["Pago de servicios","Carga masiva de gastos fijos por servicio"],inquilinos:["Inquilinos","Datos y contratos"],propietarios:["Propietarios","Ficha y propiedades"],caja:["Caja agencia","Ingresos y gastos de la agencia"],setup:["Puesta a punto","Actualización masiva de contratos"],deudores:["Deudores","Contratos con pagos pendientes o en atraso"],puntualidad:["Puntualidad de pago","Ranking de días de pago respecto al plazo"]};
@@ -600,12 +609,12 @@ function renderIPC(){
     if(!grupos[fr]) grupos[fr]=[];
     const prox=getProxActualizacion(c);
     if(!prox) return;
+    const proxMes=mesStr(prox);
     if(c.fin){
       const _fp=c.fin.split('-').map(Number);
       const finDate=new Date(_fp[0],_fp[1]-1,_fp[2]);
-      if(prox>=finDate){vencenAntes.push({c,prox,fr});return;}
+      if(finDate<prox){ if(proxMes===mesSel) vencenAntes.push({c,prox,fr}); return; }
     }
-    const proxMes=prox.getFullYear()+"-"+String(prox.getMonth()+1).padStart(2,"0");
     if(proxMes===mesSel) grupos[fr].push({c,prox});
     if(proxMes===mesSig) cntSig++;
   });
@@ -725,8 +734,9 @@ function waIpcMsgTexto(c,pct,nuevo,proxStr){
 function waIpcDatosItem(item){
   const c=item.c;const pct=item.pct;
   const nuevo=Math.round((c.alquilerBase||0)*(1+pct/100));
-  const prox=getProxActualizacion(c);
-  const proxStr=prox?prox.toLocaleDateString("es-AR",{month:"long",year:"numeric"}):"próximo mes";
+  // mes en que rige ESTE aumento (se carga hoy, rige desde el 1° del mes siguiente) —
+  // no el que tocaría según el calendario teórico de getProxActualizacion.
+  const proxStr=mesNombre(mesVigenciaCarga());
   const tel=(c.telefono||"").replace(/\D/g,"").replace(/^0/,"");
   return{nuevo,proxStr,tel,msg:waIpcMsgTexto(c,pct,nuevo,proxStr)};
 }
@@ -744,7 +754,7 @@ window.aplicarIPCGrupo=async function(fr){
   const pct=parseFloat(inp.value);
   if(!pct||isNaN(pct)){toast("Ingresá un % válido",false);return;}
   const rows=document.querySelectorAll(`.ipc-row[data-fr="${fr}"]`);
-  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?`)) return;
+  if(!confirm(`¿Aplicar +${pct}% a los ${rows.length} contrato(s) de c/${fr}m?\n\nRige desde el 1° de ${mesNombre(mesVigenciaCarga())}`)) return;
   const promises=[];
   rows.forEach(row=>{
     const cid=row.dataset.id;
@@ -758,7 +768,7 @@ window.aplicarIPCGrupo=async function(fr){
     const nuevoDeposito=difDep>0
       ?calcularDepositoActualizacionIPC(nuevo,difDep,depCuotas)
       :{...depViejo,total:nuevo,pendiente:0,completo:true};
-    const upd={alquilerBase:nuevo,ultimaActualizacion:hoy(),pctUltimaActualizacion:pct,deposito:nuevoDeposito};
+    const upd={...camposAumentoAlquiler(c,nuevo,pct),deposito:nuevoDeposito};
     promises.push(fbUpd("contratos",cid,upd).then(()=>{
       S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
     }));
@@ -3408,21 +3418,14 @@ async function registrarPago(){
 
 async function actualizarAlquiler(cid){
   const c=S.contratos.find(x=>x._id===cid);if(!c)return;
-  const pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5");
+  const mesVig=mesVigenciaCarga();
+  const pct=prompt("% de aumento "+(c.indiceActualizacion||"IPC")+" para:\n"+c.inquilino+" — "+(c.direccion||"")+"\n\nEjemplo: 12.5\n\nRige desde el 1° de "+mesNombre(mesVig));
   if(!pct||isNaN(+pct))return;
   const nuevo=Math.round(c.alquilerBase*(1+(+pct/100)));
-  const fechaVigencia=getProxActualizacion(c); // fecha en que correspondía ESTE aumento, calculada antes de pisar ultimaActualizacion
-  const mesVigencia=fechaVigencia?(fechaVigencia.getFullYear()+"-"+String(fechaVigencia.getMonth()+1).padStart(2,"0")):null;
-  const upd={
-    alquilerBase:nuevo,
-    ultimaActualizacion:hoy(),
-    pctUltimaActualizacion:+pct,
-    alquilerBaseAnterior:c.alquilerBase,
-    alquilerVigenteDesde:mesVigencia
-  };
+  const upd=camposAumentoAlquiler(c,nuevo,+pct);
   await fbUpd("contratos",cid,upd);
   S.contratos=S.contratos.map(x=>x._id===cid?{...x,...upd}:x);
-  toast("Alquiler actualizado a "+moneda(nuevo)+(mesVigencia?" (vigente desde "+mesNombre(mesVigencia)+")":""));render();
+  toast("Alquiler actualizado a "+moneda(nuevo)+" (vigente desde "+mesNombre(upd.alquilerVigenteDesde)+")");render();
 }
 
 async function guardarMontoMesParcial(cid){
@@ -3474,8 +3477,8 @@ S.matrizTemp=null;  // limpiar después de guardar
 function getProxActualizacion(c){
   if(!c.frecActualizacion||!c.inicio)return null;
   const baseStr=c.ultimaActualizacion||c.inicio;
-  const [y,m,d]=baseStr.split('-').map(Number);
-  return new Date(y,m-1+(+(c.frecActualizacion||6)),d);
+  const [y,m]=baseStr.split('-').map(Number);
+  return new Date(y,m-1+(+(c.frecActualizacion||6)),1);
 }
 
 // ── RENDERS ────────────────────────────────────────────────────────────────────
