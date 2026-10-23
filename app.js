@@ -3385,11 +3385,16 @@ async function registrarPago(){
         const nuevoPendiente=Math.max(0,(depActual.pendiente||0)-montoPagado);
         const nuevoPagado=(depActual.total||0)-nuevoPendiente;
         const yasPagadas=(depActual.cuotasPagadas!==undefined?depActual.cuotasPagadas:(depActual.pagadas||0));
+        // Si en el selector se eligió partir en 2 cuotas, el plan del contrato tiene que
+        // reflejarlo; si no, el próximo cobro sale como "cuota 2/1".
+        const cuotasElegidas=+(S.depCuotasCobro||1);
+        const nuevasCuotasTotales=Math.max(yasPagadas+1,cuotasElegidas,depActual.cuotasTotales||1);
         const nuevoDeposito={
           ...depActual,
           pagado:nuevoPagado,pagadoAcumulado:nuevoPagado,
           pendiente:nuevoPendiente,completo:nuevoPendiente===0,
-          cuotasPagadas:yasPagadas+1,pagadas:yasPagadas+1
+          cuotasPagadas:yasPagadas+1,pagadas:yasPagadas+1,
+          cuotasTotales:nuevasCuotasTotales,cuotas:nuevasCuotasTotales
         };
         await fbUpd("contratos",c._id,{deposito:nuevoDeposito});
         S.contratos=S.contratos.map(x=>x._id===c._id?{...x,deposito:nuevoDeposito}:x);
