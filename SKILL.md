@@ -145,6 +145,11 @@ Ajustes manuales de cuenta corriente por propietario. Descripción libre + monto
 
 Campos clave: `propietarioNombre`, `fecha` (YYYY-MM-DD), `descripcion`, `monto` (positivo = a favor, negativo = deuda), `liquidacionRef` (null = pendiente, string = ya aplicado), `_eliminado`
 
+### `entregas`
+Entregas parciales a cuenta de un inquilino moroso (solo contratos con `contratos.cuentaDeuda = {desde:"YYYY-MM", descuento}`). No van en `pagos`: en la liquidación al propietario entran como "pagos virtuales" (`pagosLiquidablesProp`). El cálculo de deuda e intereses está en `calcularCuentaDeuda` (1% por día hábil, FIFO, feriados en `FERIADOS_NACIONALES`, actualizar cada año).
+
+Campos clave: `contratoId`, `propietarioNombre`, `inquilino`, `direccion`, `fecha` (YYYY-MM-DD), `monto`, `tipo` (`capital` | `interes`), `nota`, `aplica` (false = historial que no resta de la cuenta), `liquidadoProp` (true sin `liquidacionRef` = ya liquidada por fuera), `liquidacionRef`, `fechaLiquidacion`, `liqSnap`, `_eliminado`, `creadoEn`
+
 ### `usuarios`
 Configuración por usuario (gaston@ie.com, matias@ie.com, ara@ie.com).
 

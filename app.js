@@ -11,7 +11,7 @@ const rtdb=getDatabase(fireApp);
 
 let S=window.S={
   sec:"dashboard",usuario:null,
-  propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],
+  propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],entregas:[],cdHasta:"",
   modal:null,contratoActivo:null,form:{},formExtras:[],
   filtros:{buscar:"",buscarPor:"inquilino",estado:"activo"},
   liqMes:"",loading:true,synced:false,inquilinoActivo:null,itemsCobro:[],formExtras:[],alertasTipo:"todas",alertasPlazo:30,sortCol:"inquilino",sortDir:1,setupBuscar:"",setupCambios:{},propietarioActivo:null,liqSeleccion:{},migSeleccion:{},migEditando:{},contratoRenovar:null,propiedadesInmuebles:[],editarPropiedadId:null,matrizGastosId:null,matrizTemp:null,fechaCorte:"2026-07",modalExtra:null,editarExtrasId:null,_extrasTemp:null,ipcMes:"",depCuotasCobro:1,cobranzaMes:"",cobranzaProp:"",cobranzaBuscar:"",cobranzaEstado:"todos",propBuscar:"",ultimoPago:null,
@@ -348,7 +348,7 @@ window.doLogin=async()=>{
 window.doLogout=async()=>{
   if(S.usuario){const r=ref(rtdb,"presencia/"+S.usuario.uid);set(r,null);}
   await signOut(auth);
-  S={...S,sec:"dashboard",propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],synced:false,presencia:[]};
+  S={...S,sec:"dashboard",propietarios:[],propiedades:[],contratos:[],pagos:[],inquilinos:[],entregas:[],synced:false,presencia:[]};
 };
 
 // ── FIREBASE CRUD ──────────────────────────────────────────────────────────────
@@ -369,6 +369,10 @@ async function cargarTodo(){
       S[col]=snap.docs.map(d=>({...d.data(),_id:d.id}));
     }
     S.pagos=S.pagos.filter(p=>!p._eliminado);
+    try{
+      const snapE=await getDocs(collection(db,"entregas"));
+      S.entregas=snapE.docs.map(d=>({...d.data(),_id:d.id})).filter(e=>!e._eliminado);
+    }catch(eE){S.entregas=[];toast("No se pudieron cargar las entregas: "+eE.message,false);}
     S.propiedadesInmuebles=S.propiedades.filter(p=>!p._eliminado);
     const meses=[...new Set(S.pagos.map(p=>p.mes))].sort().reverse();
     S.liqMes=meses[0]||mesActual();
@@ -2431,6 +2435,76 @@ function renderModalEditarPropiedad(){
     +'</div></div></div>';
 }
 
+// ── CUENTA DE DEUDA (inquilino moroso con entregas a cuenta) ─────────────────
+// Feriados nacionales que NO corren interés. ACTUALIZAR ESTA LISTA CADA AÑO.
+// Solo nacionales: el 10 y 11/11 son feriado en CABA/Córdoba/Bs As, no en Entre
+// Ríos, por eso no están. El 7/12 es "no laborable" y no se cuenta como feriado.
+// Se suman los feriados cargados a mano en localStorage (cargarFeriados).
+const FERIADOS_NACIONALES=["2026-08-17","2026-10-12","2026-11-09","2026-11-23","2026-12-08","2026-12-25"];
+const CD_TASA_DIARIA=0.01; // 1% por día hábil, interés simple
+function cdFechaUTC(iso){return new Date(iso+"T00:00:00Z");}
+function cdISO(d){return d.toISOString().slice(0,10);}
+function cdSumarDia(d){return new Date(d.getTime()+86400000);}
+function cdEsDiaHabil(d,feriadosSet){
+  const dow=d.getUTCDay();
+  if(dow===0||dow===6)return false;
+  return !feriadosSet.has(cdISO(d));
+}
+function cdMesesEntre(desde,hastaMes){
+  const out=[];let y=+desde.slice(0,4),m=+desde.slice(5,7);
+  for(let guard=0;guard<600;guard++){
+    const mm=y+"-"+String(m).padStart(2,"0");
+    if(mm>hastaMes)break;
+    out.push(mm);m++;if(m>12){m=1;y++;}
+  }
+  return out;
+}
+const cdR2=n=>Math.round(n*100)/100;
+// Función pura (sin DOM). c = contrato con c.cuentaDeuda={desde,descuento};
+// entregas = docs de la colección "entregas" de ese contrato; hastaISO = "YYYY-MM-DD".
+// Solo cuentan las entregas con fecha <= hastaISO.
+function calcularCuentaDeuda(c,entregas,hastaISO){
+  const cd=(c&&c.cuentaDeuda)||{};
+  const hasta=cdFechaUTC(hastaISO);
+  const feriadosSet=new Set(FERIADOS_NACIONALES.concat(cargarFeriados()));
+  const meses=cd.desde?cdMesesEntre(cd.desde,hastaISO.slice(0,7)):[];
+  const vivas=(entregas||[]).filter(e=>!e._eliminado&&e.aplica!==false&&e.fecha&&e.fecha<=hastaISO);
+  const capital={},saldo={},pagos={};
+  meses.forEach(x=>{capital[x]=alquilerParaMes(c,x)||0;saldo[x]=capital[x];pagos[x]=[];});
+  let aFavor=0;
+  vivas.filter(e=>e.tipo!=="interes").sort((a,b)=>a.fecha.localeCompare(b.fecha)).forEach(e=>{
+    let resto=+e.monto||0;
+    for(const x of meses){
+      if(resto<=0)break;
+      const ap=Math.min(resto,saldo[x]);
+      if(ap>0){saldo[x]-=ap;pagos[x].push({f:e.fecha,m:ap});resto-=ap;}
+    }
+    if(resto>0)aFavor+=resto;
+  });
+  const filas=meses.map(x=>{
+    const lim=calcularFechaLimitePago(x);
+    const pagadoEnPlazo=saldo[x]===0&&pagos[x].every(p=>cdFechaUTC(p.f)<=lim);
+    let interes=0,dias=0;
+    if(!pagadoEnPlazo&&hasta>lim){
+      for(let d=cdFechaUTC(x+"-02");d<=hasta;d=cdSumarDia(d)){
+        if(!cdEsDiaHabil(d,feriadosSet))continue;
+        // Un pago del día d recién reduce el capital el día hábil siguiente
+        const sIni=capital[x]-pagos[x].filter(p=>cdFechaUTC(p.f)<d).reduce((s,p)=>s+p.m,0);
+        if(sIni<=0)break;
+        interes+=sIni*CD_TASA_DIARIA;dias++;
+      }
+    }
+    return{mes:x,capital:capital[x],aplicado:capital[x]-saldo[x],saldo:saldo[x],diasConInteres:dias,interes:cdR2(interes)};
+  });
+  const capitalPendiente=filas.reduce((s,f)=>s+f.saldo,0);
+  const interesDevengado=cdR2(filas.reduce((s,f)=>s+f.interes,0));
+  const interesCobrado=cdR2(vivas.filter(e=>e.tipo==="interes").reduce((s,e)=>s+(+e.monto||0),0));
+  const descuento=+cd.descuento||0;
+  const interesACobrar=cdR2(Math.max(0,interesDevengado-interesCobrado-descuento));
+  const totalACobrar=cdR2(capitalPendiente+interesACobrar);
+  return{meses:filas,capitalPendiente,interesDevengado,interesCobrado,descuento,interesACobrar,totalACobrar,aFavor};
+}
+
 // ── SISTEMA DE MORA ──────────────────────────────────────────────────────────
 // Feriados cargados manualmente (YYYY-MM-DD). Se persisten en localStorage.
 function cargarFeriados(){
@@ -2885,6 +2959,8 @@ document.addEventListener("change",e=>{
   if(!action&&t.id!=="fecha-corte-input")return;
   // Filtros cobranzas
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
+  else if(action==="cdHasta"){if(t.value){S.cdHasta=t.value;renderParcial();}}
+  else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
   else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
@@ -2951,6 +3027,8 @@ document.addEventListener("click",e=>{
   const action=t.dataset.action;
   const id=t.dataset.id;
   if(action==="abrirContrato")abrirContrato(id);
+  else if(action==="cdRegistrarEntrega")cdRegistrarEntrega(id);
+  else if(action==="cdBajaEntrega")cdBajaEntrega(id);
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
@@ -3191,6 +3269,7 @@ function abrirContrato(cid){
   const c=S.contratoActivo;
   S.modal="contrato_detalle";
   S.depCuotasCobro=1;
+  S.cdHasta="";
   S.form={mes:mesActual(),alquiler:alquilerParaMes(c,mesActual()),fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
   // Cargar gastos pendientes de Firebase (cargados durante el mes)
   S.itemsCobro=[];  // limpiar mientras carga
@@ -3979,9 +4058,30 @@ function renderPropietarios(){
   <tbody>${rows||_emptyMsg}</tbody></table></div>`;
 }
 
+// ── ENTREGAS A CUENTA COMO "PAGOS VIRTUALES" PARA LA LIQUIDACIÓN ────────────
+// Las entregas (colección "entregas") no se guardan en "pagos": se convierten a
+// un objeto con forma de pago (alquiler = monto) para que comisión, meses,
+// totales y PDF funcionen igual. Se excluyen las "ya liquidadas por fuera"
+// (liquidadoProp:true sin liquidacionRef). Valen tanto aplica:true como false.
+function entregasComoPagos(nombre){
+  return (S.entregas||[])
+    .filter(e=>e.propietarioNombre===nombre&&!e._eliminado&&!(e.liquidadoProp&&!e.liquidacionRef))
+    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
+    .map(e=>({_id:e._id,_entrega:true,_tipoEntrega:e.tipo==="interes"?"interes":"capital",_fechaEntrega:e.fecha||"",
+      contratoId:e.contratoId,inquilino:e.inquilino,direccion:e.direccion,propietarioNombre:e.propietarioNombre,
+      mes:(e.fecha||"").slice(0,7),alquiler:+e.monto||0,itemsCobro:[],estado:"cobrado",fechaCobro:e.fecha,
+      liquidadoProp:!!e.liquidacionRef,liquidacionRef:e.liquidacionRef||null,fechaLiquidacion:e.fechaLiquidacion||null,
+      liqSnap:e.liqSnap||null}));
+}
+// Pagos cobrados del propietario + sus entregas convertidas.
+function pagosLiquidablesProp(nombre){
+  return S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p._eliminado)
+    .concat(entregasComoPagos(nombre));
+}
+
 function renderFichaPropietario(nombre, prop){
   const activos=prop.contratos.filter(c=>c.estado==="activo"||!c.estado);
-  const pagos=S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p._eliminado)
+  const pagos=pagosLiquidablesProp(nombre)
     .sort((a,b)=>(b.mes||"").localeCompare(a.mes||""));
   const pendLiq=pagos.filter(p=>!p.liquidadoProp);
   const pendPorMes={};
@@ -4213,7 +4313,10 @@ function dibujarPDFLiquidacion(datos){
     let subtotal=0;
     prop2.pagos.sort((a,b)=>(a.mes||"").localeCompare(b.mes||"")).forEach(p=>{
       doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
-      doc.text("Alquiler "+mesNombre(p.mes),16,y);
+      const _lblLinea=p._entrega
+        ?(p._tipoEntrega==="interes"?"Cobro de intereses ":"Entrega a cuenta ")+cdFechaCorta(p._fechaEntrega)
+        :"Alquiler "+mesNombre(p.mes);
+      doc.text(_lblLinea,16,y);
       doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
       subtotal+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
@@ -4273,7 +4376,7 @@ function dibujarPDFLiquidacion(datos){
 
 async function generarLiquidacionProp(nombre){
   const seleccion=S.liqSeleccion[nombre]||{};
-  const pagos=S.pagos.filter(p=>p.propietarioNombre===nombre&&p.estado==="cobrado"&&!p.liquidadoProp&&!p._eliminado);
+  const pagos=pagosLiquidablesProp(nombre).filter(p=>!p.liquidadoProp);
   const pendPorMes={};
   pagos.forEach(p=>{if(!pendPorMes[p.mes])pendPorMes[p.mes]=[];pendPorMes[p.mes].push(p);});
   const mesesPend=Object.keys(pendPorMes).sort();
@@ -4335,8 +4438,9 @@ async function generarLiquidacionProp(nombre){
   const ref=nombre+"_"+mesesSel.join("-")+"_"+Date.now();
   const fechaLiq=hoy();
   const liqSnap={saldoAnterior,montoEntregado,nuevoSaldo};
-  await Promise.all(pagosSel.map(p=>fbUpd("pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap})));
-  S.pagos=S.pagos.map(p=>pagosSel.some(ps=>ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:p);
+  await Promise.all(pagosSel.map(p=>fbUpd(p._entrega?"entregas":"pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap})));
+  S.pagos=S.pagos.map(p=>pagosSel.some(ps=>!ps._entrega&&ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:p);
+  S.entregas=(S.entregas||[]).map(e=>pagosSel.some(ps=>ps._entrega&&ps._id===e._id)?{...e,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:e);
   if(ajustesPendLiq.length){
     await Promise.all(ajustesPendLiq.map(function(a){return fbUpd("ajustes_prop",a._id,{liquidacionRef:ref,fechaLiquidacion:fechaLiq});}));
     if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(function(a){
@@ -4349,7 +4453,8 @@ async function generarLiquidacionProp(nombre){
 }
 
 async function reimprimirLiquidacion(ref, nombre){
-  const pagosSel=S.pagos.filter(p=>p.liquidacionRef===ref&&!p._eliminado);
+  const pagosSel=S.pagos.filter(p=>p.liquidacionRef===ref&&!p._eliminado)
+    .concat(entregasComoPagos(nombre).filter(p=>p.liquidacionRef===ref));
   if(!pagosSel.length){toast("No se encontraron pagos de esa liquidacion",false);return;}
   const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
   const comPct=prop.comisionAgencia??5;
@@ -4408,14 +4513,114 @@ async function eliminarLiquidacion(ref, nombre){
   if(!confirm('¿Eliminar esta liquidación? Los pagos volverán a estado pendiente de liquidar.'))return;
   const pagosRef=S.pagos.filter(p=>p.liquidacionRef===ref);
   const ajustesRef=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.liquidacionRef===ref);
+  const entregasRef=(S.entregas||[]).filter(e=>e.liquidacionRef===ref);
   try{
     await Promise.all(pagosRef.map(p=>fbUpd("pagos",p._id,{liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null})));
     await Promise.all(ajustesRef.map(a=>fbUpd("ajustes_prop",a._id,{liquidacionRef:null,fechaLiquidacion:null})));
+    await Promise.all(entregasRef.map(e=>fbUpd("entregas",e._id,{liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null})));
+    S.entregas=(S.entregas||[]).map(e=>e.liquidacionRef===ref?{...e,liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null}:e);
     S.pagos=S.pagos.map(p=>p.liquidacionRef===ref?{...p,liquidadoProp:false,liquidacionRef:null,fechaLiquidacion:null,liqSnap:null}:p);
     if(S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].map(a=>a.liquidacionRef===ref?{...a,liquidacionRef:null,fechaLiquidacion:null}:a);
     toast('Liquidación eliminada — pagos vueltos a pendiente ✓');
   }catch(e){toast('Error al eliminar: '+e.message,false);}
   render();
+}
+
+// ── CUENTA DE DEUDA: bloque dentro del modal del contrato ───────────────────
+function cdFechaCorta(iso){if(!iso)return"";const p=iso.split("-");return p[2]+"/"+p[1]+"/"+p[0];}
+function renderCuentaDeuda(c){
+  const hasta=S.cdHasta||hoy();
+  const entregasC=(S.entregas||[]).filter(e=>e.contratoId===c._id&&!e._eliminado)
+    .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+  const r=calcularCuentaDeuda(c,entregasC,hasta);
+  const td='style="text-align:right"';
+  let filas="";
+  r.meses.forEach(function(m){
+    filas+='<tr><td>'+mesNombre(m.mes)+'</td><td '+td+'>'+moneda(m.capital)+'</td><td '+td+'>'+moneda(m.aplicado)+'</td>'
+      +'<td '+td+'>'+moneda(m.saldo)+'</td><td '+td+'>'+m.diasConInteres+'</td><td '+td+'>'+moneda(m.interes)+'</td></tr>';
+  });
+  const totCap=r.meses.reduce((s,m)=>s+m.capital,0);
+  const totAp=r.meses.reduce((s,m)=>s+m.aplicado,0);
+  filas+='<tr style="font-weight:700;border-top:1px solid var(--negro4)"><td>Totales</td><td '+td+'>'+moneda(totCap)+'</td><td '+td+'>'+moneda(totAp)+'</td>'
+    +'<td '+td+'>'+moneda(r.capitalPendiente)+'</td><td></td><td '+td+'>'+moneda(r.interesDevengado)+'</td></tr>';
+  const tabla='<div class="tw"><table><thead><tr><th>Mes</th><th>Alquiler</th><th>Entregas aplicadas</th><th>Saldo de capital</th><th>Días hábiles con interés</th><th>Interés devengado</th></tr></thead><tbody>'+filas+'</tbody></table></div>';
+  function fila(lbl,val,estilo){return '<div class="rrow"'+(estilo?' style="'+estilo+'"':'')+'><span>'+lbl+'</span><span>'+val+'</span></div>';}
+  const resumen='<div class="rsum" style="margin-top:12px">'
+    +fila("Capital pendiente",moneda(r.capitalPendiente))
+    +fila("Interés devengado",moneda(r.interesDevengado))
+    +fila("Intereses cobrados","− "+moneda(r.interesCobrado))
+    +'<div class="rrow"><span>Descuento</span><span><input id="cd-descuento" class="inp" type="number" min="0" style="width:130px;text-align:right" value="'+(r.descuento||"")+'" placeholder="0" data-action="cdDescuento" data-id="'+c._id+'"></span></div>'
+    +fila("Interés a cobrar",moneda(r.interesACobrar))
+    +fila("Total a cobrar",moneda(r.totalACobrar),"font-weight:700;font-size:14px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)")
+    +(r.aFavor>0?fila("A favor del inquilino",moneda(r.aFavor),"color:#5ddb8a"):"")
+    +'</div>';
+  const filaEntrega=function(e){
+    const tipoLbl=e.tipo==="interes"?"Cobro de intereses":"Entrega a cuenta";
+    const estado=e.liquidacionRef?"Liquidada "+(e.fechaLiquidacion||""):(e.liquidadoProp?"Liquidada por fuera":"Pendiente de liquidar");
+    return '<tr><td>'+cdFechaCorta(e.fecha)+'</td><td>'+tipoLbl+'</td><td style="text-align:right">'+moneda(e.monto)+'</td><td style="font-size:11px;color:var(--gris3)">'+(e.nota||"")+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+estado+'</td>'
+      +'<td><button class="btn sm" data-action="cdBajaEntrega" data-id="'+e._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px">✕</button></td></tr>';
+  };
+  const thE='<thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Nota</th><th>Propietario</th><th></th></tr></thead>';
+  const vigentes=entregasC.filter(e=>e.aplica!==false);
+  const historial=entregasC.filter(e=>e.aplica===false);
+  const listaVig=vigentes.length
+    ?'<div class="tw"><table>'+thE+'<tbody>'+vigentes.map(filaEntrega).join("")+'</tbody></table></div>'
+    :'<p style="font-size:11px;color:var(--gris4);padding:4px 0">Sin entregas cargadas.</p>';
+  const listaHist=historial.length
+    ?'<div style="font-size:10px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:12px 0 4px">Historial anterior (no resta)</div>'
+      +'<div class="tw" style="opacity:.7"><table>'+thE+'<tbody>'+historial.map(filaEntrega).join("")+'</tbody></table></div>'
+    :"";
+  const form='<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Registrar entrega</div>'
+    +'<div class="fg">'
+    +'<div><label class="fl">Fecha</label><input id="cd-fecha" class="inp" style="width:100%" type="date" value="'+hoy()+'"></div>'
+    +'<div><label class="fl">Monto ($)</label><input id="cd-monto" class="inp" style="width:100%" type="number" min="0"></div>'
+    +'<div><label class="fl">Tipo</label><select id="cd-tipo" class="inp" style="width:100%"><option value="capital">Entrega a cuenta (capital)</option><option value="interes">Cobro de intereses</option></select></div>'
+    +'<div><label class="fl">Nota</label><input id="cd-nota" class="inp" style="width:100%" placeholder="Opcional"></div>'
+    +'</div>'
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:8px;cursor:pointer"><input id="cd-fuera" type="checkbox" style="width:16px;height:16px"> Ya liquidada por fuera / el propietario la retiró directo</label>'
+    +'<button class="btn naranja" style="margin-top:10px" data-action="cdRegistrarEntrega" data-id="'+c._id+'">+ Registrar entrega</button>';
+  return '<div class="fsec"><div class="fsec-t">Cuenta de deuda (desde '+mesNombre(r.meses.length?r.meses[0].mes:(c.cuentaDeuda.desde||""))+')</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><label class="fl" style="margin:0">Calcular al:</label>'
+    +'<input id="cd-hasta" class="inp" type="date" value="'+hasta+'" style="width:160px" data-action="cdHasta"></div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Solo alquiler. Servicios (luz, agua, TGI) no entran en esta cuenta. Interés 1% por día hábil sobre el capital impago.</div>'
+    +tabla+resumen+form
+    +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Entregas</div>'
+    +listaVig+listaHist
+    +'</div>';
+}
+async function cdRegistrarEntrega(cid){
+  const c=S.contratos.find(x=>x._id===cid);if(!c)return;
+  const fecha=($("cd-fecha")||{}).value||"";
+  const monto=+(($("cd-monto")||{}).value||0);
+  const tipo=($("cd-tipo")||{}).value==="interes"?"interes":"capital";
+  const nota=((($("cd-nota")||{}).value)||"").trim();
+  const fuera=!!($("cd-fuera")||{}).checked;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){toast("Ingresá una fecha válida",false);return;}
+  if(!(monto>0)){toast("Ingresá un monto válido",false);return;}
+  const data={contratoId:c._id,propietarioNombre:c.propietarioNombre||"",inquilino:c.inquilino||"",direccion:c.direccion||"",
+    fecha,monto,tipo,nota,aplica:true,liquidadoProp:fuera,liquidacionRef:null,fechaLiquidacion:null,_eliminado:false,creadoEn:new Date().toISOString()};
+  const id=await fbAdd("entregas",data);
+  if(!id)return;
+  S.entregas=(S.entregas||[]).concat([{...data,_id:id}]);
+  renderParcial();
+}
+async function cdBajaEntrega(eid){
+  const e=(S.entregas||[]).find(x=>x._id===eid);if(!e)return;
+  if(e.liquidacionRef){toast("Esta entrega ya está en una liquidación al propietario: primero eliminá esa liquidación",false);return;}
+  if(!confirm("¿Dar de baja la entrega del "+cdFechaCorta(e.fecha)+" por "+moneda(e.monto)+"?"))return;
+  await fbUpd("entregas",eid,{_eliminado:true});
+  S.entregas=S.entregas.filter(x=>x._id!==eid);
+  renderParcial();
+}
+async function cdGuardarDescuento(cid,valor){
+  const c=S.contratos.find(x=>x._id===cid);if(!c||!c.cuentaDeuda)return;
+  const descuento=Math.max(0,+valor||0);
+  const cuentaDeuda={...c.cuentaDeuda,descuento};
+  await fbUpd("contratos",cid,{cuentaDeuda});
+  c.cuentaDeuda=cuentaDeuda;
+  if(S.contratoActivo&&S.contratoActivo._id===cid)S.contratoActivo.cuentaDeuda=cuentaDeuda;
+  renderParcial();
 }
 
 function renderModalDetalle(){
@@ -4452,7 +4657,7 @@ function renderModalDetalle(){
   }).join("");
   const pagoDelMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).sort((a,b)=>(b.fechaCobro||"").localeCompare(a.fechaCobro||""))[0];
   const pagosDupMes=S.pagos.filter(p=>p.contratoId===c._id&&p.mes===(f.mes||mesActual())).length;
-  const btnRegistrarPago=pagoDelMes?"":(S_GUARDANDO_PAGO?'<button class="btn" disabled style="background:#8a8a8a;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #6b6b6b;cursor:not-allowed;opacity:.7">⏳ Guardando...</button>':'<button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>');
+  const btnRegistrarPago=c.cuentaDeuda?'<span style="font-size:12px;color:var(--naranja);align-self:center">Este contrato usa cuenta de deuda: cargá los cobros como entregas</span>':(pagoDelMes?"":(S_GUARDANDO_PAGO?'<button class="btn" disabled style="background:#8a8a8a;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #6b6b6b;cursor:not-allowed;opacity:.7">⏳ Guardando...</button>':'<button class="btn" data-action="registrarPago" style="background:#F5A623;color:#000;font-weight:700;font-size:13px;padding:10px 18px;border:2px solid #d4891c">💰 Registrar pago y emitir comprobantes</button>'));
   let historicalViewHtml="";
   if(pagoDelMes){
     const ph=pagoDelMes;
@@ -4571,6 +4776,7 @@ function renderModalDetalle(){
         return html;
       })()}
     </div>
+    ${c.cuentaDeuda?renderCuentaDeuda(c):""}
     ${historicalViewHtml}
     <div class="fsec" style="${pagoDelMes?'display:none':''}">
       <div class="fsec-t">Registrar pago del mes</div>
