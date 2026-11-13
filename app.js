@@ -1609,6 +1609,13 @@ function renderDeudores(){
   const corteMes=S.fechaCorte||"2026-07"; // "2026-07"
 
   const deudores=activos.map(c=>{
+    if(c.cuentaDeuda){
+      // Contrato en cuenta de deuda: no usa "pagos" para el alquiler. La deuda es
+      // capital pendiente + interés a cobrar de la cuenta, al día de hoy.
+      const rCD=calcularCuentaDeuda(c,(S.entregas||[]).filter(e=>e.contratoId===c._id),hoy());
+      const mesesCD=rCD.meses.filter(m=>m.saldo>0).map(m=>({mes:m.mes}));
+      return {c,cd:rCD,mesesSinPago:mesesCD,totalPendiente:0,deudaEstimada:rCD.totalACobrar,mesesAtraso:mesesCD.length};
+    }
     const pagosC=S.pagos.filter(p=>p.contratoId===c._id&&!p._eliminado);
     const mesesSinPago=[];
     // Generar meses desde el corte (o inicio del contrato si es posterior) hasta hoy
@@ -1628,7 +1635,7 @@ function renderDeudores(){
     const totalPendiente=pagosC.filter(p=>p.estado==="pendiente"||p.estado==="vencido").reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
     const deudaEstimada=mesesSinPago.length*(c.alquilerBase||0);
     return {c,mesesSinPago,totalPendiente,deudaEstimada,mesesAtraso:mesesSinPago.length};
-  }).filter(d=>d.mesesAtraso>0||d.totalPendiente>0)
+  }).filter(d=>d.mesesAtraso>0||d.totalPendiente>0||(d.cd&&d.deudaEstimada>0))
     .sort((a,b)=>b.mesesAtraso-a.mesesAtraso||b.deudaEstimada-a.deudaEstimada);
 
   const totalDeuda=deudores.reduce((s,d)=>s+d.deudaEstimada,0);
@@ -1653,7 +1660,7 @@ function renderDeudores(){
       +'<td class="tdm">'+c.inquilino+'<br><span class="tds">'+(c.telefono?telLink(c.telefono):"Sin tel.")+'</span></td>'
       +'<td>'+c.direccion+'<br><span class="tds">Prop: '+c.propietarioNombre+'</span></td>'
       +'<td style="font-weight:700;color:'+color+';font-size:16px">'+d.mesesAtraso+' mes'+(d.mesesAtraso!==1?"es":"")+'</td>'
-      +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+(d.cd?'<br>Cuenta de deuda: capital '+moneda(d.cd.capitalPendiente)+' + interés '+moneda(d.cd.interesACobrar):'')+'</td>'
       +'<td style="font-weight:600;color:'+color+'">'+moneda(d.deudaEstimada)+'</td>'
       +'<td><button class="btn sm primary" data-action="abrirContrato" data-id="'+c._id+'">Ver contrato</button></td>'
       +'</tr>';
@@ -3591,6 +3598,13 @@ function renderDashboard(){
   const pagosMes=S.pagos.filter(p=>p.mes===mesHoy&&p.estado==="cobrado");
   const inqPag=new Set(pagosMes.map(p=>p.contratoId));
   const propCob=new Set(pagosMes.map(p=>p.propietarioNombre).filter(Boolean));
+  // Contratos en cuenta de deuda: no generan "pagos". Cuentan como que pagaron el
+  // mes solo si las entregas ya cubrieron todo el capital de ese mes.
+  activos.filter(c=>c.cuentaDeuda).forEach(c=>{
+    const rCD=calcularCuentaDeuda(c,(S.entregas||[]).filter(e=>e.contratoId===c._id),hoy());
+    const mCD=rCD.meses.find(m=>m.mes===mesHoy);
+    if(mCD&&mCD.capital>0&&mCD.saldo===0){inqPag.add(c._id);if(c.propietarioNombre)propCob.add(c.propietarioNombre);}
+  });
   const propTotal=new Set(activos.map(c=>c.propietarioNombre).filter(Boolean)).size;
   const comMes=pagosMes.reduce((s,p)=>s+(p.comision||Math.round((p.alquiler||0)*(p.comisionAgencia??5)/100)),0);
   const comObj=activos.reduce((s,c)=>s+Math.round((c.alquilerBase||0)*(c.comisionAgencia??5)/100),0);
