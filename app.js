@@ -1660,7 +1660,7 @@ function renderDeudores(){
       +'<td class="tdm">'+c.inquilino+'<br><span class="tds">'+(c.telefono?telLink(c.telefono):"Sin tel.")+'</span></td>'
       +'<td>'+c.direccion+'<br><span class="tds">Prop: '+c.propietarioNombre+'</span></td>'
       +'<td style="font-weight:700;color:'+color+';font-size:16px">'+d.mesesAtraso+' mes'+(d.mesesAtraso!==1?"es":"")+'</td>'
-      +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+(d.cd?'<br>Cuenta de deuda: capital '+moneda(d.cd.capitalPendiente)+' + interés '+moneda(d.cd.interesACobrar):'')+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+mesesStr+(d.cd?'<br>Cuenta de deuda: capital '+moneda(d.cd.capitalPendiente)+(d.cd.cobrarIntereses?' + interés '+moneda(d.cd.interesACobrar):' (interés '+moneda(d.cd.interesACobrar)+', no se cobra)'):'')+'</td>'
       +'<td style="font-weight:600;color:'+color+'">'+moneda(d.deudaEstimada)+'</td>'
       +'<td><button class="btn sm primary" data-action="abrirContrato" data-id="'+c._id+'">Ver contrato</button></td>'
       +'</tr>';
@@ -2467,6 +2467,10 @@ function cdMesesEntre(desde,hastaMes){
   return out;
 }
 const cdR2=n=>Math.round(n*100)/100;
+// Una entrega puede traer "servicios" (luz, agua, impuestos...) pagados con esa
+// plata: [{desc,monto}]. Lo que sobra es lo que cancela alquiler.
+function cdTotalServicios(e){return ((e&&e.servicios)||[]).reduce((s,x)=>s+(+x.monto||0),0);}
+function cdNetoCapital(e){return Math.max(0,cdR2((+e.monto||0)-cdTotalServicios(e)));}
 // Función pura (sin DOM). c = contrato con c.cuentaDeuda={desde,descuento};
 // entregas = docs de la colección "entregas" de ese contrato; hastaISO = "YYYY-MM-DD".
 // Solo cuentan las entregas con fecha <= hastaISO.
@@ -2479,14 +2483,17 @@ function calcularCuentaDeuda(c,entregas,hastaISO){
   const capital={},saldo={},pagos={};
   meses.forEach(x=>{capital[x]=alquilerParaMes(c,x)||0;saldo[x]=capital[x];pagos[x]=[];});
   let aFavor=0;
+  const detalle=[]; // por entrega: qué mes canceló y cuánto
   vivas.filter(e=>e.tipo!=="interes").sort((a,b)=>a.fecha.localeCompare(b.fecha)).forEach(e=>{
-    let resto=+e.monto||0;
+    let resto=cdNetoCapital(e);
+    const apl=[];
     for(const x of meses){
       if(resto<=0)break;
       const ap=Math.min(resto,saldo[x]);
-      if(ap>0){saldo[x]-=ap;pagos[x].push({f:e.fecha,m:ap});resto-=ap;}
+      if(ap>0){saldo[x]-=ap;pagos[x].push({f:e.fecha,m:ap});apl.push({mes:x,monto:ap});resto-=ap;}
     }
     if(resto>0)aFavor+=resto;
+    detalle.push({_id:e._id,fecha:e.fecha,servicios:cdTotalServicios(e),aplicaciones:apl,aFavor:resto>0?resto:0});
   });
   const filas=meses.map(x=>{
     const lim=calcularFechaLimitePago(x);
@@ -2508,8 +2515,11 @@ function calcularCuentaDeuda(c,entregas,hastaISO){
   const interesCobrado=cdR2(vivas.filter(e=>e.tipo==="interes").reduce((s,e)=>s+(+e.monto||0),0));
   const descuento=+cd.descuento||0;
   const interesACobrar=cdR2(Math.max(0,interesDevengado-interesCobrado-descuento));
-  const totalACobrar=cdR2(capitalPendiente+interesACobrar);
-  return{meses:filas,capitalPendiente,interesDevengado,interesCobrado,descuento,interesACobrar,totalACobrar,aFavor};
+  // "Cobrar intereses" desmarcado (por defecto): el interés se ve como dato pero
+  // no se suma al total a cobrar.
+  const cobrarIntereses=cd.cobrarIntereses===true;
+  const totalACobrar=cdR2(capitalPendiente+(cobrarIntereses?interesACobrar:0));
+  return{meses:filas,capitalPendiente,interesDevengado,interesCobrado,descuento,interesACobrar,cobrarIntereses,totalACobrar,aFavor,entregas:detalle};
 }
 
 // ── SISTEMA DE MORA ──────────────────────────────────────────────────────────
@@ -2921,6 +2931,7 @@ document.addEventListener("input",e=>{
   const t=e.target;
   const action=t.dataset&&t.dataset.action;
   if(!action)return;
+  if(action==="cdNeto"){cdActualizarNeto();return;}
   // Buscadores — usar renderParcial para no perder foco
   if(action==="setupBuscar"){S.setupBuscar=t.value;renderParcial();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;renderParcial();}
@@ -2968,6 +2979,7 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   else if(action==="cdHasta"){if(t.value){S.cdHasta=t.value;renderParcial();}}
   else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
+  else if(action==="cdCobrarIntereses"){cdGuardarCobrarIntereses(t.dataset.id,t.checked);}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
   else if(action==="setIpcMes"){S.ipcMes=t.value;render();}
@@ -3036,6 +3048,8 @@ document.addEventListener("click",e=>{
   if(action==="abrirContrato")abrirContrato(id);
   else if(action==="cdRegistrarEntrega")cdRegistrarEntrega(id);
   else if(action==="cdBajaEntrega")cdBajaEntrega(id);
+  else if(action==="cdAgregarServicio")cdAgregarServicio();
+  else if(action==="cdQuitarServicio"){const filaS=t.closest(".cd-serv-row");if(filaS)filaS.remove();cdActualizarNeto();}
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
   else if(action==="emitirPROP"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFPropietario(p);}
@@ -4074,8 +4088,10 @@ function renderPropietarios(){
 
 // ── ENTREGAS A CUENTA COMO "PAGOS VIRTUALES" PARA LA LIQUIDACIÓN ────────────
 // Las entregas (colección "entregas") no se guardan en "pagos": se convierten a
-// un objeto con forma de pago (alquiler = monto) para que comisión, meses,
-// totales y PDF funcionen igual. Se excluyen las "ya liquidadas por fuera"
+// un objeto con forma de pago para que comisión, meses, totales y PDF funcionen
+// igual que un cobro normal: alquiler = lo que canceló alquiler (monto menos
+// servicios) y cada servicio pagado con la entrega va como ítem "fijo" (pasa
+// entero al propietario, sin comisión). Se excluyen las "ya liquidadas por fuera"
 // (liquidadoProp:true sin liquidacionRef). Valen tanto aplica:true como false.
 function entregasComoPagos(nombre){
   return (S.entregas||[])
@@ -4083,7 +4099,9 @@ function entregasComoPagos(nombre){
     .sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))
     .map(e=>({_id:e._id,_entrega:true,_tipoEntrega:e.tipo==="interes"?"interes":"capital",_fechaEntrega:e.fecha||"",
       contratoId:e.contratoId,inquilino:e.inquilino,direccion:e.direccion,propietarioNombre:e.propietarioNombre,
-      mes:(e.fecha||"").slice(0,7),alquiler:+e.monto||0,itemsCobro:[],estado:"cobrado",fechaCobro:e.fecha,
+      mes:(e.fecha||"").slice(0,7),alquiler:e.tipo==="interes"?(+e.monto||0):cdNetoCapital(e),
+      itemsCobro:e.tipo==="interes"?[]:(e.servicios||[]).map(s=>({tipo:"fijo",desc:s.desc,monto:+s.monto||0})),
+      estado:"cobrado",fechaCobro:e.fecha,
       liquidadoProp:!!e.liquidacionRef,liquidacionRef:e.liquidacionRef||null,fechaLiquidacion:e.fechaLiquidacion||null,
       liqSnap:e.liqSnap||null}));
 }
@@ -4564,18 +4582,32 @@ function renderCuentaDeuda(c){
     +fila("Interés devengado",moneda(r.interesDevengado))
     +fila("Intereses cobrados","− "+moneda(r.interesCobrado))
     +'<div class="rrow"><span>Descuento</span><span><input id="cd-descuento" class="inp" type="number" min="0" style="width:130px;text-align:right" value="'+(r.descuento||"")+'" placeholder="0" data-action="cdDescuento" data-id="'+c._id+'"></span></div>'
-    +fila("Interés a cobrar",moneda(r.interesACobrar))
+    +'<div class="rrow"><span><label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0"><input id="cd-cobrar-int" type="checkbox" '+(r.cobrarIntereses?"checked ":"")+'data-action="cdCobrarIntereses" data-id="'+c._id+'" style="width:16px;height:16px"> Cobrar intereses</label></span>'
+      +'<span style="font-size:11px;color:var(--gris3)">'+(r.cobrarIntereses?"Se suman al total":"Solo como dato: no se suman al total")+'</span></div>'
+    +fila(r.cobrarIntereses?"Interés a cobrar":"Interés (no se cobra)",moneda(r.interesACobrar),r.cobrarIntereses?"":"color:var(--gris3)")
     +fila("Total a cobrar",moneda(r.totalACobrar),"font-weight:700;font-size:14px;border-top:1px solid var(--negro4);margin-top:4px;padding-top:8px;color:var(--naranja)")
     +(r.aFavor>0?fila("A favor del inquilino",moneda(r.aFavor),"color:#5ddb8a"):"")
     +'</div>';
+  const apPorId={};
+  r.entregas.forEach(function(d){apPorId[d._id]=d;});
   const filaEntrega=function(e){
     const tipoLbl=e.tipo==="interes"?"Cobro de intereses":"Entrega a cuenta";
     const estado=e.liquidacionRef?"Liquidada "+(e.fechaLiquidacion||""):(e.liquidadoProp?"Liquidada por fuera":"Pendiente de liquidar");
-    return '<tr><td>'+cdFechaCorta(e.fecha)+'</td><td>'+tipoLbl+'</td><td style="text-align:right">'+moneda(e.monto)+'</td><td style="font-size:11px;color:var(--gris3)">'+(e.nota||"")+'</td>'
+    const servs=(e.servicios||[]).map(function(s){return (s.desc||"Servicio")+" "+moneda(s.monto);}).join("<br>")||"—";
+    const d=apPorId[e._id];
+    let apl="—";
+    if(d){
+      const partes=d.aplicaciones.map(function(a){return mesNombre(a.mes)+" "+moneda(a.monto);});
+      if(d.aFavor>0)partes.push("A favor "+moneda(d.aFavor));
+      if(partes.length)apl=partes.join("<br>");
+    }
+    return '<tr><td>'+cdFechaCorta(e.fecha)+'</td><td>'+tipoLbl+'</td><td style="text-align:right">'+moneda(e.monto)+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+servs+'</td><td style="font-size:11px">'+apl+'</td>'
+      +'<td style="font-size:11px;color:var(--gris3)">'+(e.nota||"")+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+estado+'</td>'
       +'<td><button class="btn sm" data-action="cdBajaEntrega" data-id="'+e._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px">✕</button></td></tr>';
   };
-  const thE='<thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Nota</th><th>Propietario</th><th></th></tr></thead>';
+  const thE='<thead><tr><th>Fecha</th><th>Tipo</th><th>Entregado</th><th>Servicios pagados</th><th>Canceló alquiler de</th><th>Nota</th><th>Propietario</th><th></th></tr></thead>';
   const vigentes=entregasC.filter(e=>e.aplica!==false);
   const historial=entregasC.filter(e=>e.aplica===false);
   const listaVig=vigentes.length
@@ -4588,20 +4620,54 @@ function renderCuentaDeuda(c){
   const form='<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Registrar entrega</div>'
     +'<div class="fg">'
     +'<div><label class="fl">Fecha</label><input id="cd-fecha" class="inp" style="width:100%" type="date" value="'+hoy()+'"></div>'
-    +'<div><label class="fl">Monto ($)</label><input id="cd-monto" class="inp" style="width:100%" type="number" min="0"></div>'
+    +'<div><label class="fl">Monto total entregado ($)</label><input id="cd-monto" class="inp" style="width:100%" type="number" min="0" data-action="cdNeto"></div>'
     +'<div><label class="fl">Tipo</label><select id="cd-tipo" class="inp" style="width:100%"><option value="capital">Entrega a cuenta (capital)</option><option value="interes">Cobro de intereses</option></select></div>'
     +'<div><label class="fl">Nota</label><input id="cd-nota" class="inp" style="width:100%" placeholder="Opcional"></div>'
     +'</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-top:10px">Qué se pagó con esa plata (luz, agua, impuestos…). Lo que sobra cancela alquiler, del mes más viejo al más nuevo.</div>'
+    +'<div id="cd-servicios" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>'
+    +'<button class="btn sm" style="margin-top:6px" data-action="cdAgregarServicio">+ Agregar servicio pagado</button>'
+    +'<div id="cd-neto" style="font-size:12px;margin-top:8px;color:var(--celeste)"></div>'
     +'<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:8px;cursor:pointer"><input id="cd-fuera" type="checkbox" style="width:16px;height:16px"> Ya liquidada por fuera / el propietario la retiró directo</label>'
     +'<button class="btn naranja" style="margin-top:10px" data-action="cdRegistrarEntrega" data-id="'+c._id+'">+ Registrar entrega</button>';
   return '<div class="fsec"><div class="fsec-t">Cuenta de deuda (desde '+mesNombre(r.meses.length?r.meses[0].mes:(c.cuentaDeuda.desde||""))+')</div>'
     +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><label class="fl" style="margin:0">Calcular al:</label>'
     +'<input id="cd-hasta" class="inp" type="date" value="'+hasta+'" style="width:160px" data-action="cdHasta"></div>'
-    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Solo alquiler. Servicios (luz, agua, TGI) no entran en esta cuenta. Interés 1% por día hábil sobre el capital impago.</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">La deuda es solo de alquiler. Si una entrega pagó servicios (luz, agua, impuestos), se descuentan y el resto cancela alquiler. Interés 1% por día hábil sobre el capital impago.</div>'
     +tabla+resumen+form
     +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Entregas</div>'
     +listaVig+listaHist
     +'</div>';
+}
+// Servicios pagados con la entrega: renglones que se agregan/quitan en el DOM
+// (sin re-render, para no perder lo ya tipeado en el formulario).
+function cdAgregarServicio(){
+  const cont=$("cd-servicios");if(!cont)return;
+  cont.insertAdjacentHTML("beforeend",'<div class="cd-serv-row" style="display:flex;gap:8px;align-items:center">'
+    +'<input class="inp cd-serv-desc" placeholder="Luz, agua, TGI…" style="flex:1">'
+    +'<input class="inp cd-serv-monto" type="number" min="0" placeholder="$" style="width:130px" data-action="cdNeto">'
+    +'<button class="btn sm" data-action="cdQuitarServicio" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
+    +'</div>');
+}
+function cdLeerServicios(){
+  const servicios=[];let error="";
+  document.querySelectorAll("#cd-servicios .cd-serv-row").forEach(function(f){
+    const desc=(((f.querySelector(".cd-serv-desc")||{}).value)||"").trim();
+    const montoTxt=((f.querySelector(".cd-serv-monto")||{}).value)||"";
+    if(!desc&&!montoTxt)return; // renglón vacío: se ignora
+    if(!desc||!(+montoTxt>0)){error="Completá la descripción y el monto de cada servicio, o quitá el renglón";return;}
+    servicios.push({desc:desc,monto:+montoTxt});
+  });
+  return{servicios:servicios,error:error};
+}
+function cdActualizarNeto(){
+  const out=$("cd-neto");if(!out)return;
+  const monto=+(($("cd-monto")||{}).value||0);
+  const totServ=cdTotalServicios({servicios:cdLeerServicios().servicios});
+  if(!totServ){out.textContent="";return;}
+  if(totServ>monto){out.style.color="#ff7b6b";out.textContent="Los servicios ("+moneda(totServ)+") superan el monto entregado.";return;}
+  out.style.color="var(--celeste)";
+  out.textContent="Servicios: "+moneda(totServ)+" · Cancela alquiler: "+moneda(monto-totServ);
 }
 async function cdRegistrarEntrega(cid){
   const c=S.contratos.find(x=>x._id===cid);if(!c)return;
@@ -4612,8 +4678,14 @@ async function cdRegistrarEntrega(cid){
   const fuera=!!($("cd-fuera")||{}).checked;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){toast("Ingresá una fecha válida",false);return;}
   if(!(monto>0)){toast("Ingresá un monto válido",false);return;}
+  const ls=cdLeerServicios();
+  if(ls.error){toast(ls.error,false);return;}
+  const servicios=ls.servicios;
+  const totServ=cdTotalServicios({servicios});
+  if(servicios.length&&tipo==="interes"){toast("Los servicios se cargan solo en entregas a cuenta, no en cobros de intereses",false);return;}
+  if(totServ>monto){toast("Los servicios ("+moneda(totServ)+") superan el monto entregado ("+moneda(monto)+")",false);return;}
   const data={contratoId:c._id,propietarioNombre:c.propietarioNombre||"",inquilino:c.inquilino||"",direccion:c.direccion||"",
-    fecha,monto,tipo,nota,aplica:true,liquidadoProp:fuera,liquidacionRef:null,fechaLiquidacion:null,_eliminado:false,creadoEn:new Date().toISOString()};
+    fecha,monto,tipo,nota,servicios,aplica:true,liquidadoProp:fuera,liquidacionRef:null,fechaLiquidacion:null,_eliminado:false,creadoEn:new Date().toISOString()};
   const id=await fbAdd("entregas",data);
   if(!id)return;
   S.entregas=(S.entregas||[]).concat([{...data,_id:id}]);
@@ -4625,6 +4697,14 @@ async function cdBajaEntrega(eid){
   if(!confirm("¿Dar de baja la entrega del "+cdFechaCorta(e.fecha)+" por "+moneda(e.monto)+"?"))return;
   await fbUpd("entregas",eid,{_eliminado:true});
   S.entregas=S.entregas.filter(x=>x._id!==eid);
+  renderParcial();
+}
+async function cdGuardarCobrarIntereses(cid,marcado){
+  const c=S.contratos.find(x=>x._id===cid);if(!c||!c.cuentaDeuda)return;
+  const cuentaDeuda={...c.cuentaDeuda,cobrarIntereses:!!marcado};
+  await fbUpd("contratos",cid,{cuentaDeuda});
+  c.cuentaDeuda=cuentaDeuda;
+  if(S.contratoActivo&&S.contratoActivo._id===cid)S.contratoActivo.cuentaDeuda=cuentaDeuda;
   renderParcial();
 }
 async function cdGuardarDescuento(cid,valor){

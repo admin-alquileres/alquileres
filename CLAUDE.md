@@ -83,8 +83,12 @@ disco.
 - **Cuenta de deuda** (contratos con `cuentaDeuda`): las entregas van a la
   colección `entregas`, no a `pagos`; se aplican al mes más viejo primero;
   interés 1% por día hábil desde el día 2; al propietario se le liquida cada
-  entrega con su comisión descontada. Feriados en `FERIADOS_NACIONALES`:
-  actualizar la lista cada año.
+  entrega con su comisión descontada. Si la entrega pagó servicios (luz, agua,
+  impuestos), se descuentan del monto, el resto cancela alquiler y los
+  servicios pasan enteros al propietario, sin comisión, como en un cobro
+  normal. El interés se suma al total solo si la cuenta tiene marcado "Cobrar
+  intereses" (por defecto no). Feriados en `FERIADOS_NACIONALES`: actualizar
+  la lista cada año.
 - **Depósito en cuotas:** al cobrar la cuota, el contrato tiene que guardar
   `cuotasTotales` (si no, sale "cuota 2/1").
 
