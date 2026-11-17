@@ -2580,28 +2580,31 @@ function guardarFeriados(lista){
 }
 
 function calcularFechaLimitePago(mes){
-  // mes = "2026-06" → calcula el día 10 hábil de ese mes
-  // Si el 10 cae sábado (6) → lunes 12
-  // Si el 10 cae domingo (0) → lunes 11
-  // Por cada feriado que caiga en 1-10, se corre 1 día extra
-  const feriados=cargarFeriados();
-  let limite=new Date(mes+"-10");
-  // Correr por fin de semana
+  // mes = "2026-06" → el día 10 de ese mes, corrido al hábil:
+  // si cae sábado → lunes 12; si cae domingo → lunes 11;
+  // y por cada feriado entre el 1 y el 10 se corre un día más (sin caer en fin de semana).
+  // Las fechas se arman en hora local: new Date("2026-11-10") es medianoche UTC,
+  // que en Argentina todavía es el día 9, y eso corría mal el día de la semana.
+  const feriados=[...new Set(FERIADOS_NACIONALES.concat(cargarFeriados()))];
+  const _p=mes.split("-").map(Number);
+  let limite=new Date(_p[0],_p[1]-1,10);
   const dow=limite.getDay();
-  if(dow===6) limite=new Date(mes+"-12");      // sábado → lunes
-  else if(dow===0) limite=new Date(mes+"-11"); // domingo → lunes
-  // Contar feriados entre el 1 y el 10 del mes
+  if(dow===6) limite=new Date(_p[0],_p[1]-1,12);      // sábado → lunes
+  else if(dow===0) limite=new Date(_p[0],_p[1]-1,11); // domingo → lunes
   const feriadosDelMes=feriados.filter(f=>{
     return f.startsWith(mes) && +f.split("-")[2]>=1 && +f.split("-")[2]<=10;
   });
-  // Correr un día por cada feriado hábil
   feriadosDelMes.forEach(()=>{
-    limite=new Date(limite.getTime()+86400000);
-    // Si el nuevo límite cae en fin de semana, seguir corriendo
+    limite=new Date(limite.getFullYear(),limite.getMonth(),limite.getDate()+1);
     while(limite.getDay()===0||limite.getDay()===6){
-      limite=new Date(limite.getTime()+86400000);
+      limite=new Date(limite.getFullYear(),limite.getMonth(),limite.getDate()+1);
     }
   });
+  // Si el vencimiento quedó en un feriado o fin de semana (ej.: lunes 12/10), pasa al siguiente hábil
+  const _iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  while(limite.getDay()===0||limite.getDay()===6||feriados.includes(_iso(limite))){
+    limite=new Date(limite.getFullYear(),limite.getMonth(),limite.getDate()+1);
+  }
   return limite;
 }
 
