@@ -369,6 +369,7 @@ async function cargarTodo(){
       S[col]=snap.docs.map(d=>({...d.data(),_id:d.id}));
     }
     S.pagos=S.pagos.filter(p=>!p._eliminado);
+    S.inquilinos=S.inquilinos.filter(i=>!i._eliminado);
     try{
       const snapE=await getDocs(collection(db,"entregas"));
       S.entregas=snapE.docs.map(d=>({...d.data(),_id:d.id})).filter(e=>!e._eliminado);
@@ -2110,6 +2111,7 @@ function abrirEditarInquilino(nombre){
   const contrato=S.contratos.find(c=>c.inquilino===nombre)||{};
   S.modal="editar_inquilino";
   S.form={
+    _nombreOriginal:nombre,
     nombre:inq.nombre||nombre,
     dni:inq.dni||contrato.dni||"",
     telefono:inq.telefono||contrato.telefono||"",
@@ -2155,16 +2157,52 @@ function renderModalEditarInquilino(){
 
 async function guardarInquilino(){
   const f=S.form||{};
-  if(!f.nombre){toast("El nombre es obligatorio",false);return;}
+  // Nombre limpio: sin espacios al principio/final ni dobles
+  const nuevo=(f.nombre||"").replace(/\s+/g," ").trim();
+  if(!nuevo){toast("El nombre es obligatorio",false);return;}
+  // Nombre con el que se abrió la ficha (puede traer espacios de más)
+  const original=f._nombreOriginal!==undefined?f._nombreOriginal:nuevo;
+  const renombra=original!==nuevo;
+  const docOriginal=S.inquilinos.find(x=>x.nombre===original);
+  const docNuevo=renombra?S.inquilinos.find(x=>x.nombre===nuevo):null;
+  if(renombra){
+    // Antes este caso creaba un inquilino nuevo y el contrato seguía con el nombre viejo.
+    if(S.contratos.some(c=>c.inquilino===nuevo)){toast("Ya hay un contrato a nombre de "+nuevo+": no se puede usar ese nombre",false);return;}
+    const contratosR=S.contratos.filter(c=>c.inquilino===original);
+    const pagosR=S.pagos.filter(p=>p.inquilino===original&&!p._eliminado);
+    const entregasR=(S.entregas||[]).filter(e=>e.inquilino===original);
+    let msg='¿Cambiar el nombre "'+original.trim()+'" por "'+nuevo+'"?\n\nSe actualiza en '+contratosR.length+' contrato(s), '+pagosR.length+' pago(s) y '+entregasR.length+' entrega(s) a cuenta.';
+    if(docNuevo&&docOriginal)msg+='\n\nYa existe una ficha suelta, sin contrato, con el nombre nuevo: se da de baja y queda solo esta.';
+    if(!confirm(msg))return;
+    try{
+      if(docNuevo&&docOriginal){
+        await fbUpd("inquilinos",docNuevo._id,{_eliminado:true});
+        S.inquilinos=S.inquilinos.filter(x=>x._id!==docNuevo._id);
+      }
+      await Promise.all(contratosR.map(c=>fbUpd("contratos",c._id,{inquilino:nuevo})));
+      await Promise.all(pagosR.map(p=>fbUpd("pagos",p._id,{inquilino:nuevo})));
+      await Promise.all(entregasR.map(e=>fbUpd("entregas",e._id,{inquilino:nuevo})));
+      // Las anotaciones del historial se guardan por nombre: moverlas al nombre nuevo
+      try{
+        const snapH=await getDocs(query(collection(db,"historial_inq"),where("inquilino","==",original)));
+        await Promise.all(snapH.docs.map(d=>updateDoc(doc(db,"historial_inq",d.id),{inquilino:nuevo})));
+      }catch(eH){toast("No se pudieron mover las anotaciones: "+eH.message,false);}
+    }catch(eR){toast("No se pudo cambiar el nombre: "+eR.message,false);return;}
+    S.contratos=S.contratos.map(c=>c.inquilino===original?{...c,inquilino:nuevo}:c);
+    S.pagos=S.pagos.map(p=>p.inquilino===original?{...p,inquilino:nuevo}:p);
+    S.entregas=(S.entregas||[]).map(e=>e.inquilino===original?{...e,inquilino:nuevo}:e);
+    if(S.contratoActivo&&S.contratoActivo.inquilino===original)S.contratoActivo={...S.contratoActivo,inquilino:nuevo};
+    Object.keys(S_HIST_INQ).forEach(k=>{delete S_HIST_INQ[k];});
+  }
   const data={
-    nombre:f.nombre,dni:f.dni||"",telefono:f.telefono||"",
+    nombre:nuevo,dni:f.dni||"",telefono:f.telefono||"",
     telefonoAlt:f.telefonoAlt||"",email:f.email||"",
     direccionPart:f.direccionPart||"",localidad:f.localidad||"",
     ocupacion:f.ocupacion||"",garante:f.garante||"",
     telGarante:f.telGarante||"",obs:f.obs||""
   };
-  // Buscar si ya existe en colección inquilinos
-  const existente=S.inquilinos.find(x=>x.nombre===f.nombre);
+  // La ficha a actualizar: la del nombre original o, si no había, la suelta con el nombre nuevo
+  const existente=docOriginal||docNuevo||S.inquilinos.find(x=>x.nombre===nuevo);
   if(existente&&existente._id){
     await fbUpd("inquilinos",existente._id,data);
     S.inquilinos=S.inquilinos.map(x=>x._id===existente._id?{...x,...data}:x);
@@ -2174,20 +2212,30 @@ async function guardarInquilino(){
   }
   // También actualizar teléfono/email en todos sus contratos activos
   if(f.telefono||f.email){
-    const contratos=S.contratos.filter(c=>c.inquilino===f.nombre);
+    const contratos=S.contratos.filter(c=>c.inquilino===nuevo);
     await Promise.all(contratos.map(c=>fbUpd("contratos",c._id,{
       telefono:f.telefono||c.telefono||"",
       email:f.email||c.email||""
     })));
-    S.contratos=S.contratos.map(c=>c.inquilino===f.nombre?{...c,telefono:f.telefono||c.telefono,email:f.email||c.email}:c);
+    S.contratos=S.contratos.map(c=>c.inquilino===nuevo?{...c,telefono:f.telefono||c.telefono,email:f.email||c.email}:c);
   }
   toast("✅ Datos guardados");
   S.modal=null;
   // Actualizar inquilinoActivo si está abierto
-  if(S.inquilinoActivo&&S.inquilinoActivo.nombre===f.nombre){
-    S.inquilinoActivo={...S.inquilinoActivo,...data};
+  if(S.inquilinoActivo&&(S.inquilinoActivo.nombre===original||S.inquilinoActivo.nombre===nuevo)){
+    S.inquilinoActivo={...S.inquilinoActivo,...data,contratos:S.contratos.filter(c=>c.inquilino===nuevo)};
   }
   render();
+}
+
+async function bajaInquilino(iid){
+  const i=S.inquilinos.find(x=>x._id===iid);if(!i)return;
+  if(S.contratos.some(c=>c.inquilino===i.nombre)){toast("Tiene contratos: no se puede dar de baja",false);return;}
+  if(!confirm('¿Dar de baja la ficha de "'+i.nombre+'"? No tiene contratos ni pagos.'))return;
+  await fbUpd("inquilinos",iid,{_eliminado:true});
+  S.inquilinos=S.inquilinos.filter(x=>x._id!==iid);
+  S.inquilinoActivo=null;
+  toast("Ficha dada de baja ✓");render();
 }
 
 // ── EDITAR DATOS PROPIETARIO ──────────────────────────────────────────────────
@@ -3125,6 +3173,7 @@ else if(action==="cerrarModalPago"){S.ultimoPago=null;S.modal=null;S.contratoAct
   else if(action==="guardarContrato")guardarContrato();
   else if(action==="guardarPropietario")guardarPropietario();
   else if(action==="guardarInquilino")guardarInquilino();
+  else if(action==="bajaInquilino")bajaInquilino(id);
   else if(action==="registrarPago")registrarPago();
   else if(action==="doLogout")window.doLogout();
   else if(action==="nav")go(t.dataset.sec);
@@ -3898,6 +3947,8 @@ function renderInquilinos(){
     const contratos=inq.contratos||[];
     const activos=contratos.filter(c=>c.estado==="activo"||!c.estado);
     const historicos=contratos.filter(c=>c.estado!=="activo");
+    // Solo se puede dar de baja una ficha suelta: sin contratos ni pagos
+    const btnBajaInq=(inq._id&&!contratos.length&&!S.pagos.some(p=>p.inquilino===inq.nombre))?'<button class="btn sm" data-action="bajaInquilino" data-id="'+inq._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b">🗑 Dar de baja esta ficha</button>':"";
     const pagosInq=S.pagos.filter(p=>p.inquilino===inq.nombre).sort((a,b)=>(b.mes||"").localeCompare(a.mes||""));
     const totalCob=pagosInq.filter(p=>p.estado==="cobrado").reduce((s,p)=>s+(p.totalInquilino||p.total||p.monto||0),0);
     const pend=pagosInq.filter(p=>p.estado==="pendiente"||p.estado==="vencido").reduce((s,p)=>s+(p.total||p.monto||0),0);
@@ -3951,6 +4002,7 @@ function renderInquilinos(){
     return `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" data-action="volverInquilinos">← Volver</button>
       <button class="btn sm" data-action="editarInquilino" data-nombre="${inq.nombre}" style="background:rgba(75,200,232,.12);color:var(--celeste)">✏️ Editar datos</button>
+      ${btnBajaInq}
     </div>
     <div class="fg" style="margin-bottom:16px">
       <div class="lcard">
