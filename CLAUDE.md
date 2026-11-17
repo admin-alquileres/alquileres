@@ -78,11 +78,14 @@ disco.
 - **Actualización IPC:** se carga a mitad de mes, pero rige desde el día 1 del
   mes siguiente. La próxima es ese mes + la frecuencia del contrato, siempre
   día 1. No corresponde solo si el contrato vence antes del día 1 de ese mes.
-- **Mora:** 1% por día hábil desde el día 2 si no se pagó hasta la fecha límite
-  (día 10 corrido al hábil). No modificar `calcularMora`.
+- **Mora (cobro normal):** 1% por día desde el día 2 si no se pagó hasta la fecha límite
+  (día 10 corrido al hábil). Cuentan sábados y domingos, no los feriados
+  (`FERIADOS_NACIONALES` + los cargados a mano). Es la misma regla que la
+  cuenta de deuda.
 - **Cuenta de deuda** (contratos con `cuentaDeuda`): las entregas van a la
   colección `entregas`, no a `pagos`; se aplican al mes más viejo primero;
-  interés 1% por día hábil desde el día 2; al propietario se le liquida cada
+  interés 1% por día desde el día 2 (cuentan sábados y domingos, no los
+  feriados); al propietario se le liquida cada
   entrega con su comisión descontada. Si la entrega pagó servicios (luz, agua,
   impuestos), se descuentan del monto, el resto cancela alquiler y los
   servicios pasan enteros al propietario, sin comisión, como en un cobro

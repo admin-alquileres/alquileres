@@ -2496,13 +2496,13 @@ function renderModalEditarPropiedad(){
 // Ríos, por eso no están. El 7/12 es "no laborable" y no se cuenta como feriado.
 // Se suman los feriados cargados a mano en localStorage (cargarFeriados).
 const FERIADOS_NACIONALES=["2026-08-17","2026-10-12","2026-11-09","2026-11-23","2026-12-08","2026-12-25"];
-const CD_TASA_DIARIA=0.01; // 1% por día hábil, interés simple
+const CD_TASA_DIARIA=0.01; // 1% por día corrido (sábados y domingos cuentan, feriados no), interés simple
 function cdFechaUTC(iso){return new Date(iso+"T00:00:00Z");}
 function cdISO(d){return d.toISOString().slice(0,10);}
 function cdSumarDia(d){return new Date(d.getTime()+86400000);}
-function cdEsDiaHabil(d,feriadosSet){
-  const dow=d.getUTCDay();
-  if(dow===0||dow===6)return false;
+// Día que suma interés: todos los días corridos menos los feriados
+// (los sábados y domingos SÍ cuentan).
+function cdCuentaInteres(d,feriadosSet){
   return !feriadosSet.has(cdISO(d));
 }
 function cdMesesEntre(desde,hastaMes){
@@ -2549,8 +2549,8 @@ function calcularCuentaDeuda(c,entregas,hastaISO){
     let interes=0,dias=0;
     if(!pagadoEnPlazo&&hasta>lim){
       for(let d=cdFechaUTC(x+"-02");d<=hasta;d=cdSumarDia(d)){
-        if(!cdEsDiaHabil(d,feriadosSet))continue;
-        // Un pago del día d recién reduce el capital el día hábil siguiente
+        if(!cdCuentaInteres(d,feriadosSet))continue;
+        // Un pago del día d recién reduce el capital desde el día siguiente
         const sIni=capital[x]-pagos[x].filter(p=>cdFechaUTC(p.f)<d).reduce((s,p)=>s+p.m,0);
         if(sIni<=0)break;
         interes+=sIni*CD_TASA_DIARIA;dias++;
@@ -2611,9 +2611,13 @@ function calcularMora(alquiler, mes, fechaCobro){
   const limite=calcularFechaLimitePago(mes);
   const cobro=new Date(fechaCobro);
   if(cobro<=limite) return null; // pagó a tiempo
-  // Días de mora: desde el día 1 del mes hasta la fecha de cobro
+  // Días de mora: desde el día 2 del mes hasta la fecha de cobro, días corridos
+  // (sábados y domingos cuentan) menos los feriados que caigan en ese tramo.
   const _mp=mes.split('-').map(Number);const inicio=new Date(_mp[0],_mp[1]-1,1);
-  const diasMora=Math.round((cobro-inicio)/86400000);
+  const diasCorridos=Math.round((cobro-inicio)/86400000);
+  const desdeISO=mes+"-02",hastaISO=String(fechaCobro).slice(0,10);
+  const feriadosEnTramo=[...new Set(FERIADOS_NACIONALES.concat(cargarFeriados()))].filter(f=>f>=desdeISO&&f<=hastaISO).length;
+  const diasMora=Math.max(0,diasCorridos-feriadosEnTramo);
   const monto=Math.round(alquiler*(diasMora*0.01)); // 1% por día
   return {dias:diasMora, monto, limite:limite.toISOString().split("T")[0]};
 }
@@ -4627,7 +4631,7 @@ function renderCuentaDeuda(c){
   const totAp=r.meses.reduce((s,m)=>s+m.aplicado,0);
   filas+='<tr style="font-weight:700;border-top:1px solid var(--negro4)"><td>Totales</td><td '+td+'>'+moneda(totCap)+'</td><td '+td+'>'+moneda(totAp)+'</td>'
     +'<td '+td+'>'+moneda(r.capitalPendiente)+'</td><td></td><td '+td+'>'+moneda(r.interesDevengado)+'</td></tr>';
-  const tabla='<div class="tw"><table><thead><tr><th>Mes</th><th>Alquiler</th><th>Entregas aplicadas</th><th>Saldo de capital</th><th>Días hábiles con interés</th><th>Interés devengado</th></tr></thead><tbody>'+filas+'</tbody></table></div>';
+  const tabla='<div class="tw"><table><thead><tr><th>Mes</th><th>Alquiler</th><th>Entregas aplicadas</th><th>Saldo de capital</th><th>Días con interés</th><th>Interés devengado</th></tr></thead><tbody>'+filas+'</tbody></table></div>';
   function fila(lbl,val,estilo){return '<div class="rrow"'+(estilo?' style="'+estilo+'"':'')+'><span>'+lbl+'</span><span>'+val+'</span></div>';}
   const resumen='<div class="rsum" style="margin-top:12px">'
     +fila("Capital pendiente",moneda(r.capitalPendiente))
@@ -4685,7 +4689,7 @@ function renderCuentaDeuda(c){
   return '<div class="fsec"><div class="fsec-t">Cuenta de deuda (desde '+mesNombre(r.meses.length?r.meses[0].mes:(c.cuentaDeuda.desde||""))+')</div>'
     +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><label class="fl" style="margin:0">Calcular al:</label>'
     +'<input id="cd-hasta" class="inp" type="date" value="'+hasta+'" style="width:160px" data-action="cdHasta"></div>'
-    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">La deuda es solo de alquiler. Si una entrega pagó servicios (luz, agua, impuestos), se descuentan y el resto cancela alquiler. Interés 1% por día hábil sobre el capital impago.</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">La deuda es solo de alquiler. Si una entrega pagó servicios (luz, agua, impuestos), se descuentan y el resto cancela alquiler. Interés 1% por día sobre el capital impago, desde el día 2: cuentan sábados y domingos, no los feriados.</div>'
     +tabla+resumen+form
     +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Entregas</div>'
     +listaVig+listaHist
