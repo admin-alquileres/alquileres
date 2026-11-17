@@ -79,7 +79,9 @@ disco.
   mes siguiente. La próxima es ese mes + la frecuencia del contrato, siempre
   día 1. No corresponde solo si el contrato vence antes del día 1 de ese mes.
 - **Mora (cobro normal):** 1% por día desde el día 2 si no se pagó hasta la fecha límite
-  (día 10 corrido al hábil). Cuentan sábados y domingos, no los feriados
+  (día 10; el sábado es hábil, si cae domingo pasa al lunes, cada feriado del
+  1 al 10 lo corre un día y nunca vence en domingo ni feriado). Para el
+  interés cuentan sábados y domingos, no los feriados
   (`FERIADOS_NACIONALES` + los cargados a mano). Es la misma regla que la
   cuenta de deuda.
 - **Cuenta de deuda** (contratos con `cuentaDeuda`): las entregas van a la
