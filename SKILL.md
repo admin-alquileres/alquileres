@@ -108,7 +108,7 @@ Campos clave: `contratoId`, `inquilino`, `direccion`, `propietarioNombre`, `mes`
 ### `propiedades`
 Inmuebles registrados, independientes de los contratos. Un propietario puede tener propiedades sin contrato activo.
 
-Campos clave: `propietarioNombre`, `direccion`, `tipo` (`Casa` | `Departamento` | `Local comercial` | etc.), `superficie`, `ambientes`, `descripcion`, `_eliminado`
+Campos clave: `propietarioNombre`, `direccion`, `tipo` (`Casa` | `Departamento` | `Local comercial` | etc.), `superficie`, `ambientes`, `descripcion`, `_eliminado`, `estadoAlquiler` (sin valor o `alquilable` = se ofrece; `vendida` | `uso_propietario` | `retirada` = fuera de alquiler, no cuenta como disponible y no se puede elegir en un contrato nuevo; ver `propFueraDeAlquiler`), `estadoDesde` (YYYY-MM-DD)
 
 ### `caja`
 Movimientos de caja de la agencia (nombre real en Firestore: `caja`, no `cajaAgencia`).

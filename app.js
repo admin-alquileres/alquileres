@@ -216,7 +216,7 @@ const MANUAL_TEMAS = [
       <ul class="manual-list">
         <li><strong>Tarjetas de resumen</strong> — propiedades activas, disponibles, alquileres a liquidar, gastos extra, comisión y neto estimado.</li>
         <li><strong>Cuenta corriente</strong> — para registrar ajustes manuales (a favor o en contra del propietario) que no son parte de una liquidación normal. Quedan pendientes hasta la próxima liquidación.</li>
-        <li><strong>Propiedades e historial</strong> — cada propiedad con su chip de "Ocupada: [inquilino]" o "Disponible", y un registro de eventos (reparaciones, arreglos) que persiste aunque cambie el inquilino.</li>
+        <li><strong>Propiedades e historial</strong> — cada propiedad con su chip de "Ocupada: [inquilino]" o "Disponible", y un registro de eventos (reparaciones, arreglos) que persiste aunque cambie el inquilino. Si una casa se vendió o la usa el dueño, elegí ese estado en el selector de la propiedad: deja de contar como disponible y pasa abajo, a "Fuera de alquiler", sin perder su historial. Para volver a alquilarla, elegí "Para alquilar".</li>
       </ul>
       <div class="manual-tip">
         <strong>💡 Tip:</strong> el historial de eventos de una propiedad (gasista, arreglos, etc.) es independiente del inquilino — si se va uno y entra otro, esa historia queda guardada igual.
@@ -2425,6 +2425,33 @@ function normStr(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 function normDireccion(s){
   return normStr(s).replace(/\bn[º°ş]?\.?\s*(?=\d)/g,"n ").replace(/\s+/g," ").trim();
 }
+// ── ESTADO DE ALQUILER DE UNA PROPIEDAD ─────────────────────────────────────
+// propiedades.estadoAlquiler: sin valor o "alquilable" = se ofrece para alquilar.
+// Los otros estados la sacan de "disponibles" sin borrarla (se conserva el historial).
+const ESTADOS_PROP={alquilable:"Para alquilar",vendida:"Vendida",uso_propietario:"La usa el dueño",retirada:"Retirada del alquiler"};
+function propFueraDeAlquiler(p){return !!(p&&p.estadoAlquiler&&p.estadoAlquiler!=="alquilable");}
+function etiquetaEstadoProp(p){return ESTADOS_PROP[(p&&p.estadoAlquiler)||"alquilable"]||"Para alquilar";}
+async function cambiarEstadoPropiedad(id,nuevo,selectEl){
+  const p=(S.propiedadesInmuebles||[]).find(x=>x._id===id)||(S.propiedades||[]).find(x=>x._id===id);
+  if(!p||!ESTADOS_PROP[nuevo])return;
+  const actual=p.estadoAlquiler||"alquilable";
+  if(actual===nuevo)return;
+  if(nuevo!=="alquilable"&&!propiedadLibre(id)){toast("Tiene un contrato activo: primero finalizá el contrato",false);if(selectEl)selectEl.value=actual;return;}
+  const msg=nuevo==="alquilable"
+    ?'¿Volver a poner "'+p.direccion+'" como disponible para alquilar?'
+    :'¿Marcar "'+p.direccion+'" como "'+ESTADOS_PROP[nuevo]+'"?\n\nDeja de figurar como disponible para alquilar. No se borra: el historial queda guardado y se puede volver a activar cuando quieras.';
+  if(!confirm(msg)){if(selectEl)selectEl.value=actual;return;}
+  const data={estadoAlquiler:nuevo,estadoDesde:hoy()};
+  await fbUpd("propiedades",id,data);
+  S.propiedadesInmuebles=(S.propiedadesInmuebles||[]).map(x=>x._id===id?{...x,...data}:x);
+  S.propiedades=(S.propiedades||[]).map(x=>x._id===id?{...x,...data}:x);
+  // Dejar asentado el cambio en el historial de la propiedad
+  const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+  const ev={propiedadId:pid,fecha:hoy(),descripcion:"Estado: "+ESTADOS_PROP[nuevo]+" (antes: "+ESTADOS_PROP[actual]+")",creadoEn:Date.now()};
+  const hid=await fbAdd("historial_prop",ev);
+  if(hid&&S_HIST[pid])S_HIST[pid].unshift({...ev,_id:hid});
+  toast("Estado actualizado: "+ESTADOS_PROP[nuevo]+" ✓");render();
+}
 function contratoActivoDeProp(p,nombrePropietario){
   return S.contratos.find(function(c){
     return((c.propiedadId&&c.propiedadId===p._id)||(normStr(c.propietarioNombre)===normStr(nombrePropietario)&&normDireccion(c.direccion)===normDireccion(p.direccion)))&&(c.estado==="activo"||!c.estado)&&!c._eliminado;
@@ -3034,6 +3061,7 @@ document.addEventListener("change",e=>{
   if(action==="cobranzaFiltro"){S.filtros[t.dataset.field]=t.value;render();}
   else if(action==="cdHasta"){if(t.value){S.cdHasta=t.value;renderParcial();}}
   else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
+  else if(action==="estadoPropiedad"){cambiarEstadoPropiedad(t.dataset.id,t.value,t);}
   else if(action==="cdCobrarIntereses"){cdGuardarCobrarIntereses(t.dataset.id,t.checked);}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
@@ -3746,13 +3774,13 @@ function renderDashboard(){
         +"</div>";
     })()}
     ${(()=>{
-      const totalProps=S.propiedades.filter(p=>!p._eliminado);
+      const totalProps=S.propiedades.filter(p=>!p._eliminado&&!propFueraDeAlquiler(p));
       const dispCount=totalProps.filter(p=>propiedadLibre(p._id)).length;
       const color=dispCount>0?"var(--naranja)":"var(--gris3)";
       return "<div class=\"kcard\" style=\"border-top-color:"+color+";cursor:pointer\" data-action=\"nav\" data-sec=\"propietarios\">"
         +"<div class=\"klbl\">Inmuebles disponibles</div>"
         +"<div class=\"kval\" style=\"color:"+color+"\">"+dispCount+"</div>"
-        +"<div class=\"ksub\" style=\"color:var(--gris3)\">de "+totalProps.length+" en total</div>"
+        +"<div class=\"ksub\" style=\"color:var(--gris3)\">de "+totalProps.length+" en alquiler</div>"
         +"</div>";
     })()}
   </div>
@@ -4104,7 +4132,7 @@ function renderPropietarios(){
   const rows=listaFiltrada.map(prop=>{
     const activos=prop.contratos.filter(c=>c.estado==="activo"||!c.estado);
     const propsTotales=propiedadesDelPropietario(prop.nombre).filter(p=>!p._eliminado);
-    const disponibles=propsTotales.filter(p=>!contratoActivoDeProp(p,prop.nombre));
+    const disponibles=propsTotales.filter(p=>!propFueraDeAlquiler(p)&&!contratoActivoDeProp(p,prop.nombre));
     const pagosDelMes=S.pagos.filter(p=>p.propietarioNombre===prop.nombre&&p.mes===mesHoy&&p.estado==="cobrado");
     const pendientes=activos.filter(c=>!pagosDelMes.some(p=>p.contratoId===c._id));
     // Meses sin liquidar (cobros de inquilinos registrados pero no liquidados al prop)
@@ -4218,25 +4246,32 @@ function renderFichaPropietario(nombre, prop){
   }).join("");
   // Propiedades e historial
   const propsInmuebles=propiedadesDelPropietario(nombre).filter(function(p){return !p._eliminado;});
-  const propCards=propsInmuebles.map(function(p){
+  const tarjetaPropiedad=function(p){
     const pid=(p.direccion||"").toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
     if(!S_HIST[pid]){cargarHistorialProp(pid).then(function(){renderHistPropInline(pid);});}
     const entradas=(S_HIST[pid]||[]).filter(function(e){return !e._eliminado;});
     const cActivo=contratoActivoDeProp(p,nombre);
+    const fuera=!cActivo&&propFueraDeAlquiler(p);
     const chip=cActivo
       ?'<span style="background:rgba(39,174,96,.15);color:#5ddb8a;font-size:10px;padding:2px 8px;border-radius:10px">Ocupada: '+(cActivo.inquilino||"")+'</span>'
-      :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>';
+      :(fuera
+        ?'<span style="background:rgba(150,150,150,.18);color:var(--gris3);font-size:10px;padding:2px 8px;border-radius:10px">'+etiquetaEstadoProp(p)+(p.estadoDesde?' desde '+p.estadoDesde.split("-").reverse().join("/"):'')+'</span>'
+        :'<span style="background:rgba(75,200,232,.12);color:var(--celeste);font-size:10px;padding:2px 8px;border-radius:10px">Disponible</span>');
+    const estadoActual=p.estadoAlquiler||"alquilable";
+    const selEstado=cActivo?"":'<select class="inp" style="padding:3px 6px;font-size:11px;height:auto;width:auto" data-action="estadoPropiedad" data-id="'+p._id+'" title="Estado de la propiedad">'
+      +Object.keys(ESTADOS_PROP).map(function(k){return '<option value="'+k+'"'+(k===estadoActual?' selected':'')+'>'+ESTADOS_PROP[k]+'</option>';}).join("")
+      +'</select>';
     const tablaH=entradas.length
       ?'<div class="tw"><table><thead><tr><th style="width:110px">Fecha</th><th>Descripcion</th><th style="width:40px"></th></tr></thead><tbody>'
         +entradas.slice(0,10).map(function(e){return '<tr><td style="font-size:11px;color:var(--gris3)">'+(e.fecha||"—")+'</td><td style="font-size:12px">'+(e.descripcion||"")+'</td><td><button class="btn sm" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 6px" data-action="hpropEliminar" data-id="'+e._id+'" data-pid="'+pid+'">x</button></td></tr>';}).join("")
         +'</tbody></table></div>'
       :'<p style="font-size:11px;color:var(--gris4);padding:4px 0">Sin registros todavia.</p>';
-    return '<div class="lcard" style="margin-bottom:10px">'
+    return '<div class="lcard" style="margin-bottom:10px'+(fuera?';opacity:.65':'')+'">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
       +'<div><div style="font-weight:600;font-size:13px">'+(p.direccion||"")+'</div>'
       +'<div style="font-size:11px;color:var(--gris3)">'+(p.tipo||"")+(p.superficie?" · "+p.superficie+"m2":"")+(p.ambientes?" · "+p.ambientes+" amb.":"")+'</div>'
       +(p.descripcion?'<div style="font-size:11px;color:var(--gris4)">'+p.descripcion+'</div>':"")+'</div>'
-      +'<div style="display:flex;gap:6px;align-items:center">'+chip
+      +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+chip+selEstado
       +'<button class="btn sm" data-action="editarPropiedad" data-nombre="'+nombre+'" data-id="'+p._id+'" style="padding:3px 8px">Editar</button>'
       +(!cActivo?'<button class="btn sm" data-action="eliminarPropiedad" data-id="'+p._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">x</button>':"")
       +'</div></div>'
@@ -4246,7 +4281,12 @@ function renderFichaPropietario(nombre, prop){
       +'<input id="hp-desc-'+pid+'" class="inp" style="width:100%" placeholder="Ej: Gasista, arreglo..." data-action="hpropEnter" data-pid="'+pid+'"></div>'
       +'<button class="btn sm naranja" style="height:36px" data-action="hpropAgregar" data-pid="'+pid+'">+ Agregar</button>'
       +'</div><div id="hp-tabla-'+pid+'">'+tablaH+'</div></div>';
-  }).join("");
+  };
+  // Primero las que están en alquiler (ocupadas o disponibles); abajo, aparte, las que salieron del alquiler
+  const propsEnAlquiler=propsInmuebles.filter(function(p){return contratoActivoDeProp(p,nombre)||!propFueraDeAlquiler(p);});
+  const propsFuera=propsInmuebles.filter(function(p){return !contratoActivoDeProp(p,nombre)&&propFueraDeAlquiler(p);});
+  const propCards=propsEnAlquiler.map(tarjetaPropiedad).join("")
+    +(propsFuera.length?'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:16px 0 8px">Fuera de alquiler ('+propsFuera.length+') · se conservan con su historial</div>'+propsFuera.map(tarjetaPropiedad).join(""):"");
   // Ajustes cuenta corriente
   const _ajustesAll=(S_AJUSTES_PROP[nombre]||[]);
   const ajustesPendFicha=_ajustesAll.filter(function(a){return !a.liquidacionRef&&!a._eliminado;});
@@ -4285,7 +4325,7 @@ function renderFichaPropietario(nombre, prop){
   html+=(function(){
     const todasLasProps=propiedadesDelPropietario(nombre).filter(function(p){return !p._eliminado;});
     const disponibles=todasLasProps.filter(function(p){
-      return !contratoActivoDeProp(p,nombre);
+      return !propFueraDeAlquiler(p)&&!contratoActivoDeProp(p,nombre);
     });
     return '<div class="kgrid" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">'
       +'<div class="kcard" style="border-top-color:var(--celeste)"><div class="klbl">Propiedades activas</div><div class="kval">'+activos.length+'</div></div>'
@@ -5146,7 +5186,7 @@ function renderModal(){
         const propsDisp=(f.propietarioNombre?propiedadesDelPropietario(f.propietarioNombre):[]).filter(p=>!p._eliminado);
         if(!f.propietarioNombre) return '<div style="font-size:12px;color:var(--gris3);padding:8px 0">Primero seleccioná el propietario</div>';
         if(!propsDisp.length) return '<div style="font-size:12px;color:var(--naranja);padding:8px 0">Este propietario no tiene propiedades cargadas. Agregala desde la ficha del propietario.</div>';
-        const opts=propsDisp.map(p=>{const libre=propiedadLibre(p._id);return '<option value="'+p._id+'"'+(f.propiedadId===p._id?' selected':'')+(!libre?' disabled':'')+'>'+p.direccion+(libre?'':' (Ocupada)')+'</option>';}).join('');
+        const opts=propsDisp.map(p=>{const libre=propiedadLibre(p._id);const fueraA=libre&&propFueraDeAlquiler(p);const ok=libre&&!fueraA;return '<option value="'+p._id+'"'+(f.propiedadId===p._id?' selected':'')+(!ok?' disabled':'')+'>'+p.direccion+(!libre?' (Ocupada)':(fueraA?' ('+etiquetaEstadoProp(p)+')':''))+'</option>';}).join('');
         return '<select class="inp" style="width:100%" data-action="setPropiedad"><option value="">-- Seleccionar propiedad --</option>'+opts+'</select>'
           +(f.propiedadId?'<div style="font-size:11px;color:var(--gris3);margin-top:4px">'+(propsDisp.find(p=>p._id===f.propiedadId)||{tipo:"",superficie:"",ambientes:""}).tipo+' · Dirección: <strong>'+f.direccion+'</strong></div>':"");
       })()}
