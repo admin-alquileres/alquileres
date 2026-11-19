@@ -2546,6 +2546,10 @@ const cdR2=n=>Math.round(n*100)/100;
 // plata: [{desc,monto}]. Lo que sobra es lo que cancela alquiler.
 function cdTotalServicios(e){return ((e&&e.servicios)||[]).reduce((s,x)=>s+(+x.monto||0),0);}
 function cdNetoCapital(e){return Math.max(0,cdR2((+e.monto||0)-cdTotalServicios(e)));}
+// Montos con centavos (las facturas de servicios los traen: $40.472,68)
+const monedaC=n=>"$"+(+n||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
+// "Luz cuota 2 (Septiembre 2026)"
+function cdDescServicio(sv){return (sv.desc||"Servicio")+(sv.mes?" ("+mesNombre(sv.mes)+")":"");}
 // Función pura (sin DOM). c = contrato con c.cuentaDeuda={desde,descuento};
 // entregas = docs de la colección "entregas" de ese contrato; hastaISO = "YYYY-MM-DD".
 // Solo cuentan las entregas con fecha <= hastaISO.
@@ -2564,11 +2568,11 @@ function calcularCuentaDeuda(c,entregas,hastaISO){
     const apl=[];
     for(const x of meses){
       if(resto<=0)break;
-      const ap=Math.min(resto,saldo[x]);
-      if(ap>0){saldo[x]-=ap;pagos[x].push({f:e.fecha,m:ap});apl.push({mes:x,monto:ap});resto-=ap;}
+      const ap=cdR2(Math.min(resto,saldo[x]));
+      if(ap>0){saldo[x]=cdR2(saldo[x]-ap);pagos[x].push({f:e.fecha,m:ap});apl.push({mes:x,monto:ap,restaDelMes:saldo[x]});resto=cdR2(resto-ap);}
     }
-    if(resto>0)aFavor+=resto;
-    detalle.push({_id:e._id,fecha:e.fecha,servicios:cdTotalServicios(e),aplicaciones:apl,aFavor:resto>0?resto:0});
+    if(resto>0)aFavor=cdR2(aFavor+resto);
+    detalle.push({_id:e._id,fecha:e.fecha,servicios:cdTotalServicios(e),listaServicios:(e.servicios||[]),aplicaciones:apl,aFavor:resto>0?resto:0});
   });
   const filas=meses.map(x=>{
     const lim=calcularFechaLimitePago(x);
@@ -2585,7 +2589,7 @@ function calcularCuentaDeuda(c,entregas,hastaISO){
     }
     return{mes:x,capital:capital[x],aplicado:capital[x]-saldo[x],saldo:saldo[x],diasConInteres:dias,interes:cdR2(interes)};
   });
-  const capitalPendiente=filas.reduce((s,f)=>s+f.saldo,0);
+  const capitalPendiente=cdR2(filas.reduce((s,f)=>s+f.saldo,0));
   const interesDevengado=cdR2(filas.reduce((s,f)=>s+f.interes,0));
   const interesCobrado=cdR2(vivas.filter(e=>e.tipo==="interes").reduce((s,e)=>s+(+e.monto||0),0));
   const descuento=+cd.descuento||0;
@@ -3127,6 +3131,7 @@ document.addEventListener("click",e=>{
   else if(action==="cdRegistrarEntrega")cdRegistrarEntrega(id);
   else if(action==="cdBajaEntrega")cdBajaEntrega(id);
   else if(action==="cdAgregarServicio")cdAgregarServicio();
+  else if(action==="cdComprobante")cdComprobanteEntrega(id);
   else if(action==="cdQuitarServicio"){const filaS=t.closest(".cd-serv-row");if(filaS)filaS.remove();cdActualizarNeto();}
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
@@ -4175,6 +4180,18 @@ function renderPropietarios(){
 // servicios) y cada servicio pagado con la entrega va como ítem "fijo" (pasa
 // entero al propietario, sin comisión). Se excluyen las "ya liquidadas por fuera"
 // (liquidadoProp:true sin liquidacionRef). Valen tanto aplica:true como false.
+// "Alquiler Septiembre 2026: $259.527,32 (resta $84.256,68)" para cada entrega a cuenta
+function cdTextoAplicacion(e){
+  if(e.tipo==="interes")return "";
+  const c=S.contratos.find(x=>x._id===e.contratoId);
+  if(!c||!c.cuentaDeuda)return "";
+  const r=calcularCuentaDeuda(c,(S.entregas||[]).filter(x=>x.contratoId===c._id),e.fecha);
+  const d=(r.entregas||[]).find(x=>x._id===e._id);
+  if(!d)return "";
+  const partes=d.aplicaciones.map(a=>"Alquiler "+mesNombre(a.mes)+": "+monedaC(a.monto)+(a.restaDelMes>0?" (resta "+monedaC(a.restaDelMes)+")":" (cancelado)"));
+  if(d.aFavor>0)partes.push("A favor del inquilino: "+monedaC(d.aFavor));
+  return partes.join(" · ");
+}
 function entregasComoPagos(nombre){
   return (S.entregas||[])
     .filter(e=>e.propietarioNombre===nombre&&!e._eliminado&&!(e.liquidadoProp&&!e.liquidacionRef))
@@ -4182,7 +4199,8 @@ function entregasComoPagos(nombre){
     .map(e=>({_id:e._id,_entrega:true,_tipoEntrega:e.tipo==="interes"?"interes":"capital",_fechaEntrega:e.fecha||"",
       contratoId:e.contratoId,inquilino:e.inquilino,direccion:e.direccion,propietarioNombre:e.propietarioNombre,
       mes:(e.fecha||"").slice(0,7),alquiler:e.tipo==="interes"?(+e.monto||0):cdNetoCapital(e),
-      itemsCobro:e.tipo==="interes"?[]:(e.servicios||[]).map(s=>({tipo:"fijo",desc:s.desc,monto:+s.monto||0})),
+      itemsCobro:e.tipo==="interes"?[]:(e.servicios||[]).map(s=>({tipo:"fijo",desc:cdDescServicio(s),monto:+s.monto||0})),
+      _aplicTexto:cdTextoAplicacion(e),
       estado:"cobrado",fechaCobro:e.fecha,
       liquidadoProp:!!e.liquidacionRef,liquidacionRef:e.liquidacionRef||null,fechaLiquidacion:e.fechaLiquidacion||null,
       liqSnap:e.liqSnap||null}));
@@ -4444,6 +4462,11 @@ function dibujarPDFLiquidacion(datos){
         :"Alquiler "+mesNombre(p.mes);
       doc.text(_lblLinea,16,y);
       doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
+      if(p._entrega&&p._aplicTexto){
+        doc.setFontSize(7.5);doc.setTextColor(110,110,110);
+        doc.splitTextToSize("  Aplicado a: "+p._aplicTexto,170).forEach(function(l){doc.text(l,18,y);y+=4;});
+        y+=1;doc.setFontSize(9);doc.setTextColor(60,60,60);
+      }
       subtotal+=(p.alquiler||0);
       const items=p.itemsCobro||(p.extras||[]).map(e=>({tipo:"fijo",desc:e.desc,monto:+(e.monto||0)}));
       items.forEach(it=>{
@@ -4687,11 +4710,11 @@ function renderCuentaDeuda(c){
   const filaEntrega=function(e){
     const tipoLbl=e.tipo==="interes"?"Cobro de intereses":"Entrega a cuenta";
     const estado=e.liquidacionRef?"Liquidada "+(e.fechaLiquidacion||""):(e.liquidadoProp?"Liquidada por fuera":"Pendiente de liquidar");
-    const servs=(e.servicios||[]).map(function(s){return (s.desc||"Servicio")+" "+moneda(s.monto);}).join("<br>")||"—";
+    const servs=(e.servicios||[]).map(function(s){return cdDescServicio(s)+" "+monedaC(s.monto);}).join("<br>")||"—";
     const d=apPorId[e._id];
     let apl="—";
     if(d){
-      const partes=d.aplicaciones.map(function(a){return mesNombre(a.mes)+" "+moneda(a.monto);});
+      const partes=d.aplicaciones.map(function(a){return mesNombre(a.mes)+" "+monedaC(a.monto)+(a.restaDelMes>0?' <span style="color:var(--naranja)">(resta '+monedaC(a.restaDelMes)+')</span>':' (cancelado)');});
       if(d.aFavor>0)partes.push("A favor "+moneda(d.aFavor));
       if(partes.length)apl=partes.join("<br>");
     }
@@ -4699,7 +4722,8 @@ function renderCuentaDeuda(c){
       +'<td style="font-size:11px;color:var(--gris3)">'+servs+'</td><td style="font-size:11px">'+apl+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+(e.nota||"")+'</td>'
       +'<td style="font-size:11px;color:var(--gris3)">'+estado+'</td>'
-      +'<td><button class="btn sm" data-action="cdBajaEntrega" data-id="'+e._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px">✕</button></td></tr>';
+      +'<td style="white-space:nowrap">'+(e.aplica!==false?'<button class="btn sm" data-action="cdComprobante" data-id="'+e._id+'" title="Comprobante para el inquilino" style="padding:2px 7px;margin-right:4px">🖨 Comprobante</button>':'')
+      +'<button class="btn sm" data-action="cdBajaEntrega" data-id="'+e._id+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px">✕</button></td></tr>';
   };
   const thE='<thead><tr><th>Fecha</th><th>Tipo</th><th>Entregado</th><th>Servicios pagados</th><th>Canceló alquiler de</th><th>Nota</th><th>Propietario</th><th></th></tr></thead>';
   const vigentes=entregasC.filter(e=>e.aplica!==false);
@@ -4714,7 +4738,7 @@ function renderCuentaDeuda(c){
   const form='<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:14px 0 6px">Registrar entrega</div>'
     +'<div class="fg">'
     +'<div><label class="fl">Fecha</label><input id="cd-fecha" class="inp" style="width:100%" type="date" value="'+hoy()+'"></div>'
-    +'<div><label class="fl">Monto total entregado ($)</label><input id="cd-monto" class="inp" style="width:100%" type="number" min="0" data-action="cdNeto"></div>'
+    +'<div><label class="fl">Monto total entregado ($)</label><input id="cd-monto" class="inp" style="width:100%" type="number" min="0" step="0.01" data-action="cdNeto"></div>'
     +'<div><label class="fl">Tipo</label><select id="cd-tipo" class="inp" style="width:100%"><option value="capital">Entrega a cuenta (capital)</option><option value="interes">Cobro de intereses</option></select></div>'
     +'<div><label class="fl">Nota</label><input id="cd-nota" class="inp" style="width:100%" placeholder="Opcional"></div>'
     +'</div>'
@@ -4735,11 +4759,76 @@ function renderCuentaDeuda(c){
 }
 // Servicios pagados con la entrega: renglones que se agregan/quitan en el DOM
 // (sin re-render, para no perder lo ya tipeado en el formulario).
+// Comprobante de una entrega a cuenta, para darle al inquilino: a dónde fue cada peso
+// y cómo queda su cuenta a esa fecha.
+async function cdComprobanteEntrega(eid){
+  const e=(S.entregas||[]).find(x=>x._id===eid);if(!e)return;
+  const c=S.contratos.find(x=>x._id===e.contratoId);if(!c||!c.cuentaDeuda){toast("No encuentro el contrato de esa entrega",false);return;}
+  // Número de comprobante fijo: la primera vez se guarda, así al reimprimir sale el mismo
+  let nro=e.comprobante;
+  if(!nro){nro=nroRecibo();try{await fbUpd("entregas",e._id,{comprobante:nro});e.comprobante=nro;}catch(err){}}
+  const r=calcularCuentaDeuda(c,(S.entregas||[]).filter(x=>x.contratoId===c._id),e.fecha);
+  const d=(r.entregas||[]).find(x=>x._id===e._id)||{aplicaciones:[],aFavor:0};
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  let y=membretePDF(doc,nro);
+  doc.setFontSize(9);doc.setFont("helvetica","bold");doc.setTextColor(40,40,40);
+  doc.text("Fecha: "+cdFechaCorta(e.fecha),198,y,{align:"right"});y+=8;
+  doc.setFontSize(10);doc.setFont("helvetica","normal");
+  doc.text("Recibimos de:",12,y);doc.setFont("helvetica","bold");doc.text((c.inquilino||"").toUpperCase(),44,y);y+=6;
+  doc.setFont("helvetica","normal");doc.text("Propiedad:",12,y);doc.setFont("helvetica","bold");doc.text(c.direccion||"",34,y);y+=9;
+  // Total entregado
+  doc.setFillColor(245,245,245);doc.rect(12,y-5,186,9,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
+  doc.text(e.tipo==="interes"?"PAGO DE INTERESES":"ENTREGA A CUENTA",14,y);
+  doc.text(monedaC(e.monto),198,y,{align:"right"});y+=9;
+  doc.setFont("helvetica","italic");doc.setFontSize(8.5);doc.setTextColor(80,80,80);
+  const ent=Math.floor(+e.monto||0),cent=Math.round(((+e.monto||0)-ent)*100);
+  doc.text("(Son pesos "+numeroALetras(ent)+(cent?" con "+String(cent).padStart(2,"0")+"/100":"")+")",12,y);y+=9;
+  // A dónde fue la plata
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(40,40,40);
+  doc.text("Detalle de la aplicacion del pago",12,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(60,60,60);
+  (e.servicios||[]).forEach(function(sv){
+    doc.text("Pago de "+cdDescServicio(sv),16,y);doc.text(monedaC(sv.monto),198,y,{align:"right"});y+=6;
+  });
+  d.aplicaciones.forEach(function(a){
+    const parcial=a.restaDelMes>0;
+    doc.text("Alquiler "+mesNombre(a.mes)+(parcial?" (pago parcial)":" (cancelado)"),16,y);
+    doc.text(monedaC(a.monto),198,y,{align:"right"});y+=parcial?4.5:6;
+    if(parcial){doc.setFontSize(8);doc.setTextColor(170,90,20);doc.text("Resta pagar de "+mesNombre(a.mes)+": "+monedaC(a.restaDelMes),20,y);y+=6;doc.setFontSize(9.5);doc.setTextColor(60,60,60);}
+  });
+  if(d.aFavor>0){doc.text("Saldo a favor del inquilino",16,y);doc.text(monedaC(d.aFavor),198,y,{align:"right"});y+=6;}
+  doc.setDrawColor(180,180,180);doc.line(12,y,198,y);y+=6;
+  doc.setFont("helvetica","bold");doc.text("Total",16,y);doc.text(monedaC(e.monto),198,y,{align:"right"});y+=11;
+  // Estado de cuenta a la fecha de la entrega
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(40,40,40);
+  doc.text("Estado de cuenta al "+cdFechaCorta(e.fecha)+" (alquileres)",12,y);y+=6;
+  doc.setFontSize(8.5);doc.setTextColor(90,90,90);
+  doc.text("Mes",16,y);doc.text("Alquiler",110,y,{align:"right"});doc.text("Pagado",154,y,{align:"right"});doc.text("Resta",198,y,{align:"right"});y+=2;
+  doc.setDrawColor(210,210,210);doc.line(14,y,198,y);y+=4.5;
+  doc.setFont("helvetica","normal");doc.setTextColor(50,50,50);
+  r.meses.forEach(function(m){
+    doc.text(mesNombre(m.mes),16,y);doc.text(monedaC(m.capital),110,y,{align:"right"});doc.text(monedaC(m.aplicado),154,y,{align:"right"});
+    doc.setTextColor(m.saldo>0?170:40,m.saldo>0?40:130,m.saldo>0?40:60);doc.text(m.saldo>0?monedaC(m.saldo):"Pagado",198,y,{align:"right"});doc.setTextColor(50,50,50);y+=5;
+  });
+  doc.line(14,y-2,198,y-2);y+=2;
+  doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
+  doc.text("Total adeudado de alquiler",16,y);doc.text(monedaC(r.capitalPendiente),198,y,{align:"right"});y+=6;
+  if(r.cobrarIntereses&&r.interesACobrar>0){doc.setFont("helvetica","normal");doc.text("Intereses por mora",16,y);doc.text(monedaC(r.interesACobrar),198,y,{align:"right"});y+=6;
+    doc.setFont("helvetica","bold");doc.text("Total adeudado",16,y);doc.text(monedaC(r.totalACobrar),198,y,{align:"right"});y+=6;}
+  y+=4;doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(80,80,80);
+  doc.text("Servicios (luz, agua, impuestos) pagados con esta entrega: se entregan al propietario "+(c.propietarioNombre||"").trim()+".",12,y);y+=22;
+  doc.setDrawColor(100,100,100);doc.setLineWidth(0.3);doc.line(12,y,70,y);doc.line(140,y,198,y);
+  doc.setFontSize(8);doc.setTextColor(100,100,100);doc.text("Firma inquilino",41,y+4,{align:"center"});doc.text("Por Eckerdt Negocios Inmobiliarios",169,y+4,{align:"center"});
+  doc.save("Comprobante-entrega-"+(c.inquilino||"").replace(/[ ,]+/g,"_")+"-"+e.fecha+".pdf");
+}
 function cdAgregarServicio(){
   const cont=$("cd-servicios");if(!cont)return;
   cont.insertAdjacentHTML("beforeend",'<div class="cd-serv-row" style="display:flex;gap:8px;align-items:center">'
-    +'<input class="inp cd-serv-desc" placeholder="Luz, agua, TGI…" style="flex:1">'
-    +'<input class="inp cd-serv-monto" type="number" min="0" placeholder="$" style="width:130px" data-action="cdNeto">'
+    +'<input class="inp cd-serv-desc" placeholder="Luz cuota 2, agua, TGI…" style="flex:1">'
+    +'<input class="inp cd-serv-mes" type="month" title="Mes al que corresponde" style="width:150px">'
+    +'<input class="inp cd-serv-monto" type="number" min="0" step="0.01" placeholder="$ (con centavos)" style="width:140px" data-action="cdNeto">'
     +'<button class="btn sm" data-action="cdQuitarServicio" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:3px 8px">✕</button>'
     +'</div>');
 }
@@ -4748,9 +4837,10 @@ function cdLeerServicios(){
   document.querySelectorAll("#cd-servicios .cd-serv-row").forEach(function(f){
     const desc=(((f.querySelector(".cd-serv-desc")||{}).value)||"").trim();
     const montoTxt=((f.querySelector(".cd-serv-monto")||{}).value)||"";
+    const mesS=((f.querySelector(".cd-serv-mes")||{}).value)||"";
     if(!desc&&!montoTxt)return; // renglón vacío: se ignora
     if(!desc||!(+montoTxt>0)){error="Completá la descripción y el monto de cada servicio, o quitá el renglón";return;}
-    servicios.push({desc:desc,monto:+montoTxt});
+    servicios.push(mesS?{desc:desc,mes:mesS,monto:cdR2(+montoTxt)}:{desc:desc,monto:cdR2(+montoTxt)});
   });
   return{servicios:servicios,error:error};
 }
