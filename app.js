@@ -454,8 +454,9 @@ function generarPDFInquilino(p){
   // Alquiler
   doc.setFillColor(245,245,245);doc.rect(12,y-5,186,9,"F");
   doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
-  doc.text("PAGO ALQUILER MES DE "+mesNombreMay(p.mes),14,y);
-  doc.text(moneda(alq),198,y,{align:"right"});y+=10;
+  doc.text((p.campoDetalle?"ARRENDAMIENTO RURAL MES DE ":"PAGO ALQUILER MES DE ")+mesNombreMay(p.mes),14,y);
+  doc.text(p.campoDetalle?monedaC(alq):moneda(alq),198,y,{align:"right"});y+=10;
+  if(p.campoDetalle){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(80,80,80);doc.text(campoTextoDetalle(p.campoDetalle),16,y-3);y+=4;}
 
   // Items (fijos, variables, saldo)
   items.forEach(it=>{
@@ -499,8 +500,9 @@ function generarPDFInquilino(p){
   doc.text("Inquilino: "+(p.inquilino||""),12,y);
   doc.text("Prop.: "+(p.direccion||""),105,y);y+=5;
   doc.setFont("helvetica","bold");doc.setFontSize(8);
-  doc.text("Alquiler "+mesNombreMay(p.mes),12,y);
+  doc.text((p.campoDetalle?"Arrendamiento ":"Alquiler ")+mesNombreMay(p.mes),12,y);
   doc.text(moneda(alq),198,y,{align:"right"});y+=5;
+  if(p.campoDetalle){doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.text(campoTextoDetalle(p.campoDetalle),14,y);y+=4;}
   // Items del cobro en el talon
   items.forEach(function(it){
     if(!it.desc&&!it.monto) return;
@@ -553,8 +555,9 @@ function generarPDFPropietario(p){
   // Alquiler cobrado
   doc.setFillColor(245,245,245);doc.rect(12,y-5,186,9,"F");
   doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(20,20,20);
-  doc.text("ALQUILER MES DE "+mesNombreMay(p.mes),14,y);
-  doc.text(moneda(alq),198,y,{align:"right"});y+=10;
+  doc.text((p.campoDetalle?"ARRENDAMIENTO RURAL MES DE ":"ALQUILER MES DE ")+mesNombreMay(p.mes),14,y);
+  doc.text(p.campoDetalle?monedaC(alq):moneda(alq),198,y,{align:"right"});y+=10;
+  if(p.campoDetalle){doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(80,80,80);doc.text(campoTextoDetalle(p.campoDetalle),16,y-3);y+=4;}
 
   // Gastos fijos cobrados al inquilino (solo los positivos fijos, son del propietario)
   if(itemsFijos.length){
@@ -610,6 +613,7 @@ function renderIPC(){
   const vencenAntes=[];
   let cntSig=0;
   activos.forEach(c=>{
+    if(c.campo)return; // arrendamiento rural: se paga por precio del kilo, sin IPC
     const fr=+(c.frecActualizacion||6);
     if(!grupos[fr]) grupos[fr]=[];
     const prox=getProxActualizacion(c);
@@ -2069,8 +2073,8 @@ async function confirmarRenovacion(){
     fin:f.fin||"",
     alquilerBase:alqBase,
     comisionAgencia:+(f.comisionAgencia??5),
-    frecActualizacion:+(f.frecActualizacion||6),
-    indiceActualizacion:f.indiceActualizacion||"IPC",
+    frecActualizacion:c.campo?0:+(f.frecActualizacion||6), // el arrendamiento rural no se actualiza por IPC
+    indiceActualizacion:c.campo?"":(f.indiceActualizacion||"IPC"),
     notasActualizacion:f.notasActualizacion||"",
     estado:"activo",
     deposito,
@@ -2505,7 +2509,7 @@ function renderModalEditarPropiedad(){
     +'<div class="fg">'
     +'<div style="grid-column:1/-1"><label class="fl">Direccion *</label>'+inp("direccion")+'</div>'
     +'<div><label class="fl">Tipo</label><select class="inp" style="width:100%" data-action="setForm" data-key="tipo">'
-    +["Casa","Departamento","Local comercial","Terreno","Oficina","Cochera","Otro"].map(t=>'<option value="'+t+'"'+(f.tipo===t?" selected":"")+'>'+t+'</option>').join("")
+    +["Casa","Departamento","Local comercial","Terreno","Campo","Oficina","Cochera","Otro"].map(t=>'<option value="'+t+'"'+(f.tipo===t?" selected":"")+'>'+t+'</option>').join("")
     +'</select></div>'
     +'<div><label class="fl">Superficie (m2)</label>'+inp("superficie","number")+'</div>'
     +'<div><label class="fl">Ambientes</label>'+inp("ambientes","number")+'</div>'
@@ -3031,7 +3035,7 @@ document.addEventListener("input",e=>{
         const newMes=t.value;
         const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
         S.itemsCobro=itemsParaMesConGuardados(c,newMes,guardados);
-        S.form.alquiler=alquilerParaMes(c,newMes);
+        S.form.alquiler=alquilerCobroInicial(c,newMes);
         render();
       }
     }
@@ -3061,6 +3065,7 @@ document.addEventListener("change",e=>{
   else if(action==="cdHasta"){if(t.value){S.cdHasta=t.value;renderParcial();}}
   else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
   else if(action==="estadoPropiedad"){cambiarEstadoPropiedad(t.dataset.id,t.value,t);}
+  else if(action==="campoEditar"){campoGuardarCampo(t.dataset.id,t.dataset.field,t.value);}
   else if(action==="cdCobrarIntereses"){cdGuardarCobrarIntereses(t.dataset.id,t.checked);}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
@@ -3097,7 +3102,7 @@ document.addEventListener("change",e=>{
         const newMes=t.value;
         const guardados=(S_GPEND[c._id]&&S_GPEND[c._id].por_mes&&S_GPEND[c._id].por_mes[newMes])||[];
         S.itemsCobro=itemsParaMesConGuardados(c,newMes,guardados);
-        S.form.alquiler=alquilerParaMes(c,newMes);
+        S.form.alquiler=alquilerCobroInicial(c,newMes);
       }
       render();
     }
@@ -3232,6 +3237,12 @@ document.addEventListener("input",e=>{
   const key=t.dataset.key;
   const idx=t.dataset.idx;
   if(action==="setForm"&&key)S.form[key]=t.value;
+  else if(action==="setPrecioKg"&&S.contratoActivo&&S.contratoActivo.campo){
+    const c=S.contratoActivo;S.form.precioKg=t.value;S.form.alquiler=campoMonto(c,t.value);
+    const a=$("cobro-alquiler");if(a)a.value=S.form.alquiler;
+    const k=$("campo-calculo");if(k)k.innerHTML=campoCalculoH(c,t.value);
+    if(typeof updateResumen==="function")updateResumen();
+  }
   else if(action==="setFormNum"&&key)S.form[key]=+t.value;
   else if(action==="setBuscar")setFiltro("buscar",t.value);
   else if(action==="setExtraDesc"&&idx!==undefined)S.formExtras[+idx].desc=t.value;
@@ -3354,6 +3365,56 @@ function itemsParaMesConGuardados(c,mesACobrar,guardados){
   return [...obligatorios,...guardadosFiltrados];
 }
 
+// ── ARRENDAMIENTO RURAL (se paga en kilos de carne) ─────────────────────────
+// contratos.campo = {hectareas, kgPorHa, referencia}. El monto del mes es
+// hectáreas × kg por hectárea × precio del kilo, y el precio se carga en cada cobro.
+const CAMPO_REFERENCIA_DEFAULT="Consignataria Fraccaroli y Ronconi";
+function fmtNum(n){return (+n||0).toLocaleString("es-AR",{maximumFractionDigits:2});}
+function campoKilos(c){const k=c&&c.campo;return k?Math.round((+k.hectareas||0)*(+k.kgPorHa||0)*100)/100:0;}
+function campoMonto(c,precioKg){return Math.round(campoKilos(c)*(+precioKg||0)*100)/100;}
+// "51 ha x 5 kg/ha = 255 kg x $4.250,00 por kg (Consignataria Fraccaroli y Ronconi)" — d = pago.campoDetalle
+function campoTextoDetalle(d){
+  if(!d)return "";
+  return fmtNum(d.hectareas)+" ha x "+fmtNum(d.kgPorHa)+" kg/ha = "+fmtNum(d.kilos)+" kg x "+monedaC(d.precioKg)+" por kg"+(d.referencia?" ("+d.referencia+")":"");
+}
+function campoCalculoH(c,precio){
+  const k=c.campo||{};
+  return fmtNum(k.hectareas)+" ha × "+fmtNum(k.kgPorHa)+" kg/ha = <strong>"+fmtNum(campoKilos(c))+" kg</strong>"
+    +(+precio>0?" × "+monedaC(precio)+" = <strong>"+monedaC(campoMonto(c,precio))+"</strong>":" · cargá el precio del kilo")
+    +(k.referencia?'<br><span style="color:var(--gris3)">Precio según '+k.referencia+'</span>':"");
+}
+function campoInputCobroH(c,f){
+  return '<div><label class="fl">Precio del kilo de carne ($/kg) *</label>'
+    +'<input id="cobro-precio-kg" class="inp" style="width:100%" type="number" min="0" step="0.01" value="'+(f.precioKg||"")+'" placeholder="Lo trae el inquilino" data-action="setPrecioKg">'
+    +'<div id="campo-calculo" style="font-size:11px;color:var(--celeste);margin-top:4px">'+campoCalculoH(c,f.precioKg)+'</div></div>';
+}
+function alquilerCobroInicial(c,mes){
+  if(c&&c.campo)return (S.form&&+S.form.precioKg)?campoMonto(c,S.form.precioKg):0;
+  return alquilerParaMes(c,mes);
+}
+function renderCampoInfo(c){
+  const k=c.campo||{};
+  const ult=S.pagos.filter(p=>p.contratoId===c._id&&p.campoDetalle).sort((a,b)=>(b.mes||"").localeCompare(a.mes||""))[0];
+  const inpC=(campo,val,w,tipo)=>'<input class="inp" type="'+(tipo||"number")+'" step="0.01" style="width:'+w+'" value="'+String(val==null?"":val).replace(/"/g,"&quot;")+'" data-action="campoEditar" data-field="'+campo+'" data-id="'+c._id+'">';
+  return '<div class="fsec"><div class="fsec-t">🌾 Arrendamiento rural (se paga en kilos de carne)</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">'
+    +'<div><label class="fl">Hectáreas</label>'+inpC("hectareas",k.hectareas,"100px")+'</div>'
+    +'<div><label class="fl">Kilos por hectárea</label>'+inpC("kgPorHa",k.kgPorHa,"100px")+'</div>'
+    +'<div style="flex:1;min-width:220px"><label class="fl">Referencia del precio del kilo</label>'+inpC("referencia",k.referencia||"","100%","text")+'</div>'
+    +'</div>'
+    +'<div style="font-size:12px;margin-top:8px">Total por período: <strong>'+fmtNum(campoKilos(c))+' kg de carne</strong>. El precio del kilo se carga en cada cobro.'
+    +(ult?' Último precio usado: '+monedaC(ult.campoDetalle.precioKg)+' ('+mesNombre(ult.mes)+').':'')+'</div></div>';
+}
+async function campoGuardarCampo(cid,campo,valor){
+  const c=S.contratos.find(x=>x._id===cid);if(!c||!c.campo)return;
+  const v=campo==="referencia"?String(valor||"").trim():(+valor||0);
+  if(campo!=="referencia"&&!(v>0)){toast("Ingresá un número mayor a cero",false);renderParcial();return;}
+  const nuevo={...c.campo,[campo]:v};
+  await fbUpd("contratos",cid,{campo:nuevo});
+  c.campo=nuevo;if(S.contratoActivo&&S.contratoActivo._id===cid)S.contratoActivo.campo=nuevo;
+  toast("Arrendamiento actualizado ✓");renderParcial();
+}
+
 function alquilerParaMes(c,mes){
   const base=c.alquilerBase||0;
   if(c.alquilerVigenteDesde && c.alquilerBaseAnterior!=null && mes<c.alquilerVigenteDesde){
@@ -3375,7 +3436,7 @@ function abrirContrato(cid){
   S.modal="contrato_detalle";
   S.depCuotasCobro=1;
   S.cdHasta="";
-  S.form={mes:mesActual(),alquiler:alquilerParaMes(c,mesActual()),fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
+  S.form={mes:mesActual(),alquiler:c.campo?0:alquilerParaMes(c,mesActual()),precioKg:"",fechaCobro:hoy(),comprobante:"",estado:"cobrado"};
   // Cargar gastos pendientes de Firebase (cargados durante el mes)
   S.itemsCobro=[];  // limpiar mientras carga
   // Gastos que corresponden este mes según frecuencia configurada
@@ -3542,6 +3603,7 @@ async function registrarPago(){
   const c=S.contratoActivo;if(!c)return;
   const f=S.form;
   if(!f.mes)return toast("Ingresá el período",false);
+  if(c.campo&&!(+f.precioKg>0))return toast("Cargá el precio del kilo de carne",false);
   const yaExiste=S.pagos.some(p=>p.contratoId===c._id&&p.mes===f.mes);
   if(yaExiste&&!confirm("Ya hay un pago registrado para este período, ¿registrar de todos modos?"))return;
   S_GUARDANDO_PAGO=true;renderParcial();
@@ -3555,6 +3617,10 @@ async function registrarPago(){
     const neto=alq-com;
     const nro=f.comprobante||nroRecibo();
     const data={contratoId:c._id,inquilino:c.inquilino||"",direccion:c.direccion||"",propietarioNombre:c.propietarioNombre||"",mes:f.mes,alquiler:alq,itemsCobro:items,extras:items.filter(i=>i.tipo==="fijo"),totalExtras:totalItems,totalInquilino:totalInq,comision:com,netoPropiertario:neto,total:totalInq,fechaCobro:f.fechaCobro||hoy(),estado:f.estado||"cobrado",comprobante:nro,comisionAgencia:c.comisionAgencia??5};
+    if(c.campo){
+      // Detalle del arrendamiento rural para los comprobantes y la liquidación
+      data.campoDetalle={hectareas:+c.campo.hectareas||0,kgPorHa:+c.campo.kgPorHa||0,kilos:campoKilos(c),precioKg:+f.precioKg,referencia:c.campo.referencia||""};
+    }
     const id=await fbAdd("pagos",data);
     if(id){
       S.pagos.unshift({...data,_id:id});
@@ -3641,7 +3707,9 @@ async function guardarContrato(){
     if(!pr){const id=await fbAdd("propiedades",{direccion:f.direccion,tipo:f.tipo||"Casa",descripcion:f.descripcion||"",propietarioNombre:f.propietarioNombre,propietarioId:p?._id||""});if(id){pr={direccion:f.direccion,_id:id};S.propiedades.push(pr);}}
     propId=pr?._id||"";
   }
-  const alqBase=+(f.alquilerBase||0);
+  const esCampo=f.tipoPago==="campo";
+  if(esCampo&&!(+f.hectareas>0&&+f.kgPorHa>0))return toast("Completá las hectáreas y los kilos por hectárea",false);
+  const alqBase=esCampo?Math.round((+f.hectareas||0)*(+f.kgPorHa||0)*(+f.precioKgInicial||0)):+(f.alquilerBase||0);
   const honMonto=f.honMonto||"medio";
   const honCuotas=+(f.honCuotas||1);
   const honTotal=honMonto==="mes"?alqBase:Math.round(alqBase/2);
@@ -3654,6 +3722,10 @@ async function guardarContrato(){
   const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia??5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios,montoMedioMesForzado:+(f.montoMedioMesForzado||0)||null};
+  if(esCampo){
+    data.campo={hectareas:+f.hectareas,kgPorHa:+f.kgPorHa,referencia:(f.campoReferencia!==undefined?f.campoReferencia:CAMPO_REFERENCIA_DEFAULT).trim()};
+    data.frecActualizacion=0;data.indiceActualizacion="";
+  }
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
 }
@@ -4459,9 +4531,14 @@ function dibujarPDFLiquidacion(datos){
       doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(60,60,60);
       const _lblLinea=p._entrega
         ?(p._tipoEntrega==="interes"?"Cobro de intereses ":"Entrega a cuenta ")+cdFechaCorta(p._fechaEntrega)
-        :"Alquiler "+mesNombre(p.mes);
+        :(p.campoDetalle?"Arrendamiento campo ":"Alquiler ")+mesNombre(p.mes);
       doc.text(_lblLinea,16,y);
       doc.text(moneda(p.alquiler||0),198,y,{align:"right"});y+=5.5;
+      if(p.campoDetalle){
+        doc.setFontSize(7.5);doc.setTextColor(110,110,110);
+        doc.text("  "+campoTextoDetalle(p.campoDetalle),18,y);y+=5;
+        doc.setFontSize(9);doc.setTextColor(60,60,60);
+      }
       if(p._entrega&&p._aplicTexto){
         doc.setFontSize(7.5);doc.setTextColor(110,110,110);
         doc.splitTextToSize("  Aplicado a: "+p._aplicTexto,170).forEach(function(l){doc.text(l,18,y);y+=4;});
@@ -5054,13 +5131,14 @@ function renderModalDetalle(){
         return html;
       })()}
     </div>
+    ${c.campo?renderCampoInfo(c):""}
     ${c.cuentaDeuda?renderCuentaDeuda(c):""}
     ${historicalViewHtml}
     <div class="fsec" style="${pagoDelMes?'display:none':''}">
       <div class="fsec-t">Registrar pago del mes</div>
       <div class="fg">
         <div><label class="fl">Período *</label><input class="inp" style="width:100%" type="month" value="${f.mes||mesActual()}" data-action="setForm" data-key="mes"></div>
-        <div><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" data-action="setAlquilerCobro">${(()=>{if(!c.inicio||f.mes!==c.inicio.substring(0,7))return"";const[_y,_m,_d]=c.inicio.split('-').map(Number);if(_d<=1)return"";const diasEnMes=new Date(_y,_m,0).getDate();const diasVividos=diasEnMes-_d+1;return'<div style="font-size:11px;color:var(--naranja);margin-top:4px">📅 Mes parcial: '+diasVividos+' de '+diasEnMes+' días (ingreso día '+_d+')</div>';})()}</div>
+        ${c.campo?campoInputCobroH(c,f):""}<div style="${c.campo?"display:none":""}"><label class="fl">Alquiler ($)</label><input id="cobro-alquiler" class="inp" style="width:100%" type="number" value="${f.alquiler||c.alquilerBase||""}" data-action="setAlquilerCobro">${(()=>{if(!c.inicio||f.mes!==c.inicio.substring(0,7))return"";const[_y,_m,_d]=c.inicio.split('-').map(Number);if(_d<=1)return"";const diasEnMes=new Date(_y,_m,0).getDate();const diasVividos=diasEnMes-_d+1;return'<div style="font-size:11px;color:var(--naranja);margin-top:4px">📅 Mes parcial: '+diasVividos+' de '+diasEnMes+' días (ingreso día '+_d+')</div>';})()}</div>
         <div><label class="fl">Fecha cobro</label><input class="inp" style="width:100%" type="date" value="${f.fechaCobro||hoy()}" data-action="setForm" data-key="fechaCobro"></div>
         <div><label class="fl">N° Comprobante</label><input class="inp" style="width:100%" placeholder="Auto" data-action="setForm" data-key="comprobante"></div>
       </div>
@@ -5254,6 +5332,14 @@ function renderModal(){
   const sel=(k,opts)=>`<select class="inp" style="width:100%" data-action="setForm" data-key="${k}">${opts.map(o=>`<option value="${o[0]}"${(f[k]||"")==o[0]?" selected":""}>${o[1]}</option>`).join("")}</select>`;
   let content="";
   if(S.modal==="contrato"){
+    // Arrendamiento rural: hectáreas × kilos por hectárea; el precio del kilo se carga en cada cobro
+    const campoFormH=f.tipoPago==="campo"
+      ?'<div><label class="fl">Hectáreas *</label>'+inp("hectareas","number")+'</div>'
+        +'<div><label class="fl">Kilos de carne por hectárea *</label>'+inp("kgPorHa","number")+'</div>'
+        +'<div class="fgf"><label class="fl">Referencia del precio del kilo</label>'+inp("campoReferencia","text",f.campoReferencia!==undefined?f.campoReferencia:CAMPO_REFERENCIA_DEFAULT)+'</div>'
+        +'<div><label class="fl">Precio del kilo actual (opcional)</label>'+inp("precioKgInicial","number",undefined,"Para calcular depósito y honorarios")+'</div>'
+        +'<div style="font-size:11px;color:var(--gris3);align-self:end">No lleva actualización por IPC: el monto sale del precio del kilo de cada mes.</div>'
+      :"";
     const extH=S.formExtras.map((e,i)=>`<div class="xi">
       <input value="${e.desc||""}" placeholder="Descripción (ej: TGI, Agua...)" data-action="setExtraDesc" data-idx="${i}">
       <input value="${e.monto||""}" type="number" placeholder="Monto $" style="width:110px" data-action="setExtraMonto" data-idx="${i}">
@@ -5285,7 +5371,9 @@ function renderModal(){
       <div><label class="fl">Tel. garante</label>${inp("telGarante","tel")}</div>
     </div></div>
     <div class="fsec"><div class="fsec-t">Condiciones económicas</div><div class="fg">
-      <div><label class="fl">Alquiler base ($) *</label>${inp("alquilerBase","number")}</div>
+      <div class="fgf"><label class="fl">Forma de pago</label>${sel("tipoPago",[["pesos","Alquiler mensual en pesos"],["campo","Arrendamiento rural: se paga en kilos de carne"]])}</div>
+      ${campoFormH}
+      <div style="${f.tipoPago==="campo"?"display:none":""}"><label class="fl">Alquiler base ($) *</label>${inp("alquilerBase","number")}</div>
       <div><label class="fl">Comisión agencia (%)</label>${inp("comisionAgencia","number","5")}</div>
     </div>
     <div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
