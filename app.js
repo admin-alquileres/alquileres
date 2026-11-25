@@ -2496,7 +2496,7 @@ async function eliminarPropiedadInmueble(id){
 function abrirModalPropiedad(propietarioNombre,propiedadId){
   const p=propiedadId?S.propiedadesInmuebles.find(x=>x._id===propiedadId):null;
   S.modal="editar_propiedad";S.editarPropiedadId=propiedadId||null;
-  S.form={propietarioNombre,direccion:p?p.direccion:"",tipo:p?p.tipo:"Casa",descripcion:p?p.descripcion:"",superficie:p?p.superficie:"",ambientes:p?p.ambientes:""};
+  S.form={propietarioNombre,direccion:p?p.direccion:"",tipo:p?p.tipo:"Casa",descripcion:p?p.descripcion:"",superficie:p?p.superficie:"",ambientes:p?p.ambientes:"",hectareas:p?(p.hectareas||""):""};
   render();
 }
 
@@ -2511,8 +2511,10 @@ function renderModalEditarPropiedad(){
     +'<div><label class="fl">Tipo</label><select class="inp" style="width:100%" data-action="setForm" data-key="tipo">'
     +["Casa","Departamento","Local comercial","Terreno","Campo","Oficina","Cochera","Otro"].map(t=>'<option value="'+t+'"'+(f.tipo===t?" selected":"")+'>'+t+'</option>').join("")
     +'</select></div>'
-    +'<div><label class="fl">Superficie (m2)</label>'+inp("superficie","number")+'</div>'
-    +'<div><label class="fl">Ambientes</label>'+inp("ambientes","number")+'</div>'
+    +(f.tipo==="Campo"
+      ?'<div><label class="fl">Superficie (hectáreas)</label>'+inp("hectareas","number")+'</div>'
+      :'<div><label class="fl">Superficie (m2)</label>'+inp("superficie","number")+'</div>')
+    +(f.tipo==="Campo"?"":'<div><label class="fl">Ambientes</label>'+inp("ambientes","number")+'</div>')
     +'<div style="grid-column:1/-1"><label class="fl">Descripcion / Observaciones</label>'
     +'<textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="descripcion">'+(f.descripcion||"")+'</textarea></div>'
     +'</div>'
@@ -3121,7 +3123,8 @@ document.addEventListener("change",e=>{
   else if(action==="setPropiedad"){
     const pid=t.value;S.form.propiedadId=pid;
     const propSel=(S.propiedadesInmuebles||[]).find(p=>p._id===pid);
-    if(propSel){S.form.direccion=propSel.direccion||"";S.form.tipo=propSel.tipo||"Casa";S.form.descripcion=propSel.descripcion||"";}
+    if(propSel){S.form.direccion=propSel.direccion||"";S.form.tipo=propSel.tipo||"Casa";S.form.descripcion=propSel.descripcion||"";
+      if(propSel.tipo==="Campo"){S.form.tipoPago="campo";if(propSel.hectareas)S.form.hectareas=propSel.hectareas;}}
     render();
   }
 });
@@ -3173,7 +3176,7 @@ document.addEventListener("click",e=>{
   else if(action==="setupDescartar"){S.setupCambios={};render();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.superficie||"",ambientes:f2.ambientes||""},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.tipo==="Campo"?"":(f2.superficie||""),ambientes:f2.tipo==="Campo"?"":(f2.ambientes||""),hectareas:f2.tipo==="Campo"?(+f2.hectareas||0):0},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="eliminarLiquidacion"){eliminarLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="serviciosMonto"){S_SERVICIOS_VALORES[t.dataset.key]=t.value;}
   else if(action==="serviciosGuardarTodos"){serviciosGuardarTodos();}
@@ -4354,7 +4357,7 @@ function renderFichaPropietario(nombre, prop){
     return '<div class="lcard" style="margin-bottom:10px'+(fuera?';opacity:.65':'')+'">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
       +'<div><div style="font-weight:600;font-size:13px">'+(p.direccion||"")+'</div>'
-      +'<div style="font-size:11px;color:var(--gris3)">'+(p.tipo||"")+(p.superficie?" · "+p.superficie+"m2":"")+(p.ambientes?" · "+p.ambientes+" amb.":"")+'</div>'
+      +'<div style="font-size:11px;color:var(--gris3)">'+(p.tipo||"")+(p.tipo==="Campo"?(p.hectareas?" · "+fmtNum(p.hectareas)+" ha":""):(p.superficie?" · "+p.superficie+"m2":"")+(p.ambientes?" · "+p.ambientes+" amb.":""))+'</div>'
       +(p.descripcion?'<div style="font-size:11px;color:var(--gris4)">'+p.descripcion+'</div>':"")+'</div>'
       +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+chip+selEstado
       +'<button class="btn sm" data-action="editarPropiedad" data-nombre="'+nombre+'" data-id="'+p._id+'" style="padding:3px 8px">Editar</button>'
