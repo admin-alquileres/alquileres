@@ -3124,7 +3124,7 @@ document.addEventListener("change",e=>{
     const pid=t.value;S.form.propiedadId=pid;
     const propSel=(S.propiedadesInmuebles||[]).find(p=>p._id===pid);
     if(propSel){S.form.direccion=propSel.direccion||"";S.form.tipo=propSel.tipo||"Casa";S.form.descripcion=propSel.descripcion||"";
-      if(propSel.tipo==="Campo"){S.form.tipoPago="campo";if(propSel.hectareas)S.form.hectareas=propSel.hectareas;}}
+      if(propSel.tipo==="Campo"){S.form.tipoPago="campo";S.form.honCuotas="0";if(propSel.hectareas)S.form.hectareas=propSel.hectareas;}}
     render();
   }
 });
@@ -3701,6 +3701,7 @@ async function guardarMontoMesParcial(cid){
 async function guardarContrato(){
   const f=S.form;
   if(!f.inquilino||!f.direccion||!f.inicio)return toast("Completá: Inquilino, Dirección e Inicio",false);
+  if(f.tipoPago==="campo")f.tieneDeposito="no"; // el arrendamiento rural no lleva depósito
   if(f.tieneDeposito!=="si"&&f.tieneDeposito!=="no")return toast("Elegí si el contrato lleva depósito de garantía o no",false);
   let propId="";
   if(f.propietarioNombre){
@@ -3722,12 +3723,13 @@ async function guardarContrato(){
   const honorarios=honCuotas===0
     ?{total:0,monto:"ninguno",cuotas:0,pagadas:0,pagado:0,pendiente:0,completo:true,sinCargo:true}
     :{total:honTotal,monto:honMonto,cuotas:honCuotas,pagadas:honCuotas===1?1:0,pagado:honCuotas===1?honTotal:0,pendiente:honCuotas===1?0:honTotal,completo:honCuotas===1};
-  const gastosConfig=(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
+  const gastosConfig=f.tipoPago==="campo"?[]:(S.matrizTemp||GASTOS_DEFAULT).map(g=>({...g,mesInicio:g.mesInicio||f.inicio||mesActual()}));
 S.matrizTemp=null;  // limpiar después de guardar
   const data={propiedadId:propId,propietarioNombre:f.propietarioNombre||"",inquilino:f.inquilino,dni:f.dni||"",telefono:f.telefono||"",email:f.email||"",garante:f.garante||"",direccion:f.direccion||"",inicio:f.inicio,fin:f.fin||"",alquilerBase:alqBase,comisionAgencia:+(f.comisionAgencia??5),estado:"activo",extras:S.formExtras.filter(e=>e.desc),frecActualizacion:+(f.frecActualizacion||6),indiceActualizacion:f.indiceActualizacion||"IPC",notasActualizacion:f.notasActualizacion||"",deposito,honorarios,montoMedioMesForzado:+(f.montoMedioMesForzado||0)||null};
   if(esCampo){
     data.campo={hectareas:+f.hectareas,kgPorHa:+f.kgPorHa,referencia:(f.campoReferencia!==undefined?f.campoReferencia:CAMPO_REFERENCIA_DEFAULT).trim()};
-    data.frecActualizacion=0;data.indiceActualizacion="";
+    data.frecActualizacion=0;data.indiceActualizacion="";data.notasActualizacion="";
+    data.extras=[]; // sin gastos a cargo del inquilino: solo el arrendamiento
   }
   const id=await fbAdd("contratos",data);
   if(id){S.contratos.unshift({...data,_id:id});closeModal();}
@@ -5379,7 +5381,7 @@ function renderModal(){
       <div style="${f.tipoPago==="campo"?"display:none":""}"><label class="fl">Alquiler base ($) *</label>${inp("alquilerBase","number")}</div>
       <div><label class="fl">Comisión agencia (%)</label>${inp("comisionAgencia","number","5")}</div>
     </div>
-    <div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="margin-top:10px;${f.tipoPago==="campo"?"display:none":""}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <label class="fl" style="margin:0">Gastos a cargo del inquilino</label>
       <button class="btn sm" data-action="addExtra">+ Agregar gasto</button>
     </div><div class="xlist">${extH}</div></div></div>
@@ -5395,9 +5397,9 @@ function renderModal(){
           +'<div style="font-size:11px;color:var(--gris3);margin-top:2px">Si no se completa, se calcula el prorrateo exacto por días.</div></div>';
       })()}
     </div></div>
-    <div class="fsec"><div class="fsec-t">Depósito y honorarios</div>
+    <div class="fsec"><div class="fsec-t">${f.tipoPago==="campo"?"Honorarios":"Depósito y honorarios"}</div>
       <div class="fg">
-        <div><label class="fl">¿Lleva depósito de garantía? *</label>
+        <div style="${f.tipoPago==="campo"?"display:none":""}"><label class="fl">¿Lleva depósito de garantía? *</label>
           <select class="inp" style="width:100%;${f.tieneDeposito?'':'border-color:var(--naranja)'}" data-action="setForm" data-key="tieneDeposito">
             <option value=""${!f.tieneDeposito?" selected":""}>-- Elegir --</option>
             <option value="si"${f.tieneDeposito==="si"?" selected":""}>Sí</option>
@@ -5431,12 +5433,12 @@ function renderModal(){
         </div>
       </div>
     </div>
-    <div class="fsec" style="border:none;margin:0;padding:0"><div class="fsec-t">Actualización</div><div class="fg3">
+    <div class="fsec" style="border:none;margin:0;padding:0;${f.tipoPago==="campo"?"display:none":""}"><div class="fsec-t">Actualización</div><div class="fg3">
       <div><label class="fl">Cada cuántos meses</label>${sel("frecActualizacion",[["3","3 meses"],["4","4 meses"],["6","6 meses"],["12","12 meses"]])}</div>
       <div><label class="fl">Índice</label>${sel("indiceActualizacion",[["IPC","IPC"],["ICL","ICL"],["Libre","Libre"]])}</div>
       <div><label class="fl">Notas</label>${inp("notasActualizacion","text","","Ej: según contrato...")}</div>
     </div></div>
-    <div class="fsec">
+    <div class="fsec" style="${f.tipoPago==="campo"?"display:none":""}">
       <div class="fsec-t" style="display:flex;justify-content:space-between;align-items:center">
         <span>4. Gastos fijos</span>
         <button class="btn sm" data-action="agregarGastoNuevoContrato" style="background:rgba(75,200,232,.1);color:var(--celeste);font-size:11px">+ Agregar</button>
