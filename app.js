@@ -2478,9 +2478,10 @@ async function guardarPropiedadInmueble(data,id){
   if(id){
     await fbUpd("propiedades",id,data);
     S.propiedadesInmuebles=S.propiedadesInmuebles.map(p=>p._id===id?{...p,...data}:p);
+    S.propiedades=(S.propiedades||[]).map(p=>p._id===id?{...p,...data}:p);
   }else{
     const newId=await fbAdd("propiedades",{...data,creadoEn:Date.now()});
-    if(newId)S.propiedadesInmuebles.push({...data,_id:newId,creadoEn:Date.now()});
+    if(newId){S.propiedadesInmuebles.push({...data,_id:newId,creadoEn:Date.now()});S.propiedades=(S.propiedades||[]).concat([{...data,_id:newId,creadoEn:Date.now()}]);}
   }
 }
 
@@ -3591,26 +3592,32 @@ function renderGastosAdministradas(nombre){
   if(!props.length)return "";
   const mes=S_GASTOS_ADM_MES||mesActual();
   const pend=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.tipo==="gasto_inmueble"&&!a.liquidacionRef&&!a._eliminado&&a.mes===mes);
-  let filas="";
-  props.forEach(function(p){
-    const conceptos=(p.conceptosGasto&&p.conceptosGasto.length)?p.conceptosGasto:["TGI","Agua","ATER"];
-    filas+='<div style="font-weight:600;font-size:12px;margin:10px 0 4px">'+nombreInmueble(p)+'</div><div style="display:flex;gap:8px;flex-wrap:wrap">';
-    conceptos.forEach(function(cn){
+  const concProp=p=>(p.conceptosGasto&&p.conceptosGasto.length)?p.conceptosGasto:["ATER","TGI","Agua"];
+  // Columnas: todos los conceptos que tienen estos inmuebles (ATER, TGI, Agua...)
+  const columnas=[];props.forEach(p=>concProp(p).forEach(cn=>{if(!columnas.includes(cn))columnas.push(cn);}));
+  const totCol={};let totGeneral=0;
+  const filas=props.map(function(p){
+    let totFila=0;
+    const celdas=columnas.map(function(cn){
+      if(!concProp(p).includes(cn))return '<td style="text-align:center;color:var(--gris4)">—</td>';
       const ya=pend.find(a=>a.propiedadId===p._id&&a.concepto===cn);
-      filas+='<div><label class="fl">'+cn+'</label><input class="inp ga-input" type="number" min="0" step="0.01" style="width:130px" data-pid="'+p._id+'" data-concepto="'+cn.replace(/"/g,"&quot;")+'" value="'+(ya?Math.abs(ya.monto):"")+'" placeholder="$"></div>';
-    });
-    filas+='</div>';
-  });
-  const totalMes=pend.reduce((s,a)=>s+Math.abs(a.monto||0),0);
-  return '<div class="lcard" style="margin-bottom:16px">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
-    +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase">🧾 Gastos de inmuebles administrados</div>'
+      const v=ya?Math.abs(ya.monto):0;totFila+=v;totCol[cn]=(totCol[cn]||0)+v;
+      return '<td><input class="inp ga-input" type="number" min="0" step="0.01" style="width:120px;text-align:right" data-pid="'+p._id+'" data-concepto="'+cn.replace(/"/g,"&quot;")+'" value="'+(ya?v:"")+'" placeholder="$"></td>';
+    }).join("");
+    totGeneral+=totFila;
+    return '<tr><td><div style="font-weight:600">'+(p.alias||p.direccion||"")+'</div>'+(p.alias?'<div style="font-size:10px;color:var(--gris3)">'+(p.direccion||"")+'</div>':'')+'</td>'+celdas
+      +'<td style="text-align:right;font-weight:600">'+(totFila?monedaC(totFila):"—")+'</td></tr>';
+  }).join("");
+  const pie='<tr style="border-top:2px solid var(--naranja)"><td style="font-weight:700">Total '+mesNombre(mes)+'</td>'
+    +columnas.map(cn=>'<td style="text-align:right;font-weight:600">'+(totCol[cn]?monedaC(totCol[cn]):"—")+'</td>').join("")
+    +'<td style="text-align:right;font-weight:700;color:var(--naranja)">'+monedaC(totGeneral)+'</td></tr>';
+  return '<div class="lcard" style="margin-bottom:16px;border:2px solid var(--naranja);background:rgba(245,166,35,.05)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">'
+    +'<div style="font-size:14px;font-weight:700;color:var(--naranja)">🧾 Gastos de inmuebles administrados</div>'
     +'<div style="display:flex;gap:6px;align-items:center"><label class="fl" style="margin:0">Mes</label><input class="inp" type="month" value="'+mes+'" data-action="gastosAdmMes" style="width:160px"></div></div>'
-    +'<div style="font-size:11px;color:var(--gris3);margin-top:6px">Cargá lo que se pagó de cada impuesto o servicio. Se descuenta de la próxima liquidación y sale detallado en el comprobante.</div>'
-    +filas
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:8px">'
-    +'<span style="font-size:12px">Cargado de '+mesNombre(mes)+': <strong>'+monedaC(totalMes)+'</strong></span>'
-    +'<button class="btn sm naranja" data-action="gastosAdmGuardar">Guardar gastos de '+mesNombre(mes)+'</button></div></div>';
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:10px">Cargá lo que se pagó este mes de cada impuesto o servicio. Al guardar se da por pagado y se descuenta del neto de la próxima liquidación, detallado en el comprobante.</div>'
+    +'<div class="tw"><table><thead><tr><th>Inmueble</th>'+columnas.map(cn=>'<th>'+cn+'</th>').join("")+'<th style="text-align:right">Total</th></tr></thead><tbody>'+filas+pie+'</tbody></table></div>'
+    +'<div style="text-align:right;margin-top:10px"><button class="btn naranja" data-action="gastosAdmGuardar">💾 Guardar gastos de '+mesNombre(mes)+'</button></div></div>';
 }
 async function guardarGastosAdministradas(nombre){
   const mes=S_GASTOS_ADM_MES||mesActual();
@@ -3806,7 +3813,8 @@ async function guardarContrato(){
   if(f.propietarioNombre){
     let p=S.propietarios.find(x=>x.nombre===f.propietarioNombre);
     if(!p){const id=await fbAdd("propietarios",{nombre:f.propietarioNombre,telefono:"",email:""});if(id){p={nombre:f.propietarioNombre,_id:id};S.propietarios.push(p);}}
-    let pr=S.propiedades.find(x=>x.direccion===f.direccion&&x.propietarioNombre===f.propietarioNombre);
+    let pr=(f.propiedadId&&((S.propiedades||[]).find(x=>x._id===f.propiedadId)||(S.propiedadesInmuebles||[]).find(x=>x._id===f.propiedadId)))
+      ||S.propiedades.find(x=>x.direccion===f.direccion&&x.propietarioNombre===f.propietarioNombre&&!x._eliminado);
     if(!pr){const id=await fbAdd("propiedades",{direccion:f.direccion,tipo:f.tipo||"Casa",descripcion:f.descripcion||"",propietarioNombre:f.propietarioNombre,propietarioId:p?._id||""});if(id){pr={direccion:f.direccion,_id:id};S.propiedades.push(pr);}}
     propId=pr?._id||"";
   }
