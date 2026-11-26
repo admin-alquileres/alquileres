@@ -3677,6 +3677,13 @@ function calcularReparto(reparto,monto){
 function renderRepartoProp(nombre,netoEstimado){
   const pd=propietarioDoc(nombre);if(!pd)return "";
   const rep=pd.reparto||[];
+  // Reparto convenido y fijo: se muestra pero no se puede editar desde la app
+  if(pd.repartoFijo&&rep.length){
+    const filasF=calcularReparto(rep,netoEstimado).map(function(r){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--negro4)"><span><strong>'+r.nombre+'</strong> · '+r.fraccion+'</span><span>'+monedaC(r.monto)+'</span></div>';}).join("");
+    return '<div class="lcard" style="margin-bottom:16px">'
+      +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin-bottom:6px">➗ Reparto del neto · 🔒 fijo y convenido</div>'
+      +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Sale al final de cada liquidación. Montos calculados con el neto de hoy.</div>'+filasF+'</div>';
+  }
   const inpR=(i,campo,val,w,tipo)=>'<input class="inp" type="'+(tipo||"text")+'" style="width:'+w+'" value="'+String(val==null?"":val).replace(/"/g,"&quot;")+'" data-action="repartoEditar" data-idx="'+i+'" data-field="'+campo+'">';
   const filas=rep.map(function(r,i){
     return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+inpR(i,"nombre",r.nombre,"240px")+inpR(i,"partes",r.partes,"70px","number")
@@ -3692,6 +3699,7 @@ function renderRepartoProp(nombre,netoEstimado){
 }
 async function guardarRepartoProp(nombre,reparto){
   const pd=propietarioDoc(nombre);if(!pd)return;
+  if(pd.repartoFijo){toast("El reparto de este propietario es fijo y no se puede modificar",false);return;}
   await fbUpd("propietarios",pd._id,{reparto});
   pd.reparto=reparto;render();
 }
