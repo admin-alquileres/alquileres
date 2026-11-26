@@ -2432,7 +2432,7 @@ function normDireccion(s){
 // ── ESTADO DE ALQUILER DE UNA PROPIEDAD ─────────────────────────────────────
 // propiedades.estadoAlquiler: sin valor o "alquilable" = se ofrece para alquilar.
 // Los otros estados la sacan de "disponibles" sin borrarla (se conserva el historial).
-const ESTADOS_PROP={alquilable:"Para alquilar",vendida:"Vendida",uso_propietario:"La usa el dueño",retirada:"Retirada del alquiler"};
+const ESTADOS_PROP={alquilable:"Para alquilar",vendida:"Vendida",uso_propietario:"La usa el dueño",retirada:"Retirada del alquiler",administrada:"Solo administración (pagamos sus gastos)"};
 function propFueraDeAlquiler(p){return !!(p&&p.estadoAlquiler&&p.estadoAlquiler!=="alquilable");}
 function etiquetaEstadoProp(p){return ESTADOS_PROP[(p&&p.estadoAlquiler)||"alquilable"]||"Para alquilar";}
 async function cambiarEstadoPropiedad(id,nuevo,selectEl){
@@ -2496,7 +2496,7 @@ async function eliminarPropiedadInmueble(id){
 function abrirModalPropiedad(propietarioNombre,propiedadId){
   const p=propiedadId?S.propiedadesInmuebles.find(x=>x._id===propiedadId):null;
   S.modal="editar_propiedad";S.editarPropiedadId=propiedadId||null;
-  S.form={propietarioNombre,direccion:p?p.direccion:"",tipo:p?p.tipo:"Casa",descripcion:p?p.descripcion:"",superficie:p?p.superficie:"",ambientes:p?p.ambientes:"",hectareas:p?(p.hectareas||""):""};
+  S.form={propietarioNombre,direccion:p?p.direccion:"",tipo:p?p.tipo:"Casa",descripcion:p?p.descripcion:"",superficie:p?p.superficie:"",ambientes:p?p.ambientes:"",hectareas:p?(p.hectareas||""):"",alias:p?(p.alias||""):"",conceptosGasto:p?(p.conceptosGasto||[]).join(", "):""};
   render();
 }
 
@@ -2508,6 +2508,7 @@ function renderModalEditarPropiedad(){
     +'<div class="mth"><div class="mth-ic">🏠</div>'+(esNueva?"Nueva propiedad":"Editar propiedad")+" — "+(f.propietarioNombre||"")+'</div>'
     +'<div class="fg">'
     +'<div style="grid-column:1/-1"><label class="fl">Direccion *</label>'+inp("direccion")+'</div>'
+    +'<div style="grid-column:1/-1"><label class="fl">Nombre o apodo (opcional, ej: Casa Verde)</label>'+inp("alias")+'</div>'
     +'<div><label class="fl">Tipo</label><select class="inp" style="width:100%" data-action="setForm" data-key="tipo">'
     +["Casa","Departamento","Local comercial","Terreno","Campo","Oficina","Cochera","Otro"].map(t=>'<option value="'+t+'"'+(f.tipo===t?" selected":"")+'>'+t+'</option>').join("")
     +'</select></div>'
@@ -2515,6 +2516,8 @@ function renderModalEditarPropiedad(){
       ?'<div><label class="fl">Superficie (hectáreas)</label>'+inp("hectareas","number")+'</div>'
       :'<div><label class="fl">Superficie (m2)</label>'+inp("superficie","number")+'</div>')
     +(f.tipo==="Campo"?"":'<div><label class="fl">Ambientes</label>'+inp("ambientes","number")+'</div>')
+    +'<div style="grid-column:1/-1"><label class="fl">Impuestos y servicios que pagamos por esta propiedad (separados por coma)</label>'+inp("conceptosGasto")
+    +'<div style="font-size:10px;color:var(--gris3);margin-top:3px">Solo para propiedades que administramos sin alquilar. Ej: TGI, Agua, ATER</div></div>'
     +'<div style="grid-column:1/-1"><label class="fl">Descripcion / Observaciones</label>'
     +'<textarea class="inp" style="width:100%;height:60px;resize:vertical" data-action="setForm" data-key="descripcion">'+(f.descripcion||"")+'</textarea></div>'
     +'</div>'
@@ -3068,6 +3071,8 @@ document.addEventListener("change",e=>{
   else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
   else if(action==="estadoPropiedad"){cambiarEstadoPropiedad(t.dataset.id,t.value,t);}
   else if(action==="campoEditar"){campoGuardarCampo(t.dataset.id,t.dataset.field,t.value);}
+  else if(action==="gastosAdmMes"){if(t.value){S_GASTOS_ADM_MES=t.value;render();}}
+  else if(action==="repartoEditar"){const pd=propietarioDoc(S.propietarioActivo);if(pd){const r=(pd.reparto||[]).map(x=>({...x}));const i=+t.dataset.idx;if(r[i]){r[i][t.dataset.field]=t.dataset.field==="partes"?(+t.value||0):t.value.trim();guardarRepartoProp(S.propietarioActivo,r);}}}
   else if(action==="cdCobrarIntereses"){cdGuardarCobrarIntereses(t.dataset.id,t.checked);}
   // Fecha de corte deudores
   else if(action==="setFechaCorte"||t.id==="fecha-corte-input"){window.setFechaCorte(t.value);}
@@ -3140,6 +3145,9 @@ document.addEventListener("click",e=>{
   else if(action==="cdBajaEntrega")cdBajaEntrega(id);
   else if(action==="cdAgregarServicio")cdAgregarServicio();
   else if(action==="cdComprobante")cdComprobanteEntrega(id);
+  else if(action==="gastosAdmGuardar")guardarGastosAdministradas(S.propietarioActivo);
+  else if(action==="repartoAgregar"){const pd=propietarioDoc(S.propietarioActivo);if(pd)guardarRepartoProp(S.propietarioActivo,(pd.reparto||[]).concat([{nombre:"",partes:1}]));}
+  else if(action==="repartoQuitar"){const pd=propietarioDoc(S.propietarioActivo);if(pd){const r=(pd.reparto||[]).slice();r.splice(+t.dataset.idx,1);guardarRepartoProp(S.propietarioActivo,r);}}
   else if(action==="cdQuitarServicio"){const filaS=t.closest(".cd-serv-row");if(filaS)filaS.remove();cdActualizarNeto();}
   else if(action==="cobrar")cobrarPago(id);
   else if(action==="emitirINQ"){const p=S.pagos.find(x=>x._id===id);if(p)generarPDFInquilino(p);}
@@ -3176,7 +3184,7 @@ document.addEventListener("click",e=>{
   else if(action==="setupDescartar"){S.setupCambios={};render();}
   else if(action==="cobranzaBuscar"){S.filtros.cobranzaBuscar=t.value;if(typeof renderParcial==="function")renderParcial();else render();}
   else if(action==="setAlquilerCobro"){S.form.alquiler=+(t.value||0);if(typeof updateResumen==="function")updateResumen();}
-  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.tipo==="Campo"?"":(f2.superficie||""),ambientes:f2.tipo==="Campo"?"":(f2.ambientes||""),hectareas:f2.tipo==="Campo"?(+f2.hectareas||0):0},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
+  else if(action==="volverInquilinos"){S.inquilinoActivo=null;render();}else if(action==="editarInquilino"){abrirEditarInquilino(t.dataset.nombre);}else if(action==="guardarInquilino"){guardarInquilino();}else if(action==="editarPropietario"){abrirEditarPropietario(t.dataset.nombre);}else if(action==="nuevaPropiedad"){abrirModalPropiedad(t.dataset.nombre);}else if(action==="editarPropiedad"){abrirModalPropiedad(t.dataset.nombre,t.dataset.id);}else if(action==="eliminarPropiedad"){eliminarPropiedadInmueble(t.dataset.id);}else if(action==="confirmarGuardarPropiedad"){const f2=S.form;if(!f2.direccion){toast("La direccion es obligatoria",false);return;}guardarPropiedadInmueble({propietarioNombre:f2.propietarioNombre,direccion:f2.direccion,tipo:f2.tipo||"Casa",descripcion:f2.descripcion||"",superficie:f2.tipo==="Campo"?"":(f2.superficie||""),ambientes:f2.tipo==="Campo"?"":(f2.ambientes||""),hectareas:f2.tipo==="Campo"?(+f2.hectareas||0):0,alias:(f2.alias||"").trim(),conceptosGasto:String(f2.conceptosGasto||"").split(",").map(function(x){return x.trim();}).filter(Boolean)},S.editarPropiedadId).then(function(){S.modal=null;S.editarPropiedadId=null;toast("Propiedad guardada");render();});}else if(action==="guardarPropietario"){guardarPropietario();}else if(action==="abrirPropietario"){S.propietarioActivo=t.dataset.nombre;S.liqSeleccion={};Promise.all([cargarSaldoProp(t.dataset.nombre),cargarPropiedadesInmuebles(),cargarAjustesProp(t.dataset.nombre)]).then(()=>render());render();}else if(action==="volverPropietarios"){S.propietarioActivo=null;render();}else if(action==="toggleLiqMes"){const nm=t.dataset.nombre;const ms=t.dataset.mes;if(!S.liqSeleccion[nm])S.liqSeleccion[nm]={};S.liqSeleccion[nm][ms]=S.liqSeleccion[nm][ms]===false?true:false;render();}else if(action==="generarLiquidacion"){generarLiquidacionProp(t.dataset.nombre);}else if(action==="reimprimirLiq"){reimprimirLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="eliminarLiquidacion"){eliminarLiquidacion(t.dataset.ref,t.dataset.nombre);}
   else if(action==="serviciosMonto"){S_SERVICIOS_VALORES[t.dataset.key]=t.value;}
   else if(action==="serviciosGuardarTodos"){serviciosGuardarTodos();}
@@ -3571,6 +3579,97 @@ async function cargarAjustesProp(nombre){
   }catch(e){ S_AJUSTES_PROP[nombre]=[]; }
   render();
 }
+// ── INMUEBLES ADMINISTRADOS SIN ALQUILAR ────────────────────────────────────
+// Los impuestos y servicios que pagamos por esas propiedades se guardan como
+// ajustes_prop negativos con tipo "gasto_inmueble" (propiedadId, concepto, mes),
+// así se descuentan solos en la próxima liquidación del propietario.
+let S_GASTOS_ADM_MES="";
+function nombreInmueble(p){return (p.alias?p.alias+" ("+(p.direccion||"")+")":(p.direccion||""));}
+function propiedadesAdministradas(nombre){return propiedadesDelPropietario(nombre).filter(p=>!p._eliminado&&p.estadoAlquiler==="administrada");}
+function renderGastosAdministradas(nombre){
+  const props=propiedadesAdministradas(nombre);
+  if(!props.length)return "";
+  const mes=S_GASTOS_ADM_MES||mesActual();
+  const pend=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.tipo==="gasto_inmueble"&&!a.liquidacionRef&&!a._eliminado&&a.mes===mes);
+  let filas="";
+  props.forEach(function(p){
+    const conceptos=(p.conceptosGasto&&p.conceptosGasto.length)?p.conceptosGasto:["TGI","Agua","ATER"];
+    filas+='<div style="font-weight:600;font-size:12px;margin:10px 0 4px">'+nombreInmueble(p)+'</div><div style="display:flex;gap:8px;flex-wrap:wrap">';
+    conceptos.forEach(function(cn){
+      const ya=pend.find(a=>a.propiedadId===p._id&&a.concepto===cn);
+      filas+='<div><label class="fl">'+cn+'</label><input class="inp ga-input" type="number" min="0" step="0.01" style="width:130px" data-pid="'+p._id+'" data-concepto="'+cn.replace(/"/g,"&quot;")+'" value="'+(ya?Math.abs(ya.monto):"")+'" placeholder="$"></div>';
+    });
+    filas+='</div>';
+  });
+  const totalMes=pend.reduce((s,a)=>s+Math.abs(a.monto||0),0);
+  return '<div class="lcard" style="margin-bottom:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'
+    +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase">🧾 Gastos de inmuebles administrados</div>'
+    +'<div style="display:flex;gap:6px;align-items:center"><label class="fl" style="margin:0">Mes</label><input class="inp" type="month" value="'+mes+'" data-action="gastosAdmMes" style="width:160px"></div></div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-top:6px">Cargá lo que se pagó de cada impuesto o servicio. Se descuenta de la próxima liquidación y sale detallado en el comprobante.</div>'
+    +filas
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:8px">'
+    +'<span style="font-size:12px">Cargado de '+mesNombre(mes)+': <strong>'+monedaC(totalMes)+'</strong></span>'
+    +'<button class="btn sm naranja" data-action="gastosAdmGuardar">Guardar gastos de '+mesNombre(mes)+'</button></div></div>';
+}
+async function guardarGastosAdministradas(nombre){
+  const mes=S_GASTOS_ADM_MES||mesActual();
+  await cargarAjustesProp(nombre);
+  const pend=(S_AJUSTES_PROP[nombre]||[]).filter(a=>a.tipo==="gasto_inmueble"&&!a.liquidacionRef&&!a._eliminado&&a.mes===mes);
+  let n=0;
+  for(const el of document.querySelectorAll(".ga-input")){
+    const monto=Math.round((+el.value||0)*100)/100;
+    const p=(S.propiedadesInmuebles||[]).find(x=>x._id===el.dataset.pid);if(!p)continue;
+    const cn=el.dataset.concepto;
+    const ya=pend.find(a=>a.propiedadId===p._id&&a.concepto===cn);
+    if(ya){
+      if(!(monto>0)){await fbUpd("ajustes_prop",ya._id,{_eliminado:true});S_AJUSTES_PROP[nombre]=S_AJUSTES_PROP[nombre].filter(a=>a._id!==ya._id);n++;}
+      else if(Math.abs(ya.monto)!==monto){await fbUpd("ajustes_prop",ya._id,{monto:-monto});ya.monto=-monto;n++;}
+      continue;
+    }
+    if(!(monto>0))continue;
+    const data={propietarioNombre:nombre,fecha:hoy(),tipo:"gasto_inmueble",propiedadId:p._id,inmueble:nombreInmueble(p),concepto:cn,mes,
+      descripcion:cn+" "+mesNombre(mes)+" — "+nombreInmueble(p),monto:-monto,liquidacionRef:null,_eliminado:false};
+    const id=await fbAdd("ajustes_prop",data);
+    if(id){if(!S_AJUSTES_PROP[nombre])S_AJUSTES_PROP[nombre]=[];S_AJUSTES_PROP[nombre].unshift({...data,_id:id});n++;}
+  }
+  toast(n?"Gastos de "+mesNombre(mes)+" guardados ✓":"No había cambios para guardar");render();
+}
+// Reparto del neto entre varias personas (propietarios.reparto = [{nombre, partes}])
+function propietarioDoc(nombre){return S.propietarios.find(x=>x.nombre===nombre&&!x._eliminado);}
+function calcularReparto(reparto,monto){
+  const filas=(reparto||[]).filter(r=>r&&r.nombre&&+r.partes>0);
+  if(!filas.length)return [];
+  const total=filas.reduce((s,r)=>s+(+r.partes),0);
+  let acumulado=0;
+  return filas.map(function(r,i){
+    const m=i===filas.length-1?Math.round((monto-acumulado)*100)/100:Math.round(monto*(+r.partes)/total*100)/100;
+    acumulado+=m;
+    return {nombre:r.nombre,partes:+r.partes,fraccion:(+r.partes)+"/"+total,monto:m};
+  });
+}
+function renderRepartoProp(nombre,netoEstimado){
+  const pd=propietarioDoc(nombre);if(!pd)return "";
+  const rep=pd.reparto||[];
+  const inpR=(i,campo,val,w,tipo)=>'<input class="inp" type="'+(tipo||"text")+'" style="width:'+w+'" value="'+String(val==null?"":val).replace(/"/g,"&quot;")+'" data-action="repartoEditar" data-idx="'+i+'" data-field="'+campo+'">';
+  const filas=rep.map(function(r,i){
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+inpR(i,"nombre",r.nombre,"240px")+inpR(i,"partes",r.partes,"70px","number")
+      +'<span style="font-size:11px;color:var(--gris3)">partes</span><button class="btn sm" data-action="repartoQuitar" data-idx="'+i+'" style="background:rgba(231,76,60,.15);color:#ff7b6b;padding:2px 7px">✕</button></div>';
+  }).join("");
+  const prev=calcularReparto(rep,netoEstimado).map(function(r){return r.nombre+" ("+r.fraccion+"): <strong>"+monedaC(r.monto)+"</strong>";}).join(" · ");
+  return '<div class="lcard" style="margin-bottom:16px">'
+    +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin-bottom:6px">➗ Reparto del neto</div>'
+    +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Si el neto se divide entre varias personas, cargalas acá (ej: una persona con 1 parte y otra con 2 partes = 1/3 y 2/3). Sale al final de cada liquidación.</div>'
+    +(filas||'<div style="font-size:11px;color:var(--gris4);margin-bottom:6px">Sin reparto: el neto es todo para el propietario.</div>')
+    +'<button class="btn sm" data-action="repartoAgregar">+ Agregar persona</button>'
+    +(prev?'<div style="font-size:12px;margin-top:8px">Con el neto de hoy: '+prev+'</div>':'')+'</div>';
+}
+async function guardarRepartoProp(nombre,reparto){
+  const pd=propietarioDoc(nombre);if(!pd)return;
+  await fbUpd("propietarios",pd._id,{reparto});
+  pd.reparto=reparto;render();
+}
+
 async function agregarAjusteProp(nombre,desc,monto){
   if(!nombre||!desc||isNaN(monto)||monto===0)return;
   const data={propietarioNombre:nombre,fecha:hoy(),descripcion:desc,monto:+monto,liquidacionRef:null,_eliminado:false};
@@ -4358,7 +4457,8 @@ function renderFichaPropietario(nombre, prop){
       :'<p style="font-size:11px;color:var(--gris4);padding:4px 0">Sin registros todavia.</p>';
     return '<div class="lcard" style="margin-bottom:10px'+(fuera?';opacity:.65':'')+'">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
-      +'<div><div style="font-weight:600;font-size:13px">'+(p.direccion||"")+'</div>'
+      +'<div><div style="font-weight:600;font-size:13px">'+(p.alias?p.alias+' · ':'')+(p.direccion||"")+'</div>'
+      +(p.estadoAlquiler==="administrada"?'<div style="font-size:11px;color:var(--naranja)">Pagamos: '+((p.conceptosGasto||[]).join(", ")||"— cargalos en Editar")+'</div>':'')
       +'<div style="font-size:11px;color:var(--gris3)">'+(p.tipo||"")+(p.tipo==="Campo"?(p.hectareas?" · "+fmtNum(p.hectareas)+" ha":""):(p.superficie?" · "+p.superficie+"m2":"")+(p.ambientes?" · "+p.ambientes+" amb.":""))+'</div>'
       +(p.descripcion?'<div style="font-size:11px;color:var(--gris4)">'+p.descripcion+'</div>':"")+'</div>'
       +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+chip+selEstado
@@ -4374,8 +4474,10 @@ function renderFichaPropietario(nombre, prop){
   };
   // Primero las que están en alquiler (ocupadas o disponibles); abajo, aparte, las que salieron del alquiler
   const propsEnAlquiler=propsInmuebles.filter(function(p){return contratoActivoDeProp(p,nombre)||!propFueraDeAlquiler(p);});
-  const propsFuera=propsInmuebles.filter(function(p){return !contratoActivoDeProp(p,nombre)&&propFueraDeAlquiler(p);});
+  const propsFuera=propsInmuebles.filter(function(p){return !contratoActivoDeProp(p,nombre)&&propFueraDeAlquiler(p)&&p.estadoAlquiler!=="administrada";});
+  const propsAdmin=propsInmuebles.filter(function(p){return !contratoActivoDeProp(p,nombre)&&p.estadoAlquiler==="administrada";});
   const propCards=propsEnAlquiler.map(tarjetaPropiedad).join("")
+    +(propsAdmin.length?'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:16px 0 8px">Inmuebles que administramos sin alquilar ('+propsAdmin.length+') · sus gastos se descuentan de la liquidación</div>'+propsAdmin.map(tarjetaPropiedad).join(""):"")
     +(propsFuera.length?'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin:16px 0 8px">Fuera de alquiler ('+propsFuera.length+') · se conservan con su historial</div>'+propsFuera.map(tarjetaPropiedad).join(""):"");
   // Ajustes cuenta corriente
   const _ajustesAll=(S_AJUSTES_PROP[nombre]||[]);
@@ -4470,6 +4572,8 @@ function renderFichaPropietario(nombre, prop){
         :"")
       +'</div>';
   })();
+  html+=renderGastosAdministradas(nombre);
+  html+=renderRepartoProp(nombre,netoConSaldo);
   html+='<div class="stitle" style="display:flex;justify-content:space-between;align-items:center">'
     +'<span>Propiedades e historial</span>'
     +'<button class="btn sm" style="background:rgba(75,200,232,.1);color:var(--celeste)" data-action="nuevaPropiedad" data-nombre="'+nombre+'">+ Agregar propiedad</button>'
@@ -4580,7 +4684,29 @@ function dibujarPDFLiquidacion(datos){
     doc.text("Saldo mes anterior ("+(saldoAnterior>0?"a favor":"en contra")+")",12,y);
     doc.text((saldoAnterior>0?"+ ":"- ")+moneda(Math.abs(saldoAnterior)),198,y,{align:"right"});y+=6;
   }
-  (ajustes||[]).forEach(function(a){
+  // Gastos de inmuebles administrados, agrupados por inmueble
+  const _gastosInm=(ajustes||[]).filter(function(a){return a.tipo==="gasto_inmueble";});
+  if(_gastosInm.length){
+    if(y>240){doc.addPage();y=18;}
+    doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(20,20,20);
+    doc.text("GASTOS PAGADOS DE INMUEBLES ADMINISTRADOS",12,y);y+=6;
+    const _porInm={};_gastosInm.forEach(function(a){const k=a.inmueble||"Inmueble";(_porInm[k]=_porInm[k]||[]).push(a);});
+    let _totG=0;
+    Object.keys(_porInm).sort().forEach(function(k){
+      if(y>265){doc.addPage();y=18;}
+      doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(50,50,50);doc.text(k,14,y);y+=5;
+      doc.setFont("helvetica","normal");
+      _porInm[k].sort(function(a,b){return (a.mes||"").localeCompare(b.mes||"")||(a.concepto||"").localeCompare(b.concepto||"");}).forEach(function(a){
+        doc.setTextColor(180,30,30);
+        doc.text("  "+(a.concepto||"Gasto")+(a.mes?" ("+mesNombre(a.mes)+")":""),16,y);
+        doc.text("- "+monedaC(Math.abs(a.monto||0)),198,y,{align:"right"});y+=5;_totG+=Math.abs(a.monto||0);
+      });
+      y+=1;
+    });
+    doc.setFont("helvetica","bold");doc.setTextColor(180,30,30);doc.text("Total gastos de inmuebles",14,y);doc.text("- "+monedaC(_totG),198,y,{align:"right"});y+=8;
+    doc.setFont("helvetica","normal");doc.setFontSize(9);
+  }
+  (ajustes||[]).filter(function(a){return a.tipo!=="gasto_inmueble";}).forEach(function(a){
     if(y>265){doc.addPage();y=18;}
     var neg=(a.monto||0)<0;
     doc.setTextColor(neg?180:20,neg?30:120,neg?30:60);
@@ -4598,6 +4724,18 @@ function dibujarPDFLiquidacion(datos){
     doc.setFont("helvetica","normal");doc.setFontSize(8.5);
     doc.setTextColor(nuevoSaldo>0?20:180,nuevoSaldo>0?120:30,nuevoSaldo>0?60:30);
     doc.text("Entregado: "+moneda(montoEntregado)+" — Queda "+(nuevoSaldo>0?"a favor":"en contra")+" del propietario: "+moneda(Math.abs(nuevoSaldo))+" para el proximo mes",12,y);y+=8;
+  }
+  if(datos.reparto&&datos.reparto.length){
+    if(y>250){doc.addPage();y=18;}
+    doc.setDrawColor(200,200,200);doc.setLineWidth(0.3);doc.line(12,y,198,y);y+=6;
+    doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(20,20,20);
+    doc.text("DISTRIBUCION DEL NETO",12,y);y+=6;
+    doc.setFont("helvetica","normal");doc.setFontSize(9.5);
+    datos.reparto.forEach(function(r){
+      doc.setTextColor(40,40,40);doc.text(r.nombre+" ("+r.fraccion+")",16,y);
+      doc.setFont("helvetica","bold");doc.text(monedaC(r.monto),198,y,{align:"right"});doc.setFont("helvetica","normal");y+=6;
+    });
+    y+=2;
   }
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90,90,90);
   doc.text("Eckerdt Negocios Inmobiliarios",12,y+10);
@@ -4657,18 +4795,19 @@ async function generarLiquidacionProp(nombre){
   const montoEntregado=inputMonto&&inputMonto.value!==""?+inputMonto.value:netoAEntregar;
   const nuevoSaldo=montoEntregado-netoAEntregar;
   await guardarSaldoProp(nombre,nuevoSaldo);
+  const reparto=calcularReparto((propietarioDoc(nombre)||{}).reparto,montoEntregado);
 
   // ── PDF ──────────────────────────────────────────────────────────────────
   dibujarPDFLiquidacion({
     nombre,mesesSel,propiedades,totalBruto,comPct,comision,
     saldoAnterior,saldoAnteriorDesconocido:false,ajustes:ajustesPendLiq,
-    netoAEntregar,montoEntregado,nuevoSaldo
+    netoAEntregar,montoEntregado,nuevoSaldo,reparto
   });
 
   // ── Marcar pagos como liquidados y registrar la referencia ───────────────
   const ref=nombre+"_"+mesesSel.join("-")+"_"+Date.now();
   const fechaLiq=hoy();
-  const liqSnap={saldoAnterior,montoEntregado,nuevoSaldo};
+  const liqSnap={saldoAnterior,montoEntregado,nuevoSaldo,comPct,reparto};
   await Promise.all(pagosSel.map(p=>fbUpd(p._entrega?"entregas":"pagos",p._id,{liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap})));
   S.pagos=S.pagos.map(p=>pagosSel.some(ps=>!ps._entrega&&ps._id===p._id)?{...p,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:p);
   S.entregas=(S.entregas||[]).map(e=>pagosSel.some(ps=>ps._entrega&&ps._id===e._id)?{...e,liquidadoProp:true,liquidacionRef:ref,fechaLiquidacion:fechaLiq,liqSnap}:e);
@@ -4688,7 +4827,9 @@ async function reimprimirLiquidacion(ref, nombre){
     .concat(entregasComoPagos(nombre).filter(p=>p.liquidacionRef===ref));
   if(!pagosSel.length){toast("No se encontraron pagos de esa liquidacion",false);return;}
   const prop=S.propietarios.find(x=>x.nombre===nombre)||{};
-  const comPct=prop.comisionAgencia??5;
+  // La comisión de esa liquidación (si cambió después, se reimprime con la de entonces)
+  const _snap0=(pagosSel.find(p=>p.liqSnap)||{}).liqSnap||{};
+  const comPct=_snap0.comPct!=null?_snap0.comPct:(prop.comisionAgencia??5);
   const porPropiedad={};
   pagosSel.forEach(p=>{
     const dir=p.direccion||"Sin direccion";
@@ -4732,7 +4873,7 @@ async function reimprimirLiquidacion(ref, nombre){
   dibujarPDFLiquidacion({
     nombre,mesesSel,propiedades,totalBruto,comPct,comision,
     saldoAnterior,saldoAnteriorDesconocido,ajustes,
-    netoAEntregar,montoEntregado,nuevoSaldo
+    netoAEntregar,montoEntregado,nuevoSaldo,reparto:liqSnap&&liqSnap.reparto
   });
 
   if(saldoAnteriorDesconocido){
