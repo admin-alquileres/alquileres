@@ -20,7 +20,8 @@ let S=window.S={
 
 const $=id=>document.getElementById(id);
 const moneda=n=>"$"+Math.round(n||0).toLocaleString("es-AR");
-const hoy=()=>new Date().toISOString().split("T")[0];
+// Fecha de hoy en hora de Argentina (toISOString daba el día siguiente después de las 21 h)
+const hoy=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
 const mesActual=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");};
 const MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const mesNombre=m=>{if(!m)return"";const p=m.split("-");if(p.length===2)return MESES[+p[1]-1]+" "+p[0];return m;};
@@ -3072,6 +3073,7 @@ document.addEventListener("change",e=>{
   else if(action==="cdDescuento"){cdGuardarDescuento(t.dataset.id,t.value);}
   else if(action==="estadoPropiedad"){cambiarEstadoPropiedad(t.dataset.id,t.value,t);}
   else if(action==="campoEditar"){campoGuardarCampo(t.dataset.id,t.dataset.field,t.value);}
+  else if(action==="retiroFecha"){guardarRetiro(S.propietarioActivo,t.dataset.ref,t.dataset.nombre,t.value);}
   else if(action==="gastosAdmMes"){if(t.value){S_GASTOS_ADM_MES=t.value;render();}}
   else if(action==="repartoEditar"){const pd=propietarioDoc(S.propietarioActivo);if(pd){const r=(pd.reparto||[]).map(x=>({...x}));const i=+t.dataset.idx;if(r[i]){r[i][t.dataset.field]=t.dataset.field==="partes"?(+t.value||0):t.value.trim();guardarRepartoProp(S.propietarioActivo,r);}}}
   else if(action==="cdCobrarIntereses"){cdGuardarCobrarIntereses(t.dataset.id,t.checked);}
@@ -3147,6 +3149,7 @@ document.addEventListener("click",e=>{
   else if(action==="cdAgregarServicio")cdAgregarServicio();
   else if(action==="cdComprobante")cdComprobanteEntrega(id);
   else if(action==="gastosAdmGuardar")guardarGastosAdministradas(S.propietarioActivo);
+  else if(action==="retiroHoy")guardarRetiro(S.propietarioActivo,t.dataset.ref,t.dataset.nombre,hoy());
   else if(action==="repartoAgregar"){const pd=propietarioDoc(S.propietarioActivo);if(pd)guardarRepartoProp(S.propietarioActivo,(pd.reparto||[]).concat([{nombre:"",partes:1}]));}
   else if(action==="repartoQuitar"){const pd=propietarioDoc(S.propietarioActivo);if(pd){const r=(pd.reparto||[]).slice();r.splice(+t.dataset.idx,1);guardarRepartoProp(S.propietarioActivo,r);}}
   else if(action==="cdQuitarServicio"){const filaS=t.closest(".cd-serv-row");if(filaS)filaS.remove();cdActualizarNeto();}
@@ -3674,6 +3677,41 @@ function calcularReparto(reparto,monto){
     return {nombre:r.nombre,partes:+r.partes,fraccion:(+r.partes)+"/"+total,monto:m};
   });
 }
+// Quién retiró su parte de cada liquidación y qué día: propietarios.retiros = {ref: {nombre: "YYYY-MM-DD"}}
+function renderRetirosReparto(nombre,pd){
+  const liqs={};
+  S.pagos.filter(p=>p.propietarioNombre===nombre&&p.liquidacionRef&&p.liqSnap&&p.liqSnap.reparto&&p.liqSnap.reparto.length).forEach(p=>{
+    if(!liqs[p.liquidacionRef])liqs[p.liquidacionRef]={ref:p.liquidacionRef,fecha:p.fechaLiquidacion||"",meses:new Set(),reparto:p.liqSnap.reparto};
+    liqs[p.liquidacionRef].meses.add(p.mes);
+  });
+  const lista=Object.values(liqs).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).slice(0,6);
+  if(!lista.length)return "";
+  const retiros=pd.retiros||{};
+  const filas=lista.map(function(l){
+    const per=[...l.meses].sort().map(m=>mesNombre(m)).join(", ");
+    const personas=l.reparto.map(function(r){
+      const f=(retiros[l.ref]||{})[r.nombre]||"";
+      const estado=f?'<span style="color:#5ddb8a;font-weight:600">✓ Retiró el '+f.split("-").reverse().join("/")+'</span>':'<span style="color:var(--naranja)">Pendiente</span>';
+      return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0">'
+        +'<span style="min-width:170px"><strong>'+r.nombre+'</strong></span><span style="min-width:110px">'+monedaC(r.monto)+'</span>'
+        +estado
+        +'<input class="inp" type="date" style="width:150px;padding:3px 6px" value="'+f+'" data-action="retiroFecha" data-ref="'+l.ref.replace(/"/g,"&quot;")+'" data-nombre="'+r.nombre.replace(/"/g,"&quot;")+'">'
+        +(f?'':'<button class="btn sm" data-action="retiroHoy" data-ref="'+l.ref.replace(/"/g,"&quot;")+'" data-nombre="'+r.nombre.replace(/"/g,"&quot;")+'">✓ Retiró hoy</button>')
+        +'</div>';
+    }).join("");
+    return '<div style="border-top:1px solid var(--negro4);padding-top:8px;margin-top:8px"><div style="font-size:12px;color:var(--gris3);margin-bottom:4px">Liquidación '+per+(l.fecha?' · generada el '+l.fecha.split("-").reverse().join("/"):'')+'</div>'+personas+'</div>';
+  }).join("");
+  return '<div style="margin-top:12px"><div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase">Retiros de cada liquidación</div>'+filas+'</div>';
+}
+async function guardarRetiro(nombre,ref,persona,fecha){
+  const pd=propietarioDoc(nombre);if(!pd)return;
+  const retiros=JSON.parse(JSON.stringify(pd.retiros||{}));
+  if(!retiros[ref])retiros[ref]={};
+  if(fecha)retiros[ref][persona]=fecha;else delete retiros[ref][persona];
+  await fbUpd("propietarios",pd._id,{retiros});
+  pd.retiros=retiros;
+  toast(fecha?persona+" retiró el "+fecha.split("-").reverse().join("/")+" ✓":"Retiro borrado");render();
+}
 function renderRepartoProp(nombre,netoEstimado){
   const pd=propietarioDoc(nombre);if(!pd)return "";
   const rep=pd.reparto||[];
@@ -3682,7 +3720,7 @@ function renderRepartoProp(nombre,netoEstimado){
     const filasF=calcularReparto(rep,netoEstimado).map(function(r){return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--negro4)"><span><strong>'+r.nombre+'</strong> · '+r.fraccion+'</span><span>'+monedaC(r.monto)+'</span></div>';}).join("");
     return '<div class="lcard" style="margin-bottom:16px">'
       +'<div style="font-size:11px;font-weight:600;color:var(--gris3);text-transform:uppercase;margin-bottom:6px">➗ Reparto del neto · 🔒 fijo y convenido</div>'
-      +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Sale al final de cada liquidación. Montos calculados con el neto de hoy.</div>'+filasF+'</div>';
+      +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Sale al final de cada liquidación. Montos calculados con el neto de hoy.</div>'+filasF+renderRetirosReparto(nombre,pd)+'</div>';
   }
   const inpR=(i,campo,val,w,tipo)=>'<input class="inp" type="'+(tipo||"text")+'" style="width:'+w+'" value="'+String(val==null?"":val).replace(/"/g,"&quot;")+'" data-action="repartoEditar" data-idx="'+i+'" data-field="'+campo+'">';
   const filas=rep.map(function(r,i){
@@ -3695,7 +3733,7 @@ function renderRepartoProp(nombre,netoEstimado){
     +'<div style="font-size:11px;color:var(--gris3);margin-bottom:8px">Si el neto se divide entre varias personas, cargalas acá (ej: una persona con 1 parte y otra con 2 partes = 1/3 y 2/3). Sale al final de cada liquidación.</div>'
     +(filas||'<div style="font-size:11px;color:var(--gris4);margin-bottom:6px">Sin reparto: el neto es todo para el propietario.</div>')
     +'<button class="btn sm" data-action="repartoAgregar">+ Agregar persona</button>'
-    +(prev?'<div style="font-size:12px;margin-top:8px">Con el neto de hoy: '+prev+'</div>':'')+'</div>';
+    +(prev?'<div style="font-size:12px;margin-top:8px">Con el neto de hoy: '+prev+'</div>':'')+renderRetirosReparto(nombre,pd)+'</div>';
 }
 async function guardarRepartoProp(nombre,reparto){
   const pd=propietarioDoc(nombre);if(!pd)return;
